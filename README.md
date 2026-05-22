@@ -167,7 +167,6 @@ Once the core pipeline is proven, future iterations may include:
 
 - Full shift tracking
 - Automated discrepancy detection across sources
-- Tip-out automation
 - Advanced reporting dashboards
 - Broader internal operations tooling for other parts of the restaurant
 
@@ -210,3 +209,15 @@ The following items are intentionally left open at this stage and will be resolv
 - Finalized data models for shifts, cashouts, and supporting documents
 - Additional reporting requirements beyond the current spreadsheet workflow
 - Scope of future operational tooling beyond cashouts
+
+## Contributors
+
+- Remi Lemire
+
+## Client
+
+Developed for [Placeholder].
+
+## License
+
+This project is proprietary and intended for internal use only. See [LICENSE](LICENSE) for details.
