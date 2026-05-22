@@ -216,7 +216,7 @@ The following items are intentionally left open at this stage and will be resolv
 
 ## Client
 
-Developed for [Placeholder].
+Developed for Whiskey District Inc.
 
 ## License
 
