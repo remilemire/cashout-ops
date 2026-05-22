@@ -1,0 +1,11 @@
+// frontend/tsconfig.json
+
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": ["src"],
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": true,
+    "paths": { "@/*": ["./src/*"] }
+  }
+}
