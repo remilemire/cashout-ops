@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     APP_HOST: str = "127.0.0.1"
 
     SECRET_KEY: str = secrets.token_urlsafe(32)
-    DATABASE_URL: str = "sqlite:///"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:dev@localhost:5432/cashout"
 
     ADMIN_EMAIL: EmailStr = "admin@test.com"
 

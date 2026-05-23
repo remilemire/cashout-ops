@@ -1,15 +1,17 @@
 services:
   db:
     image: postgres:18
-    container_name: whiskey-district-cashout-automation-db
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev
-      POSTGRES_DB: whiskey_district_cashout_automation
+      POSTGRES_DB: cashout
+
     ports:
       - "5432:5432"
+
     volumes:
-      - whiskey-district-cashout-automation-postgres:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql/data
 
 volumes:
-  roller-bay-ops-postgres:
+  postgres-data:
