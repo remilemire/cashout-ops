@@ -13,3 +13,4 @@ __pycache__/
 !.vscode/launch.json
 instance/
 *.egg-info
+static/

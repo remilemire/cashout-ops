@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def DEBUG(self) -> bool:
-        return self.APP_ENV == "development"
+        return self.APP_ENV == "production"
 
 
 settings = Settings()
