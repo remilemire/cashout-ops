@@ -1,12 +1,12 @@
-# backend/app/models/auth_session.py
+# backend/app/models/session.py
 
 from __future__ import annotations
 
 from .base import Entity
 
 
-class AuthSession(Entity):
-    __tablename__ = "auth_sessions"
+class Session(Entity):
+    __tablename__ = "sessions"
     """
     # TODO:
 
