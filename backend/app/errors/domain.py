@@ -12,29 +12,29 @@ class DomainError(Exception, ABC):
         self.message = message or self.message
 
 
-class ServiceError(DomainError):
+class ServerError(DomainError):
     message = "server error"
 
 
-class BadRequestError(ServiceError):
+class BadRequestError(ServerError):
     message = "bad request"
 
 
-class UnauthenticatedError(ServiceError):
+class UnauthenticatedError(ServerError):
     message = "Authentication required."
 
 
-class ForbiddenError(ServiceError):
+class ForbiddenError(ServerError):
     message = "forbidden"
 
 
-class NotFoundError(ServiceError):
+class NotFoundError(ServerError):
     message = "not found"
 
 
-class UnprocessableError(ServiceError):
+class UnprocessableError(ServerError):
     message = "unprocessable entity"
 
 
-class ConflictError(ServiceError):
+class ConflictError(ServerError):
     message = "conflict error"

@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import Request, Response
 
-from app.errors.domain import ForbiddenError
+from app.errors import ForbiddenError
 
 from .cookies import delete_cookie, set_cookie
 

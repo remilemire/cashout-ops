@@ -9,7 +9,7 @@ from sqlalchemy import DateTime, Integer, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.errors.domain import NotFoundError
+from app.errors import NotFoundError
 
 
 class Base(DeclarativeBase):

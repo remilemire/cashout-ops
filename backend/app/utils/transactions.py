@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors.domain import ConflictError, ServiceError
+from app.errors import ConflictError, ServerError
 
 
 async def commit_or_raise(db: AsyncSession) -> None:
@@ -47,4 +47,4 @@ async def _transact_or_raise(
 
     except Exception as error:
         rollback()
-        raise ServiceError() from error
+        raise ServerError() from error

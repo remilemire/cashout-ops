@@ -10,7 +10,7 @@ from fastapi import Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors.domain import UnauthenticatedError
+from app.errors import UnauthenticatedError
 from app.models import Session
 from app.utils.cookies import delete_cookie, set_cookie
 from app.utils.csrf import clear_csrf_cookie, set_csrf_cookie
