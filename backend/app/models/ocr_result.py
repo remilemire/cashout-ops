@@ -6,5 +6,5 @@ from .base import Entity
 
 
 class OcrResult(Entity):
+    __tablename__ = "cashout_ocr_results"
     # TODO
-    pass

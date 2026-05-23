@@ -6,6 +6,7 @@ from .base import Entity
 
 
 class User(Entity):
+    __tablename__ = "users"
     """
     # TODO:
 

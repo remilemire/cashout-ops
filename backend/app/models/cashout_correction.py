@@ -6,5 +6,5 @@ from .base import Entity
 
 
 class CashoutCorrection(Entity):
+    __tablename__ = "cashout_corrections"
     # TODO
-    pass

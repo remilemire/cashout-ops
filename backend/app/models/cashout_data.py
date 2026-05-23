@@ -6,5 +6,5 @@ from .base import Entity
 
 
 class CashoutData(Entity):
+    __tablename__ = "cashout_data"
     # TODO
-    pass

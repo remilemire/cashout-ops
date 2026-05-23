@@ -6,6 +6,7 @@ from .base import Entity
 
 
 class Shift(Entity):
+    __tablename__ = "shifts"
     """
     # TODO:
 

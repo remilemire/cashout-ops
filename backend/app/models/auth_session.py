@@ -6,6 +6,7 @@ from .base import Entity
 
 
 class AuthSession(Entity):
+    __tablename__ = "auth_sessions"
     """
     # TODO:
 
