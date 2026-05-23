@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefaul
+set -euo pipefail
 
 # backend/scripts/start.bash
 
