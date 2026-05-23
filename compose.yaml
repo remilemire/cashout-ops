@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev
-      POSTGRES_DB: cashout
+      POSTGRES_DB: cashout_ops
 
     ports:
       - "5432:5432"

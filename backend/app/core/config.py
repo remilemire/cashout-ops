@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["production", "development"] = "development"
 
     SECRET_KEY: str = secrets.token_urlsafe(32)
-    DATABASE_URL: str = "postgresql+psycopg://postgres:dev@localhost:5432/cashout"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:dev@localhost:5432/cashout_ops"
 
     ADMIN_EMAIL: EmailStr = "admin@test.com"
 
