@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Self
 
 from sqlalchemy import DateTime, Integer, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.errors.domain import NotFoundError
 
 
 class Base(DeclarativeBase):
@@ -21,3 +25,10 @@ class Entity(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+    @classmethod
+    async def get_active(cls, db: AsyncSession, id_: int) -> Self:
+        entity = await db.get(cls, id_)
+        if entity is None:
+            raise NotFoundError(f"{cls.__name__} not found")
+        return entity
