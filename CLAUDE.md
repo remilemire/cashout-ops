@@ -157,8 +157,7 @@ These are real defects in committed code. Fix them if the task touches the relev
 
 1. **`utils/transactions.py`** — `commit_or_raise` and `flush_or_raise` call `db.commit() / db.flush() / db.rollback()` **without `await`**. The coroutines are silently dropped, so no commits actually happen via these helpers today. Any service-mediated mutation through a real route will appear to succeed but won't persist. Fix when you start writing data-mutating endpoints.
 2. **`api/auth.py:20`** — `login` is registered as `@router.get(...)` but reads a JSON body. Should be `@router.post`.
-3. **`setup.bash`** — tries to `cp .env.example .env` in `frontend/`, which doesn't exist. Script exits at that step. The frontend has no env vars; remove the block or create a stub `frontend/.env.example` if you ever do need one.
-4. **`backend/.env` is tracked.** Don't put real secrets in it. `git rm --cached backend/.env` is safe whenever you want to untrack it.
+3. **`backend/.env` is tracked.** Don't put real secrets in it. `git rm --cached backend/.env` is safe whenever you want to untrack it.
 5. **`backend/static/` artifacts are tracked** despite `static/` being in `.gitignore`. Built JS chunks like `assets/index-*.js` are in the index. New builds produce new hashed filenames, leaving stale ones behind in the working tree.
 6. **`frontend/src/vite-end.d.ts`** — typo for `vite-env.d.ts`. The default Vite client types aren't being picked up.
 7. **`pytest` in main dependencies** (not `[project.optional-dependencies].dev`). No tests exist yet; if you add tests, move it to `dev` and add a `tests/` dir.

@@ -32,11 +32,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 cd ../frontend
 
-if [ ! -f .env ]; then
-  echo "• Creating frontend environment file..."
-  cp .env.example .env
-fi
-
 echo "• Installing frontend dependencies..."
 npm ci
 

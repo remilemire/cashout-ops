@@ -144,8 +144,6 @@ A `setup.bash` script at the repo root automates most of the steps below. It wil
 ./setup.bash
 ```
 
-> Note: the script also attempts a `cp .env.example .env` inside `frontend/`, but no `frontend/.env.example` currently exists and the frontend has no env vars. Running the script today will exit at that step. The manual steps below avoid this.
-
 ### Manual setup
 
 ```bash
@@ -155,7 +153,7 @@ cp .env.example .env                   # then edit SECRET_KEY and ADMIN_EMAIL
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -e .[dev]
+pip install -e ".[dev]"
 
 # 2. Database
 docker compose -f ../compose.yaml up -d
@@ -303,7 +301,6 @@ These are real issues in the current code worth fixing before relying on the cor
 
 - `POST /api/auth/login` is registered as `@router.get(...)` in [api/auth.py:20](backend/app/api/auth.py#L20) while still reading a JSON body.
 - `commit_or_raise` / `flush_or_raise` in [utils/transactions.py](backend/app/utils/transactions.py) call `db.commit()` / `db.flush()` / `db.rollback()` without awaiting them — they return coroutines that are silently dropped.
-- `setup.bash` tries to copy a nonexistent `frontend/.env.example`.
 - `backend/.env` is checked into the repo (predates the `.gitignore` rule); `git rm --cached backend/.env` will untrack it without deleting the local file.
 - Built frontend assets under `backend/static/` are tracked in git despite `static/` being in `.gitignore`.
 - `pytest` is declared in main dependencies rather than `[project.optional-dependencies].dev`. No tests exist yet.
