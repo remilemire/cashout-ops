@@ -30,7 +30,7 @@ class EntityOut(BaseOut):
     created_at: datetime
 
     # Database timezone is UTC
-    @field_serializer("created_at", "updated_at")
+    @field_serializer("created_at")
     def serialize_datetime(self, value: datetime) -> str:
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
