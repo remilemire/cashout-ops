@@ -5,8 +5,10 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.errors import UnauthenticatedError
 from app.models import User
+from app.models.enums import UserRole
 from app.schemas.users import UserCreate, UserUpdate
 from app.utils.passwords import hash_password, verify_password
 
@@ -25,6 +27,9 @@ def create(db: AsyncSession, *, payload: UserCreate) -> User:
 
     password = data.pop("password")
     data["password_hash"] = hash_password(password)
+
+    if data["email"] == settings.ADMIN_EMAIL:
+        data["role"] = UserRole.ADMIN.value
 
     user = User(**data)
     db.add(user)
