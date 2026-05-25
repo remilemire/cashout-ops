@@ -13,6 +13,7 @@ from .domain import (
     UnprocessableError,
 )
 from .handlers import init_error_handlers
+from .openapi import ERROR_RESPONSES
 
 __all__ = [
     "BadRequestError",
@@ -24,4 +25,5 @@ __all__ = [
     "UnauthenticatedError",
     "UnprocessableError",
     "init_error_handlers",
+    "ERROR_RESPONSES",
 ]

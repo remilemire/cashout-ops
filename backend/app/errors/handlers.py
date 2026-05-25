@@ -2,23 +2,35 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from collections.abc import Mapping
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.errors import (
+from .domain import (
     BadRequestError,
     ConflictError,
     ForbiddenError,
     NotFoundError,
+    ServerError,
     UnauthenticatedError,
     UnprocessableError,
 )
-from app.schemas.base import BaseOut
+from .schemas import (
+    BadRequestResponse,
+    ConflictResponse,
+    ErrorResponse,
+    ForbiddenResponse,
+    NotFoundResponse,
+    ServerErrorResponse,
+    UnauthenticatedResponse,
+    UnprocessableResponse,
+)
+from .translators import translate_validation_error
+from .types import ErrorStatus, ErrorType
 
 
 def init_error_handlers(app: FastAPI) -> None:
@@ -27,41 +39,54 @@ def init_error_handlers(app: FastAPI) -> None:
     # ------------ Domain ------------
     # ================================
 
-    @app.exception_handler(BadRequestError)
-    def handle_bad_request_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: BadRequestError
+    @app.exception_handler(ServerError)
+    def handle_server_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: UnprocessableError
     ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["bad request"])
-
-    @app.exception_handler(NotFoundError)
-    def handle_not_found_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: NotFoundError
-    ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["not found"])
-
-    @app.exception_handler(ForbiddenError)
-    def handle_forbidden_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: ForbiddenError
-    ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["forbidden"])
-
-    @app.exception_handler(UnauthenticatedError)
-    def handle_unauthenticated_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: UnauthenticatedError
-    ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["unauthenticated"])
+        response = ServerErrorResponse()
+        return format_error_response(response)
 
     @app.exception_handler(UnprocessableError)
     def handle_unprocessable_error(  # type: ignore[reportUnusedFunction]
         request: Request, exc: UnprocessableError
     ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["unprocessable"])
+        response = UnprocessableResponse(details=exc.details)
+        return format_error_response(response)
 
     @app.exception_handler(ConflictError)
     def handle_conflict_error(  # type: ignore[reportUnusedFunction]
         request: Request, exc: ConflictError
     ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["conflict"])
+        response = ConflictResponse(details=exc.details)
+        return format_error_response(response)
+
+    @app.exception_handler(NotFoundError)
+    def handle_not_found_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: NotFoundError
+    ) -> JSONResponse:
+        response = NotFoundResponse()
+        return format_error_response(response)
+
+    @app.exception_handler(ForbiddenError)
+    def handle_forbidden_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: ForbiddenError
+    ) -> JSONResponse:
+        response = ForbiddenResponse()
+        return format_error_response(response)
+
+    @app.exception_handler(UnauthenticatedError)
+    def handle_unauthenticated_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: UnauthenticatedError
+    ) -> JSONResponse:
+        response = UnauthenticatedResponse()
+        return format_error_response(response)
+
+    @app.exception_handler(BadRequestError)
+    def handle_bad_request_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: BadRequestError
+    ) -> JSONResponse:
+        response = BadRequestResponse()
+        return format_error_response(response)
 
     # ================================
     # ----------- Pydantic -----------
@@ -71,37 +96,43 @@ def init_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ValidationError)
     def handle_validation_error(  # type: ignore[reportUnusedFunction]
         request: Request,
-        exc: ValidationError,
+        exc: ValidationError | RequestValidationError,
     ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["unprocessable"])
+        response = UnprocessableResponse(details=translate_validation_error(exc))
+        return format_error_response(response)
 
     # ================================
-    # ----------- Fast API -----------
+    # ---------- Starlette -----------
     # ================================
 
-    @app.exception_handler(HTTPException)
     @app.exception_handler(StarletteHTTPException)
     def handle_http_exception(  # type: ignore[reportUnusedFunction]
         request: Request,
-        exc: HTTPException,
+        exc: StarletteHTTPException,
     ) -> JSONResponse:
-        data: ErrorData
         match exc.status_code:
-            case 400:
-                data = _ERROR_DATA["bad request"]
-            case 401:
-                data = _ERROR_DATA["unauthenticated"]
-            case 403:
-                data = _ERROR_DATA["forbidden"]
-            case 404:
-                data = _ERROR_DATA["not found"]
-            case 409:
-                data = _ERROR_DATA["conflict"]
-            case 422:
-                data = _ERROR_DATA["unprocessable"]
+            case ErrorStatus.HTTP_400_BAD_REQUEST.value:
+                response = BadRequestResponse()
+            case ErrorStatus.HTTP_401_UNAUTHENTICATED.value:
+                response = UnauthenticatedResponse()
+            case ErrorStatus.HTTP_403_FORBIDDEN.value:
+                response = ForbiddenResponse()
+            case ErrorStatus.HTTP_404_NOT_FOUND.value:
+                response = NotFoundResponse()
+            case ErrorStatus.HTTP_409_CONFLICT.value:
+                response = ConflictResponse()
+            case ErrorStatus.HTTP_422_UNPROCESSABLE.value:
+                response = UnprocessableResponse()
+            case ErrorStatus.HTTP_500_SERVER_ERROR.value:
+                response = ServerErrorResponse()
             case _:
-                data = _ERROR_DATA["service"]
-        return _format_response(**data)
+                response = (
+                    BadRequestResponse()
+                    if 400 <= exc.status_code < 500
+                    else ServerErrorResponse()
+                )
+
+        return format_error_response(response)
 
     # ================================
     # ----------- Uncaught -----------
@@ -111,78 +142,28 @@ def init_error_handlers(app: FastAPI) -> None:
     def handle_uncaught_exception(  # type: ignore[reportUnusedFunction]
         request: Request, exc: Exception
     ) -> JSONResponse:
-        return _format_response(**_ERROR_DATA["service"])
+        response = ServerErrorResponse()
+        return format_error_response(response)
 
 
 # ================================
-# ------------ Schemas -----------
+# ----------- Helpers ------------
 # ================================
 
 
-class ErrorData(TypedDict):
-    status: int
-    type: str
-    message: str
-
-
-class ErrorSchema(BaseOut):
-    type: str
-    message: str
-    details: dict[str, str] | None = None
-
-
-# ================================
-# ----------- Metadata -----------
-# ================================
-
-
-_ERROR_DATA: dict[
-    str,
-    ErrorData,
-] = {
-    "bad request": ErrorData(
-        status=400,
-        type="BadRequestError",
-        message="The request could not be processed.",
-    ),
-    "not found": ErrorData(
-        status=404,
-        type="NotFoundError",
-        message="The requested resource could not be found.",
-    ),
-    "unauthenticated": ErrorData(
-        status=401, type="UnauthenticatedError", message="Authentication required."
-    ),
-    "forbidden": ErrorData(
-        status=403,
-        type="ForbiddenError",
-        message="You do not have permission to perform this action.",
-    ),
-    "unprocessable": ErrorData(
-        status=422,
-        type="UnprocessableEntityError",
-        message="There was a problem with the submission.",
-    ),
-    "conflict": ErrorData(
-        status=409, type="ConflictError", message="There was a conflict."
-    ),
-    "service": ErrorData(
-        status=500, type="ServiceError", message="Something went wrong."
-    ),
+HTTP_CODE_MAP: Mapping[ErrorType, ErrorStatus] = {
+    "bad_request": ErrorStatus.HTTP_400_BAD_REQUEST,
+    "unauthenticated": ErrorStatus.HTTP_401_UNAUTHENTICATED,
+    "forbidden": ErrorStatus.HTTP_403_FORBIDDEN,
+    "not_found": ErrorStatus.HTTP_404_NOT_FOUND,
+    "conflict": ErrorStatus.HTTP_409_CONFLICT,
+    "unprocessable": ErrorStatus.HTTP_422_UNPROCESSABLE,
+    "server_error": ErrorStatus.HTTP_500_SERVER_ERROR,
 }
 
 
-# ================================
-# ---------- Formatters ----------
-# ================================
-
-
-def _format_response(
-    *, status: int, type: str, message: str, details: dict[str, str] | None = None
-) -> JSONResponse:
-    content = ErrorSchema(type=type, message=message)
-    content.details = details
+def format_error_response(error_response: ErrorResponse) -> JSONResponse:
     return JSONResponse(
-        status_code=status,
-        content={"error": content.model_dump(by_alias=True, exclude_none=True)},
+        status_code=HTTP_CODE_MAP[error_response.type].value,
+        content=error_response.to_response(),
     )

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from abc import ABC
 
+from .schemas import ConflictDetail, UnprocessableDetail
+from .types import UnprocessableContext
+
 
 class DomainError(Exception, ABC):
     message: str
@@ -16,25 +19,43 @@ class ServerError(DomainError):
     message = "server error"
 
 
-class BadRequestError(ServerError):
-    message = "bad request"
+class UnprocessableError(ServerError):
+    message = "unprocessable entity"
+    details: list[UnprocessableDetail]
+    ctx: UnprocessableContext | None
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: list[UnprocessableDetail] = [],
+    ):
+        self.details = details
+        super().__init__(message)
 
 
-class UnauthenticatedError(ServerError):
-    message = "Authentication required."
+class ConflictError(ServerError):
+    message = "conflict error"
+    details: list[ConflictDetail]
 
-
-class ForbiddenError(ServerError):
-    message = "forbidden"
+    def __init__(
+        self, message: str | None = None, *, details: list[ConflictDetail] = []
+    ):
+        self.details = details
+        super().__init__(message)
 
 
 class NotFoundError(ServerError):
     message = "not found"
 
 
-class UnprocessableError(ServerError):
-    message = "unprocessable entity"
+class ForbiddenError(ServerError):
+    message = "forbidden"
 
 
-class ConflictError(ServerError):
-    message = "conflict error"
+class UnauthenticatedError(ServerError):
+    message = "Authentication required."
+
+
+class BadRequestError(ServerError):
+    message = "bad request"
