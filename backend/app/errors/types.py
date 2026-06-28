@@ -2,25 +2,48 @@
 
 from __future__ import annotations
 
-from enum import IntEnum
-from typing import Any, Literal, TypedDict
+from collections.abc import Callable, Mapping
+from enum import IntEnum, StrEnum
+from typing import Any, NotRequired, TypedDict
 
 from fastapi import status
 
 # ================================
-# ------------ Errors ------------
+# ------------ Codes -------------
 # ================================
 
 
-type ErrorType = Literal[
-    "server_error",
-    "unprocessable",
-    "conflict",
-    "not_found",
-    "unauthenticated",
-    "forbidden",
-    "bad_request",
-]
+class ErrorCode(StrEnum):
+    SERVER_ERROR = "SERVER_ERROR"
+    BAD_REQUEST = "BAD_REQUEST"
+    UNAUTHENTICATED = "UNAUTHENTICATED"
+    FORBIDDEN = "FORBIDDEN"
+    NOT_FOUND = "NOT_FOUND"
+    UNPROCESSABLE = "UNPROCESSABLE"
+    IN_USE = "IN_USE"
+    ALREADY_EXISTS = "ALREADY_EXISTS"
+
+
+class ValidationRule(StrEnum):
+    EXTRA_FIELD = "EXTRA_FIELD"
+    MISSING_FIELD = "MISSING_FIELD"
+    BOOLEAN_TYPE = "BOOLEAN_TYPE"
+    STRING_TYPE = "STRING_TYPE"
+    INTEGER_TYPE = "INTEGER_TYPE"
+    DECIMAL_TYPE = "DECIMAL_TYPE"
+    OBJECT_TYPE = "OBJECT_TYPE"
+    TOO_SMALL = "TOO_SMALL"
+    TOO_LARGE = "TOO_LARGE"
+    TOO_SHORT = "TOO_SHORT"
+    TOO_LONG = "TOO_LONG"
+    INVALID_OPTION = "INVALID_OPTION"
+    INVALID_MULTIPLE = "INVALID_MULTIPLE"
+    INVALID_VALUE = "INVALID_VALUE"
+
+
+# ================================
+# ------------ Status ------------
+# ================================
 
 
 class ErrorStatus(IntEnum):
@@ -34,7 +57,7 @@ class ErrorStatus(IntEnum):
 
 
 # ================================
-# ----------- Contexts -----------
+# ----------- Context ------------
 # ================================
 
 
@@ -48,31 +71,14 @@ class UnprocessableContext(TypedDict, total=False):
 
 
 # ================================
-# ------------ Codes -------------
+# ----------- Catalog ------------
 # ================================
 
 
-type UnprocessableCode = Literal[
-    "extra_field",
-    "missing_field",
-    "boolean_type",
-    "string_type",
-    "integer_type",
-    "decimal_type",
-    "object_type",
-    "too_small",
-    "too_large",
-    "too_long",
-    "too_short",
-    "invalid_option",
-    "invalid_multiple",
-    "invalid_value",
-]
+class CatalogEntry(TypedDict):
+    status: ErrorStatus
+    message: str
+    details: NotRequired[Mapping[ValidationRule, Callable[[UnprocessableContext], str]]]
 
 
-type ConflictCode = Literal[
-    "foreign_key",
-    "unique",
-    "check",
-    "integrity",
-]
+type ErrorCatalog = Mapping[ErrorCode, CatalogEntry]

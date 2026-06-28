@@ -7,9 +7,20 @@ from typing import Any
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
-from .schemas import UnprocessableDetail
-from .types import UnprocessableCode, UnprocessableContext
+from app.lib.casing import snake_to_camel
+
+from .catalog import VALIDATION_DETAILS
+from .domain import (
+    AlreadyExistsError,
+    DomainError,
+    InUseError,
+    ServerError,
+    UnprocessableError,
+)
+from .schemas import ErrorDetail
+from .types import UnprocessableContext, ValidationRule
 
 # ================================
 # ----------- Pydantic -----------
@@ -18,33 +29,26 @@ from .types import UnprocessableCode, UnprocessableContext
 
 def translate_validation_error(
     exc: ValidationError | RequestValidationError,
-) -> list[UnprocessableDetail]:
+) -> list[ErrorDetail]:
     return [_to_detail(e) for e in exc.errors()]
 
 
-def _to_detail(error: Mapping[str, Any]) -> UnprocessableDetail:
-    return UnprocessableDetail(
-        field=_to_field(error.get("loc", ())),
-        code=PYDANTIC_TO_CODE.get(error.get("type", ""), "invalid_value"),
-        ctx=_to_context(error.get("ctx") or {}),
+def _to_detail(error: Mapping[str, Any]) -> ErrorDetail:
+    rule = PYDANTIC_TO_RULE.get(error.get("type", ""), ValidationRule.INVALID_VALUE)
+    ctx = _to_context(error.get("ctx") or {})
+    return ErrorDetail(
+        rule=rule,
+        detail=VALIDATION_DETAILS[rule](ctx),
+        path=_to_path(error.get("loc", ())),
     )
 
 
-def _to_field(loc: tuple[int | str, ...]) -> str:
+def _to_path(loc: tuple[int | str, ...]) -> list[str | int]:
     parts = list(loc)
     if parts and parts[0] in _REQUEST_LOC_PREFIXES:
         parts = parts[1:]
 
-    pieces: list[str] = []
-    for part in parts:
-        if isinstance(part, int):
-            pieces.append(f"[{part}]")
-        elif pieces:
-            pieces.append(f".{part}")
-        else:
-            pieces.append(part)
-
-    return "".join(pieces)
+    return [snake_to_camel(part) if isinstance(part, str) else part for part in parts]
 
 
 def _to_context(raw: Mapping[str, Any]) -> UnprocessableContext:
@@ -65,47 +69,67 @@ def _to_context(raw: Mapping[str, Any]) -> UnprocessableContext:
 
 
 # ================================
+# ---------- SQLAlchemy ----------
+# ================================
+
+
+def translate_integrity_error(exc: IntegrityError) -> DomainError:
+    diag = getattr(exc.orig, "diag", None)
+    sqlstate = getattr(diag, "sqlstate", None)
+    return SQLSTATE_TO_ERROR.get(sqlstate or "", ServerError)()
+
+
+# ================================
 # ------------ Tables ------------
 # ================================
 
 
-PYDANTIC_TO_CODE: Mapping[str, UnprocessableCode] = {
+PYDANTIC_TO_RULE: Mapping[str, ValidationRule] = {
     # Presence
-    "missing": "missing_field",
-    "extra_forbidden": "extra_field",
+    "missing": ValidationRule.MISSING_FIELD,
+    "extra_forbidden": ValidationRule.EXTRA_FIELD,
     # Types
-    "bool_type": "boolean_type",
-    "bool_parsing": "boolean_type",
-    "string_type": "string_type",
-    "string_unicode": "string_type",
-    "int_type": "integer_type",
-    "int_parsing": "integer_type",
-    "int_from_float": "integer_type",
-    "float_type": "decimal_type",
-    "float_parsing": "decimal_type",
-    "decimal_type": "decimal_type",
-    "decimal_parsing": "decimal_type",
-    "dict_type": "object_type",
-    "list_type": "object_type",
-    "tuple_type": "object_type",
-    "set_type": "object_type",
-    "model_type": "object_type",
-    "model_attributes_type": "object_type",
+    "bool_type": ValidationRule.BOOLEAN_TYPE,
+    "bool_parsing": ValidationRule.BOOLEAN_TYPE,
+    "string_type": ValidationRule.STRING_TYPE,
+    "string_unicode": ValidationRule.STRING_TYPE,
+    "int_type": ValidationRule.INTEGER_TYPE,
+    "int_parsing": ValidationRule.INTEGER_TYPE,
+    "int_from_float": ValidationRule.INTEGER_TYPE,
+    "float_type": ValidationRule.DECIMAL_TYPE,
+    "float_parsing": ValidationRule.DECIMAL_TYPE,
+    "decimal_type": ValidationRule.DECIMAL_TYPE,
+    "decimal_parsing": ValidationRule.DECIMAL_TYPE,
+    "dict_type": ValidationRule.OBJECT_TYPE,
+    "list_type": ValidationRule.OBJECT_TYPE,
+    "tuple_type": ValidationRule.OBJECT_TYPE,
+    "set_type": ValidationRule.OBJECT_TYPE,
+    "model_type": ValidationRule.OBJECT_TYPE,
+    "model_attributes_type": ValidationRule.OBJECT_TYPE,
     # Range
-    "greater_than": "too_small",
-    "greater_than_equal": "too_small",
-    "less_than": "too_large",
-    "less_than_equal": "too_large",
+    "greater_than": ValidationRule.TOO_SMALL,
+    "greater_than_equal": ValidationRule.TOO_SMALL,
+    "less_than": ValidationRule.TOO_LARGE,
+    "less_than_equal": ValidationRule.TOO_LARGE,
     # Length
-    "string_too_short": "too_short",
-    "string_too_long": "too_long",
-    "too_short": "too_short",
-    "too_long": "too_long",
+    "string_too_short": ValidationRule.TOO_SHORT,
+    "string_too_long": ValidationRule.TOO_LONG,
+    "too_short": ValidationRule.TOO_SHORT,
+    "too_long": ValidationRule.TOO_LONG,
     # Options
-    "enum": "invalid_option",
-    "literal_error": "invalid_option",
+    "enum": ValidationRule.INVALID_OPTION,
+    "literal_error": ValidationRule.INVALID_OPTION,
     # Multiple
-    "multiple_of": "invalid_multiple",
+    "multiple_of": ValidationRule.INVALID_MULTIPLE,
+}
+
+
+# Postgres class 23 (integrity_constraint_violation) SQLSTATEs.
+SQLSTATE_TO_ERROR: Mapping[str, type[DomainError]] = {
+    "23505": AlreadyExistsError,  # unique_violation
+    "23503": InUseError,  # foreign_key_violation
+    "23514": UnprocessableError,  # check_violation
+    "23502": UnprocessableError,  # not_null_violation
 }
 
 

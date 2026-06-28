@@ -8,29 +8,23 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .catalog import CATALOG
 from .domain import (
+    AlreadyExistsError,
     BadRequestError,
-    ConflictError,
+    DomainError,
     ForbiddenError,
     NotFoundError,
     ServerError,
     UnauthenticatedError,
     UnprocessableError,
 )
-from .schemas import (
-    BadRequestResponse,
-    ConflictResponse,
-    ErrorResponse,
-    ForbiddenResponse,
-    NotFoundResponse,
-    ServerErrorResponse,
-    UnauthenticatedResponse,
-    UnprocessableResponse,
-)
-from .translators import translate_validation_error
-from .types import ErrorStatus, ErrorType
+from .schemas import ErrorBody, ErrorResponse
+from .translators import translate_integrity_error, translate_validation_error
+from .types import ErrorStatus
 
 
 def init_error_handlers(app: FastAPI) -> None:
@@ -39,54 +33,11 @@ def init_error_handlers(app: FastAPI) -> None:
     # ------------ Domain ------------
     # ================================
 
-    @app.exception_handler(ServerError)
-    def handle_server_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: UnprocessableError
+    @app.exception_handler(DomainError)
+    def handle_domain_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: DomainError
     ) -> JSONResponse:
-        response = ServerErrorResponse()
-        return format_error_response(response)
-
-    @app.exception_handler(UnprocessableError)
-    def handle_unprocessable_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: UnprocessableError
-    ) -> JSONResponse:
-        response = UnprocessableResponse(details=exc.details)
-        return format_error_response(response)
-
-    @app.exception_handler(ConflictError)
-    def handle_conflict_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: ConflictError
-    ) -> JSONResponse:
-        response = ConflictResponse(details=exc.details)
-        return format_error_response(response)
-
-    @app.exception_handler(NotFoundError)
-    def handle_not_found_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: NotFoundError
-    ) -> JSONResponse:
-        response = NotFoundResponse()
-        return format_error_response(response)
-
-    @app.exception_handler(ForbiddenError)
-    def handle_forbidden_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: ForbiddenError
-    ) -> JSONResponse:
-        response = ForbiddenResponse()
-        return format_error_response(response)
-
-    @app.exception_handler(UnauthenticatedError)
-    def handle_unauthenticated_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: UnauthenticatedError
-    ) -> JSONResponse:
-        response = UnauthenticatedResponse()
-        return format_error_response(response)
-
-    @app.exception_handler(BadRequestError)
-    def handle_bad_request_error(  # type: ignore[reportUnusedFunction]
-        request: Request, exc: BadRequestError
-    ) -> JSONResponse:
-        response = BadRequestResponse()
-        return format_error_response(response)
+        return format_error_response(build_response(exc))
 
     # ================================
     # ----------- Pydantic -----------
@@ -98,8 +49,18 @@ def init_error_handlers(app: FastAPI) -> None:
         request: Request,
         exc: ValidationError | RequestValidationError,
     ) -> JSONResponse:
-        response = UnprocessableResponse(details=translate_validation_error(exc))
-        return format_error_response(response)
+        error = UnprocessableError(errors=translate_validation_error(exc))
+        return format_error_response(build_response(error))
+
+    # ================================
+    # ---------- SQLAlchemy ----------
+    # ================================
+
+    @app.exception_handler(IntegrityError)
+    def handle_integrity_error(  # type: ignore[reportUnusedFunction]
+        request: Request, exc: IntegrityError
+    ) -> JSONResponse:
+        return format_error_response(build_response(translate_integrity_error(exc)))
 
     # ================================
     # ---------- Starlette -----------
@@ -110,29 +71,7 @@ def init_error_handlers(app: FastAPI) -> None:
         request: Request,
         exc: StarletteHTTPException,
     ) -> JSONResponse:
-        match exc.status_code:
-            case ErrorStatus.HTTP_400_BAD_REQUEST.value:
-                response = BadRequestResponse()
-            case ErrorStatus.HTTP_401_UNAUTHENTICATED.value:
-                response = UnauthenticatedResponse()
-            case ErrorStatus.HTTP_403_FORBIDDEN.value:
-                response = ForbiddenResponse()
-            case ErrorStatus.HTTP_404_NOT_FOUND.value:
-                response = NotFoundResponse()
-            case ErrorStatus.HTTP_409_CONFLICT.value:
-                response = ConflictResponse()
-            case ErrorStatus.HTTP_422_UNPROCESSABLE.value:
-                response = UnprocessableResponse()
-            case ErrorStatus.HTTP_500_SERVER_ERROR.value:
-                response = ServerErrorResponse()
-            case _:
-                response = (
-                    BadRequestResponse()
-                    if 400 <= exc.status_code < 500
-                    else ServerErrorResponse()
-                )
-
-        return format_error_response(response)
+        return format_error_response(build_response(_http_error(exc.status_code)))
 
     # ================================
     # ----------- Uncaught -----------
@@ -142,8 +81,7 @@ def init_error_handlers(app: FastAPI) -> None:
     def handle_uncaught_exception(  # type: ignore[reportUnusedFunction]
         request: Request, exc: Exception
     ) -> JSONResponse:
-        response = ServerErrorResponse()
-        return format_error_response(response)
+        return format_error_response(build_response(ServerError()))
 
 
 # ================================
@@ -151,19 +89,40 @@ def init_error_handlers(app: FastAPI) -> None:
 # ================================
 
 
-HTTP_CODE_MAP: Mapping[ErrorType, ErrorStatus] = {
-    "bad_request": ErrorStatus.HTTP_400_BAD_REQUEST,
-    "unauthenticated": ErrorStatus.HTTP_401_UNAUTHENTICATED,
-    "forbidden": ErrorStatus.HTTP_403_FORBIDDEN,
-    "not_found": ErrorStatus.HTTP_404_NOT_FOUND,
-    "conflict": ErrorStatus.HTTP_409_CONFLICT,
-    "unprocessable": ErrorStatus.HTTP_422_UNPROCESSABLE,
-    "server_error": ErrorStatus.HTTP_500_SERVER_ERROR,
+STATUS_TO_ERROR: Mapping[int, type[DomainError]] = {
+    ErrorStatus.HTTP_400_BAD_REQUEST.value: BadRequestError,
+    ErrorStatus.HTTP_401_UNAUTHENTICATED.value: UnauthenticatedError,
+    ErrorStatus.HTTP_403_FORBIDDEN.value: ForbiddenError,
+    ErrorStatus.HTTP_404_NOT_FOUND.value: NotFoundError,
+    ErrorStatus.HTTP_409_CONFLICT.value: AlreadyExistsError,
+    ErrorStatus.HTTP_422_UNPROCESSABLE.value: UnprocessableError,
+    ErrorStatus.HTTP_500_SERVER_ERROR.value: ServerError,
 }
 
 
-def format_error_response(error_response: ErrorResponse) -> JSONResponse:
+def _http_error(status_code: int) -> DomainError:
+    factory = STATUS_TO_ERROR.get(status_code)
+    if factory is not None:
+        return factory()
+    return BadRequestError() if 400 <= status_code < 500 else ServerError()
+
+
+def build_response(exc: DomainError) -> ErrorResponse:
+    entry = CATALOG[exc.code]
+    errors = exc.errors if isinstance(exc, UnprocessableError) else None
+    return ErrorResponse(
+        status=entry["status"],
+        body=ErrorBody(
+            error=exc.name,
+            code=exc.code,
+            message=exc.message,
+            errors=errors or None,
+        ),
+    )
+
+
+def format_error_response(response: ErrorResponse) -> JSONResponse:
     return JSONResponse(
-        status_code=HTTP_CODE_MAP[error_response.type].value,
-        content=error_response.to_response(),
+        status_code=response.status.value,
+        content=response.body.to_response(),
     )

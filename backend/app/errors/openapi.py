@@ -2,24 +2,9 @@
 
 from __future__ import annotations
 
-from .schemas import (
-    BadRequestResponse,
-    ConflictResponse,
-    ErrorResponse,
-    ForbiddenResponse,
-    NotFoundResponse,
-    ServerErrorResponse,
-    UnauthenticatedResponse,
-    UnprocessableResponse,
-)
+from .schemas import ErrorBody
 from .types import ErrorStatus
 
-ERROR_RESPONSES: dict[int, dict[str, type[ErrorResponse]]] = {
-    ErrorStatus.HTTP_400_BAD_REQUEST.value: {"model": BadRequestResponse},
-    ErrorStatus.HTTP_401_UNAUTHENTICATED.value: {"model": UnauthenticatedResponse},
-    ErrorStatus.HTTP_403_FORBIDDEN.value: {"model": ForbiddenResponse},
-    ErrorStatus.HTTP_404_NOT_FOUND.value: {"model": NotFoundResponse},
-    ErrorStatus.HTTP_409_CONFLICT.value: {"model": ConflictResponse},
-    ErrorStatus.HTTP_422_UNPROCESSABLE.value: {"model": UnprocessableResponse},
-    ErrorStatus.HTTP_500_SERVER_ERROR.value: {"model": ServerErrorResponse},
+ERROR_RESPONSES: dict[int, dict[str, type[ErrorBody]]] = {
+    status.value: {"model": ErrorBody} for status in ErrorStatus
 }

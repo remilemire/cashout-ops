@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from .domain import (
+    AlreadyExistsError,
     BadRequestError,
     ConflictError,
     DomainError,
     ForbiddenError,
+    InUseError,
     NotFoundError,
     ServerError,
     UnauthenticatedError,
@@ -16,10 +18,12 @@ from .handlers import init_error_handlers
 from .openapi import ERROR_RESPONSES
 
 __all__ = [
+    "AlreadyExistsError",
     "BadRequestError",
     "ConflictError",
     "DomainError",
     "ForbiddenError",
+    "InUseError",
     "NotFoundError",
     "ServerError",
     "UnauthenticatedError",
