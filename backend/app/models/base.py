@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import enum
 from datetime import datetime
 from typing import Self
 
 from sqlalchemy import DateTime, Integer, func
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.errors import NotFoundError
-from app.utils.casing import pascal_to_snake
+from app.lib.casing import pascal_to_snake
+
+
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    return [str(member.value) for member in enum_cls]
+
+
+def enum_column(enum_cls: type[enum.Enum], name: str) -> SQLEnum:
+    """A native Postgres enum column type that persists member *values*."""
+    return SQLEnum(enum_cls, name=name, values_callable=_enum_values)
 
 
 class Base(DeclarativeBase):
@@ -32,6 +43,6 @@ class Entity(Base):
         entity = await db.get(cls, id_)
         if entity is None:
             raise NotFoundError(
-                f"{pascal_to_snake(cls.__name__).replace('_', ' ')} not found"
+                f"{pascal_to_snake(cls.__name__).replace('_', ' ').capitalize()} not found."
             )
         return entity

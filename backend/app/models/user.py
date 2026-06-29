@@ -2,26 +2,43 @@
 
 from __future__ import annotations
 
-from .base import Entity
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, String, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import Entity, enum_column
+from .enums import UserRole
+
+if TYPE_CHECKING:
+    from .session import Session
+    from .shift import Shift
 
 
 class User(Entity):
     __tablename__ = "users"
-    """
-    # TODO:
 
-    first_name
-    last_name
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    email
-    password_hash
+    email: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, index=True
+    )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    role (.enums.UserRole)
+    role: Mapped[UserRole] = mapped_column(
+        enum_column(UserRole, "user_role"),
+        nullable=False,
+        default=UserRole.CASHIER,
+        server_default=UserRole.CASHIER.value,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
-    # relationships:
-
-    auth_session
-    shifts
-    cashout_submissions (association proxy from shifts)
-
-    """
+    sessions: Mapped[list[Session]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    shifts: Mapped[list[Shift]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
