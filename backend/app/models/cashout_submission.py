@@ -36,7 +36,7 @@ class CashoutSubmission(Entity):
     )
 
     shift_id: Mapped[int] = mapped_column(
-        ForeignKey("shifts.id", ondelete="CASCADE"),
+        ForeignKey("shifts.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
         index=True,
@@ -48,6 +48,4 @@ class CashoutSubmission(Entity):
     documents: Mapped[list[CashoutDocument]] = relationship(
         back_populates="cashout_submission", cascade="all, delete-orphan"
     )
-    data: Mapped[CashoutData | None] = relationship(
-        back_populates="submission", cascade="all, delete-orphan"
-    )
+    data: Mapped[CashoutData | None] = relationship(back_populates="submission")

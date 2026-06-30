@@ -1,7 +1,12 @@
 {
+  "name": "cashout-ops-frontend",
+  "version": "0.1.0",
   "scripts": {
     "build": "vite build",
-    "dev": "vite dev"
+    "dev": "vite dev",
+    "lint": "eslint . --fix",
+    "format": "prettier . --write",
+    "test": "vitest"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

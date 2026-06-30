@@ -1,4 +1,4 @@
-# backend/app/utils/casing.py
+# backend/app/lib/casing.py
 
 from __future__ import annotations
 
@@ -40,6 +40,5 @@ def snake_to_pascal(s: str) -> str:
 
 def pascal_to_snake(s: str) -> str:
     return "".join(
-        f"_{c.lower()}" if i and c.isupper() else c.lower()
-        for i, c in enumerate(s)
+        f"_{c.lower()}" if i and c.isupper() else c.lower() for i, c in enumerate(s)
     )

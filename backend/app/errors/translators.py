@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.lib.casing import snake_to_camel
 
-from .catalog import VALIDATION_DETAILS
 from .domain import (
     AlreadyExistsError,
     DomainError,
@@ -35,10 +34,10 @@ def translate_validation_error(
 
 def _to_detail(error: Mapping[str, Any]) -> ErrorDetail:
     rule = PYDANTIC_TO_RULE.get(error.get("type", ""), ValidationRule.INVALID_VALUE)
-    ctx = _to_context(error.get("ctx") or {})
-    return ErrorDetail(
-        rule=rule,
-        detail=VALIDATION_DETAILS[rule](ctx),
+    # `detail` is omitted so ErrorDetail fills it from the catalog using `ctx`.
+    return ErrorDetail.build(
+        rule,
+        ctx=_to_context(error.get("ctx") or {}),
         path=_to_path(error.get("loc", ())),
     )
 

@@ -1,3 +1,5 @@
 # backend/app/services/__init__.py
 
-__all__ = []
+from . import sessions
+
+__all__ = ["sessions"]

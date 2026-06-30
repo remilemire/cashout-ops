@@ -72,8 +72,8 @@ CATALOG: ErrorCatalog = {
         "status": ErrorStatus.HTTP_400_BAD_REQUEST,
         "message": "The request could not be processed.",
     },
-    ErrorCode.UNAUTHENTICATED: {
-        "status": ErrorStatus.HTTP_401_UNAUTHENTICATED,
+    ErrorCode.UNAUTHORIZED: {
+        "status": ErrorStatus.HTTP_401_UNAUTHORIZED,
         "message": "Authentication required.",
     },
     ErrorCode.FORBIDDEN: {

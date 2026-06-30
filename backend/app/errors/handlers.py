@@ -19,7 +19,7 @@ from .domain import (
     ForbiddenError,
     NotFoundError,
     ServerError,
-    UnauthenticatedError,
+    UnauthorizedError,
     UnprocessableError,
 )
 from .schemas import ErrorBody, ErrorResponse
@@ -91,7 +91,7 @@ def init_error_handlers(app: FastAPI) -> None:
 
 STATUS_TO_ERROR: Mapping[int, type[DomainError]] = {
     ErrorStatus.HTTP_400_BAD_REQUEST.value: BadRequestError,
-    ErrorStatus.HTTP_401_UNAUTHENTICATED.value: UnauthenticatedError,
+    ErrorStatus.HTTP_401_UNAUTHORIZED.value: UnauthorizedError,
     ErrorStatus.HTTP_403_FORBIDDEN.value: ForbiddenError,
     ErrorStatus.HTTP_404_NOT_FOUND.value: NotFoundError,
     ErrorStatus.HTTP_409_CONFLICT.value: AlreadyExistsError,
@@ -122,7 +122,9 @@ def build_response(exc: DomainError) -> ErrorResponse:
 
 
 def format_error_response(response: ErrorResponse) -> JSONResponse:
+    # Error handlers return JSONResponse directly, so there's no router
+    # response_model to serialize the body for us — do it here.
     return JSONResponse(
         status_code=response.status.value,
-        content=response.body.to_response(),
+        content=response.body.model_dump(by_alias=True, exclude_none=True, mode="json"),
     )

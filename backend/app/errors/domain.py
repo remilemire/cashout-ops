@@ -28,9 +28,9 @@ class BadRequestError(DomainError):
     name = "Bad Request"
 
 
-class UnauthenticatedError(DomainError):
-    code = ErrorCode.UNAUTHENTICATED
-    name = "Unauthenticated"
+class UnauthorizedError(DomainError):
+    code = ErrorCode.UNAUTHORIZED
+    name = "Unauthorized"
 
 
 class ForbiddenError(DomainError):

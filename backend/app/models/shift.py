@@ -39,5 +39,5 @@ class Shift(Entity):
     user: Mapped[User] = relationship(back_populates="shifts")
 
     cashout_submission: Mapped[CashoutSubmission | None] = relationship(
-        back_populates="shift", cascade="all, delete-orphan"
+        back_populates="shift"
     )

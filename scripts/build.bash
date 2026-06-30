@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# backend/scripts/build.bash
+# scripts/build.bash
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/.." # /backend
+cd "$SCRIPT_DIR/../backend"
 
-pip install --upgrade pip
-pip install .
+make install
 
 cd ../frontend
 

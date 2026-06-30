@@ -34,7 +34,7 @@ class CashoutData(Entity):
     )
 
     submission_id: Mapped[int] = mapped_column(
-        ForeignKey("cashout_submissions.id", ondelete="CASCADE"),
+        ForeignKey("cashout_submissions.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
         index=True,

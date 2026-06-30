@@ -15,15 +15,8 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-echo "• Initializing Python virtual environment..."
-python3 -m venv .venv
-
-echo "• Activating virtual environment..."
-source .venv/bin/activate
-
 echo "• Installing backend dependencies..."
-pip install --upgrade pip
-pip install -e .[dev]
+make install
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -44,9 +37,6 @@ echo " Setting Up Database"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 cd ../backend
-
-echo "• Starting Docker services..."
-docker compose up -d
 
 echo "• Applying database migrations..."
 alembic upgrade head

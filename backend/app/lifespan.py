@@ -1,4 +1,4 @@
-# backend/app/core/lifespan.py
+# backend/app/lifespan.py
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .config import settings
+from app.core.config import settings
 
 
 @asynccontextmanager

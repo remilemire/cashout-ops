@@ -11,7 +11,7 @@ from .domain import (
     InUseError,
     NotFoundError,
     ServerError,
-    UnauthenticatedError,
+    UnauthorizedError,
     UnprocessableError,
 )
 from .handlers import init_error_handlers
@@ -26,7 +26,7 @@ __all__ = [
     "InUseError",
     "NotFoundError",
     "ServerError",
-    "UnauthenticatedError",
+    "UnauthorizedError",
     "UnprocessableError",
     "init_error_handlers",
     "ERROR_RESPONSES",
