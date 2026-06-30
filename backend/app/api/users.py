@@ -13,7 +13,7 @@ from app.schemas.users import UserOut
 router = APIRouter(
     prefix="/users",
     tags=["user"],
-    dependencies=[Depends(get_current_user), Depends(require_csrf)],
+    dependencies=[Depends(require_csrf), Depends(get_current_user)],
 )
 
 

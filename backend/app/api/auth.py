@@ -36,7 +36,7 @@ async def login(
     return UserOut.model_validate(result.user)
 
 
-@router.post("/logout", dependencies=[Depends(get_current_user), Depends(require_csrf)])
+@router.post("/logout", dependencies=[Depends(require_csrf), Depends(get_current_user)])
 async def logout(
     request: Request, db: Annotated[AsyncSession, Depends(get_db)]
 ) -> JSONResponse:
