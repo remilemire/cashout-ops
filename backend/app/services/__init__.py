@@ -1,5 +1,5 @@
 # backend/app/services/__init__.py
 
-from . import sessions
+from . import auth, sessions, shifts, users
 
-__all__ = ["sessions"]
+__all__ = ["auth", "sessions", "shifts", "users"]
