@@ -13,12 +13,11 @@ class UserRole(StrEnum):
 class ShiftStatus(StrEnum):
     ACTIVE = "ACTIVE"
     ENDED = "ENDED"
-    SUBMITTED = "SUBMITTED"
-    MISSING_CASHOUT = "MISSING_CASHOUT"
 
 
 class CashoutSubmissionStatus(StrEnum):
     PROCESSING = "PROCESSING"
+    UNDER_REVIEW = "UNDER_REVIEW"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 

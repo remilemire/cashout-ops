@@ -1,4 +1,4 @@
-# backend/app/models/cashout_document.py
+# backend/app/models/cashout/document.py
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Entity, enum_column
-from .enums import CashoutDocumentType, DocumentContentType
+from app.models.base import Entity, enum_column
+from app.models.enums import CashoutDocumentType, DocumentContentType
 
 if TYPE_CHECKING:
-    from .cashout_submission import CashoutSubmission
-    from .ocr_result import OcrResult
-    from .user import User
+    from app.models.user import User
+
+    from .ocr_result import CashoutOcrResult
+    from .submission import CashoutSubmission
 
 
 class CashoutDocument(Entity):
@@ -48,6 +49,6 @@ class CashoutDocument(Entity):
 
     uploaded_by: Mapped[User] = relationship()
 
-    ocr_result: Mapped[OcrResult | None] = relationship(
+    ocr_result: Mapped[CashoutOcrResult | None] = relationship(
         back_populates="cashout_document", cascade="all, delete-orphan"
     )

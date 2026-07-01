@@ -12,7 +12,7 @@ from .base import Entity, enum_column
 from .enums import ShiftStatus
 
 if TYPE_CHECKING:
-    from .cashout_submission import CashoutSubmission
+    from .cashout import CashoutSubmission
     from .user import User
 
 

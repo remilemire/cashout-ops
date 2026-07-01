@@ -1,4 +1,4 @@
-# backend/app/models/cashout_submission.py
+# backend/app/models/cashout/submission.py
 
 from __future__ import annotations
 
@@ -8,14 +8,15 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Entity, enum_column
-from .enums import CashoutSubmissionStatus
+from app.models.base import Entity, enum_column
+from app.models.enums import CashoutSubmissionStatus
 
 if TYPE_CHECKING:
-    from .cashout_data import CashoutData
-    from .cashout_document import CashoutDocument
-    from .shift import Shift
-    from .user import User
+    from app.models.shift import Shift
+    from app.models.user import User
+
+    from .data import CashoutData
+    from .document import CashoutDocument
 
 
 class CashoutSubmission(Entity):

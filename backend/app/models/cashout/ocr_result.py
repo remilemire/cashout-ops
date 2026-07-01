@@ -1,4 +1,4 @@
-# backend/app/models/ocr_result.py
+# backend/app/models/cashout/ocr_result.py
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from sqlalchemy import DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Entity, enum_column
-from .enums import OcrProvider, OcrStatus
+from app.models.base import Entity, enum_column
+from app.models.enums import OcrProvider, OcrStatus
 
 if TYPE_CHECKING:
-    from .cashout_document import CashoutDocument
+    from .document import CashoutDocument
 
 
-class OcrResult(Entity):
-    __tablename__ = "ocr_results"
+class CashoutOcrResult(Entity):
+    __tablename__ = "cashout_ocr_results"
 
     provider: Mapped[OcrProvider] = mapped_column(
         enum_column(OcrProvider, "ocr_provider"), nullable=False

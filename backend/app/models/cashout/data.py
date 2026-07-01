@@ -1,4 +1,4 @@
-# backend/app/models/cashout_data.py
+# backend/app/models/cashout/data.py
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Entity
+from app.models.base import Entity
 
 if TYPE_CHECKING:
-    from .cashout_submission import CashoutSubmission
-    from .user import User
+    from app.models.user import User
+
+    from .submission import CashoutSubmission
 
 
 class CashoutData(Entity):

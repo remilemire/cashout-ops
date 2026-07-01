@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from .base import Base, Entity
-from .cashout_data import CashoutData
-from .cashout_document import CashoutDocument
-from .cashout_submission import CashoutSubmission
-from .ocr_result import OcrResult
+from .cashout import CashoutData, CashoutDocument, CashoutOcrResult, CashoutSubmission
 from .session import Session
 from .shift import Shift
 from .user import User
@@ -16,8 +13,8 @@ __all__ = [
     "Entity",
     "CashoutData",
     "CashoutDocument",
+    "CashoutOcrResult",
     "CashoutSubmission",
-    "OcrResult",
     "Session",
     "Shift",
     "User",
