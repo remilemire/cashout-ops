@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.schemas.base import BaseOut
+from app.core.schemas import BaseOut
 
 from .catalog import VALIDATION_DETAILS
 from .types import ErrorCode, ErrorStatus, UnprocessableContext, ValidationRule
