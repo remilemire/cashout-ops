@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     SESSION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"
 
+    # TODO(document-ai): Add validated provider/model and storage settings when
+    # their concrete adapters are selected. Keep secrets in environment values.
+
     @computed_field
     @property
     def DEBUG(self) -> bool:

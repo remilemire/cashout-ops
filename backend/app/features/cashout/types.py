@@ -21,15 +21,8 @@ class CashoutDocumentType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
-class DocumentContentType(StrEnum):
-    JPEG = "image/jpeg"
-    PNG = "image/png"
-    WEBP = "image/webp"
-    PDF = "application/pdf"
-    HEIC = "image/heic"
-    HEIF = "image/heif"
-
-
+# TODO(document-ai): Rename OcrProvider/OcrStatus to AIProvider and
+# DocumentAnalysisStatus when the persisted analysis model is migrated.
 class OcrProvider(StrEnum):
     GOOGLE_VISION = "GOOGLE_VISION"
 

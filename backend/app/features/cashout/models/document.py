@@ -9,7 +9,8 @@ from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity, enum_column
-from app.features.cashout.types import CashoutDocumentType, DocumentContentType
+from app.features.cashout.types import CashoutDocumentType
+from app.lib.documents import DocumentContentType
 
 if TYPE_CHECKING:
     from app.features.users.model import User
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
 class CashoutDocument(Entity):
     __tablename__ = "cashout_documents"
 
+    # TODO(document-ai): Default new uploads to UNKNOWN and update this field
+    # only after the document processor returns an accepted classification.
     document_type: Mapped[CashoutDocumentType] = mapped_column(
         enum_column(CashoutDocumentType, "cashout_document_type"), nullable=False
     )
@@ -49,6 +52,8 @@ class CashoutDocument(Entity):
 
     uploaded_by: Mapped[User] = relationship()
 
+    # TODO(document-ai): Rename this relationship to analysis_result when the
+    # CashoutOcrResult model is migrated to direct AI document analysis.
     ocr_result: Mapped[CashoutOcrResult | None] = relationship(
         back_populates="cashout_document", cascade="all, delete-orphan"
     )

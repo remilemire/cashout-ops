@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from .document import CashoutDocument
 
 
+# TODO(document-ai): Rename this model/table to CashoutDocumentAnalysis. The AI
+# consumes the original file directly, so this is not a traditional OCR result.
 class CashoutOcrResult(Entity):
     __tablename__ = "cashout_ocr_results"
 
@@ -29,6 +31,9 @@ class CashoutOcrResult(Entity):
         server_default=OcrStatus.PROCESSING.value,
     )
 
+    # TODO(document-ai): Replace raw_text/raw_response_json with explicit audit
+    # fields: classification, confidence, provider, model, provider request ID,
+    # schema name/version, extracted_data_json, checksum, and error code/message.
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_response_json: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True
@@ -39,6 +44,8 @@ class CashoutOcrResult(Entity):
         DateTime(timezone=True), nullable=True
     )
 
+    # TODO(document-ai): Decide whether analyses are one-to-one or append-only
+    # attempts. Remove unique=True if retries must be retained for audit.
     cashout_document_id: Mapped[int] = mapped_column(
         ForeignKey("cashout_documents.id", ondelete="CASCADE"),
         nullable=False,

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .extraction import CashoutDocumentProcessor
 from .models import (
     CashoutData,
     CashoutDocument,
@@ -29,9 +28,17 @@ async def upload_document(
     ...
 
 
-# use ocr_client
-async def extract_document(db: AsyncSession, *, document_id: int) -> CashoutOcrResult:
-    # TODO
+# TODO(document-ai): Rename this operation and its persisted result away from
+# OCR terminology once the model migration is designed.
+async def extract_document(
+    db: AsyncSession,
+    *,
+    document_id: int,
+    processor: CashoutDocumentProcessor,
+) -> CashoutOcrResult:
+    # TODO(document-ai): Load the document, construct a DocumentRef from its
+    # storage fields, invoke the processor, and persist the typed result without
+    # committing. Update document_type only after classification succeeds.
     ...
 
 
@@ -40,7 +47,8 @@ async def process_submission(
     db: AsyncSession, *, submission_id: int
 ) -> CashoutSubmission:  # join cashout_data
     # TODO
-    # each document must have successful ocr result
+    # TODO(document-ai): Require one successful document-analysis result per
+    # document before reconciling their extracted data.
     ...
 
 
@@ -55,11 +63,4 @@ async def complete_submission(
 ) -> CashoutSubmission:
     # TODO
     # ensure data has been reviewed
-    ...
-
-
-async def _reconcile_ocr_data(
-    db: AsyncSession, ocr_results: Sequence[CashoutOcrResult]
-) -> CashoutData:
-    # TODO
     ...
