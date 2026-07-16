@@ -6,10 +6,15 @@ from pydantic import EmailStr, Field
 
 from app.core.schemas import BaseIn, EntityOut
 
+from .types import UserRole
+
 
 class UserOut(EntityOut):
-    # TODO
-    pass
+    email: EmailStr
+    first_name: str
+    last_name: str
+    role: UserRole
+    is_active: bool
 
 
 class UserCreate(BaseIn):

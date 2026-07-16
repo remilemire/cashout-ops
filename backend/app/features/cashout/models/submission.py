@@ -12,7 +12,6 @@ from app.core.db.models import Entity, enum_column
 from app.features.cashout.types import CashoutSubmissionStatus
 
 if TYPE_CHECKING:
-    from app.features.shifts.model import Shift
     from app.features.users.model import User
 
     from .data import CashoutData
@@ -35,14 +34,6 @@ class CashoutSubmission(Entity):
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-
-    shift_id: Mapped[int] = mapped_column(
-        ForeignKey("shifts.id", ondelete="RESTRICT"),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-    shift: Mapped[Shift] = relationship(back_populates="cashout_submission")
 
     submitted_by: Mapped[User] = relationship()
 

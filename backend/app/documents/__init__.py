@@ -1,11 +1,15 @@
+# backend/app/documents/__init__.py
+
 from __future__ import annotations
 
 from .client import DocumentAIClient
-from .schemas import DocumentClassification
+from .schemas import DocumentAnalysis, DocumentClassification, FieldIssue
 from .types import DocumentRef
 
 __all__ = [
     "DocumentAIClient",
+    "DocumentAnalysis",
     "DocumentClassification",
     "DocumentRef",
+    "FieldIssue",
 ]

@@ -22,6 +22,7 @@ class ErrorCode(StrEnum):
     UNPROCESSABLE = "UNPROCESSABLE"
     IN_USE = "IN_USE"
     ALREADY_EXISTS = "ALREADY_EXISTS"
+    INVALID_STATE = "INVALID_STATE"
 
 
 class ValidationRule(StrEnum):

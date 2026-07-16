@@ -1,0 +1,90 @@
+# backend/app/lifespan.py
+
+from __future__ import annotations
+
+import inspect
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+
+from anthropic import AsyncAnthropic
+from fastapi import FastAPI
+from google import genai
+from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.core.config import settings
+from app.documents import DocumentAIClient
+from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.integrations.ai import (
+    AIClient,
+    AIProvider,
+    AnthropicAIClient,
+    GeminiAIClient,
+    OpenAIAIClient,
+)
+from app.integrations.storage import LocalDocumentStorageClient
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Composition root: builds the DB engine and the document-AI clients."""
+
+    app.state.db_engine = create_async_engine(settings.DATABASE_URL)
+    app.state.db_sessionmaker = async_sessionmaker(
+        bind=app.state.db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    ai_client, close_ai = _build_ai_client()
+    storage = LocalDocumentStorageClient(settings.DOCUMENT_STORAGE_DIR)
+
+    app.state.document_storage = storage
+    app.state.cashout_document_processor = CashoutDocumentProcessor(
+        DocumentAIClient(ai_client, storage)
+    )
+
+    try:
+        yield
+    finally:
+        await close_ai()
+        await app.state.db_engine.dispose()
+
+
+def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
+    """Construct the configured provider's client + an async close callback."""
+    model, max_tokens = settings.AI_MODEL, settings.AI_MAX_TOKENS
+
+    if settings.AI_PROVIDER is AIProvider.OPENAI:
+        client = AsyncOpenAI(api_key=_require_key(settings.OPENAI_API_KEY, "OPENAI"))
+        return (
+            OpenAIAIClient(client, model=model, max_tokens=max_tokens),
+            client.close,
+        )
+
+    if settings.AI_PROVIDER is AIProvider.GEMINI:
+        gemini = genai.Client(api_key=_require_key(settings.GEMINI_API_KEY, "GEMINI"))
+
+        async def close_gemini() -> None:
+            result = gemini.close()
+            if inspect.isawaitable(result):
+                await result
+
+        return (
+            GeminiAIClient(gemini, model=model, max_tokens=max_tokens),
+            close_gemini,
+        )
+
+    anthropic = AsyncAnthropic(
+        api_key=_require_key(settings.ANTHROPIC_API_KEY, "ANTHROPIC")
+    )
+    return (
+        AnthropicAIClient(anthropic, model=model, max_tokens=max_tokens),
+        anthropic.close,
+    )
+
+
+def _require_key(value: str | None, provider: str) -> str:
+    if not value:
+        raise RuntimeError(
+            f"{provider}_API_KEY is required when AI_PROVIDER is {provider}."
+        )
+    return value

@@ -11,8 +11,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.db.session import lifespan
 from app.errors import ERROR_RESPONSES, init_error_handlers
+from app.lifespan import lifespan
 
 
 def create_app() -> FastAPI:

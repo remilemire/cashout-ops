@@ -15,17 +15,20 @@ from app.lib.documents import DocumentContentType
 if TYPE_CHECKING:
     from app.features.users.model import User
 
-    from .ocr_result import CashoutOcrResult
+    from .analysis import CashoutDocumentAnalysis
     from .submission import CashoutSubmission
 
 
 class CashoutDocument(Entity):
     __tablename__ = "cashout_documents"
 
-    # TODO(document-ai): Default new uploads to UNKNOWN and update this field
-    # only after the document processor returns an accepted classification.
+    # AGENT: why unknown and not nullable?
+    # UNKNOWN until the document processor returns an accepted classification.
     document_type: Mapped[CashoutDocumentType] = mapped_column(
-        enum_column(CashoutDocumentType, "cashout_document_type"), nullable=False
+        enum_column(CashoutDocumentType, "cashout_document_type"),
+        nullable=False,
+        default=CashoutDocumentType.UNKNOWN,
+        server_default=CashoutDocumentType.UNKNOWN.value,
     )
     content_type: Mapped[DocumentContentType] = mapped_column(
         enum_column(DocumentContentType, "document_content_type"), nullable=False
@@ -33,6 +36,8 @@ class CashoutDocument(Entity):
 
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # SHA-256 of the stored bytes, for auditing what the AI analyzed.
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
     uploaded_by_user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), nullable=False, index=True
@@ -52,8 +57,6 @@ class CashoutDocument(Entity):
 
     uploaded_by: Mapped[User] = relationship()
 
-    # TODO(document-ai): Rename this relationship to analysis_result when the
-    # CashoutOcrResult model is migrated to direct AI document analysis.
-    ocr_result: Mapped[CashoutOcrResult | None] = relationship(
+    analysis_result: Mapped[CashoutDocumentAnalysis | None] = relationship(
         back_populates="cashout_document", cascade="all, delete-orphan"
     )

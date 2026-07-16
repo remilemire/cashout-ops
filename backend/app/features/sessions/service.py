@@ -1,7 +1,5 @@
 # backend/app/features/sessions/service.py
 
-# backend/app/services/sessions.py
-
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -29,7 +27,7 @@ async def find_valid_with_user(db: AsyncSession, *, token: str) -> Session | Non
     if session is None:
         return None
 
-    if session.expires_at < datetime.now(UTC).replace(tzinfo=None):
+    if session.expires_at < datetime.now(UTC):
         return None
 
     return session
@@ -41,7 +39,7 @@ def create(db: AsyncSession, *, user_id: int) -> SessionWithToken:
 
     session = Session(
         token_hash=hash_secret_token(session_token),
-        expires_at=datetime.now(UTC).replace(tzinfo=None) + session_ttl,
+        expires_at=datetime.now(UTC) + session_ttl,
         user_id=user_id,
     )
 

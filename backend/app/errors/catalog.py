@@ -92,6 +92,10 @@ CATALOG: ErrorCatalog = {
         "status": ErrorStatus.HTTP_409_CONFLICT,
         "message": "Already exists.",
     },
+    ErrorCode.INVALID_STATE: {
+        "status": ErrorStatus.HTTP_409_CONFLICT,
+        "message": "The resource is not in a valid state for this action.",
+    },
     ErrorCode.UNPROCESSABLE: {
         "status": ErrorStatus.HTTP_422_UNPROCESSABLE,
         "message": "There was a problem with the submission.",

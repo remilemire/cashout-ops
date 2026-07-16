@@ -57,6 +57,11 @@ class InUseError(ConflictError):
     name = "In Use"
 
 
+class InvalidStateError(ConflictError):
+    code = ErrorCode.INVALID_STATE
+    name = "Invalid State"
+
+
 class UnprocessableError(DomainError):
     code = ErrorCode.UNPROCESSABLE
     name = "Unprocessable Entity"

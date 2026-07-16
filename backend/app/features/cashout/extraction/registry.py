@@ -1,3 +1,5 @@
+# backend/app/features/cashout/extraction/registry.py
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -24,7 +26,8 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[CashoutDocumentType, type[CashoutDocumentSchem
     CashoutDocumentType.MANUAL_NOTE: ManualNoteData,
 }
 
-# TODO(document-ai): Decide whether UNKNOWN and low-confidence classifications
-# are persisted as reviewable results or raised as domain errors.
+# Classifications without a schema (UNKNOWN) are not domain errors: the
+# processor returns them with no data and the cashout service persists a
+# failed, reviewable analysis instead.
 
 __all__ = ["CASHOUT_DOCUMENT_SCHEMAS"]

@@ -6,32 +6,39 @@ Guidance for Claude Code sessions working on this repository. Keep it concise an
 
 **Whiskey District Cashout Automation** — internal restaurant ops tool. FastAPI backend + Vue 3 SPA, single origin in production (FastAPI serves the built frontend out of `backend/static/`). Deployed to Render at <https://cashout-ops.onrender.com>.
 
-The cross-cutting plumbing (error contract, casing, cookies/CSRF/crypto helpers, lifespan, settings, migrations skeleton, build/deploy hooks) is solid. The **models are all implemented**; **schemas and services are partially implemented** (auth/users/sessions started, the cashout domain still stubbed); the **API routes and frontend are minimal / work-in-progress**. New work usually means *implementing* a stubbed schema/service/route, not reshaping the scaffold.
+The cashout flow: a cashier creates a cashout submission (any time — cashouts are **not** shift-locked), uploads photos/PDFs of the end-of-shift documents (TouchBistro reports, terminal reports, receipts, tip-out sheets, cash summaries), and an **AI document pipeline** classifies each document and extracts structured data from it. Management reviews the extracted data and completes the submission.
+
+The cross-cutting plumbing, auth, error contract, the AI extraction pipeline, and the full cashout domain are **implemented**. What remains stubbed with placeholder values: the **extraction schemas** (`features/cashout/extraction/schemas.py`) hold dummy fields — the real per-document observable fields are not defined yet — and the **frontend** is minimal.
 
 ## Layout
+
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/lib`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
 
 ```
 backend/
   app/main.py             create_app(); `app = create_app()`; ASGI target is app.main:app; mounts StaticFiles + SPA fallback
-  app/__init__.py         empty package marker
-  app/lifespan.py         lifespan: creates async engine + sessionmaker on app.state
-  app/core/               config (pydantic-settings), passwords (bcrypt), cookies (session/CSRF cookie helpers)
-  app/lib/                pure helpers: casing, crypto
-  app/api/                routers mounted under /api; dependencies.py (get_db, get_current_user, require_admin, require_csrf)
-  app/services/           business logic; build/mutate ORM, may flush, NEVER commit (see Transactions)
-  app/models/             SQLAlchemy ORM; all inherit Entity (id + created_at); all models implemented
-  app/schemas/            Pydantic; inherit BaseIn / BaseOut / EntityOut
+  app/lifespan.py         lifespan/composition root: builds async engine + sessionmaker AND the document-AI clients on app.state
+  app/core/               config (pydantic-settings), cookies (generic set/delete helpers), db/ (Base, Entity, enum_column, registry), schemas (BaseIn/BaseOut/EntityOut/UtcDateTime)
+  app/lib/                pure helpers: casing, crypto, documents (DocumentContent/DocumentContentType)
+  app/dependencies/       FastAPI deps: get_db, get_current_user, require_admin, require_csrf, get_cashout_document_processor, get_document_storage
   app/errors/             domain errors, catalog, handlers, translators, schemas, types, OpenAPI shapes
-  alembic/                async env.py reads DATABASE_URL from environment
+  app/integrations/       provider adapters:
+    ai/                     AIClient protocol + Anthropic/OpenAI/Gemini clients (structured output), compose_instructions, AIProvider, AIAnalysisError
+    storage/                DocumentStorageClient protocol + LocalDocumentStorageClient
+  app/documents/          DocumentAIClient (generic classify + structured extraction over AIClient + storage), DocumentRef, DocumentClassification
+  app/features/
+    auth/                   passwords (bcrypt), service (login/register/authenticate/logout), router, schemas, types
+    sessions/               model, service, cookies (session/CSRF cookie helpers), types
+    users/                  model, service, router, schemas (UserOut/UserCreate), types (UserRole)
+    cashout/                models/ (submission, document, analysis, data), service, router, schemas, types
+      extraction/           CashoutDocumentProcessor, registry (type→schema), schemas (DUMMY fields — see below)
+  app/api/__init__.py     mounts each feature router under /api
+  migrations/             alembic (env.py reads DATABASE_URL, target = app.core.db.registry.metadata); versions/
   Makefile                uv-based dev tasks (install/run/format/lint/test/revision/migrate)
-frontend/
-  vite.config.mts         alias @/* + outDir → ../backend/static (intentional)
-  src/main.ts             Pinia + Vue Router bootstrap
-  src/router.ts           single index route today
-  src/api/apiClient.ts    empty — implement before adding API calls
+  tests/                  pytest suite (testcontainers Postgres); conftest, fakes, factories
+frontend/                 Vue 3 SPA (minimal / WIP)
 compose.yaml              Postgres 18 for local dev
 scripts/                  Render deploy hooks (build / pre-deploy / start) — at the repo root
-setup.bash                local bootstrap (.env, deps, frontend build, migrations)
 ```
 
 ## Commands
@@ -40,156 +47,115 @@ Tooling is **uv** (see `uv.lock`) driven through the backend `Makefile`. Run bac
 
 ```bash
 make install                       # uv sync
-make run                           # uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-make migrate                       # uv run alembic upgrade head
-make revision MESSAGE="…"          # uv run alembic revision --autogenerate -m "…"
-make format                        # uv run ruff format .
-make lint                          # uv run ruff check . --fix
-make test                          # uv run pytest  (no tests exist yet)
+make run                           # uvicorn app.main:app --reload
+make migrate                       # alembic upgrade head
+make revision MESSAGE="…"          # alembic revision --autogenerate -m "…"
+make format                        # ruff format .
+make lint                          # ruff check . --fix
+make test                          # pytest
 make check                         # format + lint + test
-# direct equivalents also work, e.g. `uv run alembic downgrade -1`
 ```
 
-Frontend (run from `frontend/`):
-
-```bash
-npm run dev                        # Vite dev server (no API proxy configured)
-npm run build                      # builds into ../backend/static/
-npm run lint                       # eslint . --fix
-npm run format                     # prettier . --write
-npm run test                       # vitest
-```
-
-Database (from repo root):
-
-```bash
-docker compose up -d               # Postgres 18 on :5432 (user/pw postgres/dev, db cashout_ops)
-```
+Frontend (from `frontend/`): `npm run dev|build|lint|format|test`. Database (repo root): `docker compose up -d` (Postgres 18 on :5432, user/pw postgres/dev, db cashout_ops).
 
 ## Environment
 
-Backend loads from `backend/.env` via `pydantic-settings`. `.env` is gitignored; copy `backend/.env.example` to `backend/.env` (setup.bash does this). Variables (see `app/core/config.py`):
+Backend loads from `backend/.env` via `pydantic-settings`. `.env` is gitignored; copy `backend/.env.example`. Variables (see `app/core/config.py`):
 
-- `ENVIRONMENT` — `prod` (default) or `dev`. Validated as a `Literal["prod", "dev"]`. Drives `settings.DEBUG` (`ENVIRONMENT == "dev"`), which controls FastAPI's debug mode and the `Secure` flag on cookies (`Secure = not DEBUG`).
-- `SECRET_KEY` — **required, no default**; the app fails to start if unset. Signs the Starlette `SessionMiddleware`.
-- `DATABASE_URL` — **required**; async SQLAlchemy URL (`postgresql+psycopg://…`). Alembic reads this same env var.
-- `SESSION_TTL_DAYS` — default `7`. Session lifetime.
-- `ADMIN_EMAIL` — default `admin@test.com`. `services.auth.register` promotes a user whose email matches to `UserRole.ADMIN`.
-
-Frontend reads no env vars currently.
+- `ENVIRONMENT` — `prod` (default) or `dev` (`Literal["prod", "dev"]`). Drives `settings.DEBUG` (`== "dev"`), which controls FastAPI debug mode and the `Secure` cookie flag (`Secure = not DEBUG`). **Use `dev`, not `development`.**
+- `SECRET_KEY` — **required**; signs the Starlette `SessionMiddleware`.
+- `DATABASE_URL` — **required**; async SQLAlchemy URL (`postgresql+psycopg://…`). Alembic reads the same var.
+- `SESSION_TTL_DAYS` — default `7`.
+- `ADMIN_EMAIL` — default `admin@test.com`. `auth.register` promotes a matching email to `UserRole.ADMIN`.
+- `AI_PROVIDER` — `ANTHROPIC` (default), `OPENAI`, or `GEMINI`. Selects which client the lifespan builds. **Only the selected provider's API key is required** — the lifespan raises at startup if it's missing.
+- `AI_MODEL` — default `claude-opus-4-8`. Set it to a model the selected provider serves.
+- `AI_MAX_TOKENS` — default `16000`; passed to the client constructor.
+- `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` — all optional at the settings layer; the one matching `AI_PROVIDER` is required at runtime. A placeholder lets the app boot; a real key is only needed to hit the extract endpoint.
+- `DOCUMENT_STORAGE_DIR` — default `storage/documents`; where `LocalDocumentStorageClient` writes uploads.
 
 ## Architecture rules
 
 ### Transactions and where to commit
 
-**`get_db` owns the transaction.** `app/api/dependencies.py` opens one `AsyncSession` per request, **commits if the handler returns successfully and rolls back if it raises**. Because of this, neither services nor routes need to call `db.commit()` (the WIP auth routes still do, redundantly).
+**`get_db` (`app/dependencies/db.py`) owns the transaction** — one `AsyncSession` per request, **commits if the handler returns successfully, rolls back if it raises**. Neither services nor routes call `db.commit()`.
 
-**Services never commit.** They build/mutate ORM objects and either return them or raise a `DomainError`. A service **may** call `await db.flush()` when it needs a generated PK before continuing (see `services/auth.register`, which flushes the new user so the session FK resolves).
-
-Use keyword-only arguments after `db`. Service-function shape, by example:
-
-```python
-# create-style: pure construction, sync, returns the unsaved object
-def create(db, *, payload, …): ...
-
-# lookup/mutate: async because it must fetch (or flush) first
-async def find_by_email(db, *, email): ...
-```
+**Services never commit.** They build/mutate ORM objects and either return them or raise a `DomainError`. A **create-style service must `await db.flush()`** before returning if the router will serialize the new object — flush populates the generated `id`, server defaults (`created_at`), and Python-side column defaults (enum `status`). Returning an unflushed object serializes to a `422` (and the response-validation error then rolls back the insert). Use keyword-only args after `db`.
 
 ### Errors
 
-Always raise the domain errors from `app.errors` (subclasses of `DomainError`) rather than `HTTPException`. The handlers in `app/errors/handlers.py` funnel domain errors — plus translated Pydantic, `IntegrityError`, Starlette HTTP, and uncaught exceptions — through one builder into this body:
+Always raise the domain errors from `app.errors` (subclasses of `DomainError`) — never `HTTPException`. Handlers in `app/errors/handlers.py` funnel domain errors + translated Pydantic / `IntegrityError` / Starlette HTTP / uncaught exceptions into one body: `{ "error", "code", "message", "errors" }`. `errors` is present only for `UNPROCESSABLE`. Don't hand-craft error JSON.
 
-```json
-{ "error": "...", "code": "...", "message": "...", "errors": [ { "rule": "...", "detail": "...", "path": [...] } ] }
-```
-
-The HTTP status comes from `ErrorStatus`; `errors` is present only for validation failures (`UNPROCESSABLE`). `error` is the domain error's human `name`; `code` is the `ErrorCode`. Don't hand-craft error JSON.
-
-- `ErrorCode` and `ValidationRule` are **SCREAMING_CASE** `StrEnum`s in `app/errors/types.py`. The single `CATALOG` in `app/errors/catalog.py` maps each `ErrorCode` → `{status, message, optional details}`; `details` (the per-`ValidationRule` message builders) lives in `VALIDATION_DETAILS`.
-- `IntegrityError` is auto-mapped in the handler via `translate_integrity_error` (by Postgres SQLSTATE): unique → `ALREADY_EXISTS`, foreign key → `IN_USE`, check / not-null → `UnprocessableError`, anything else → `ServerError`.
-- Pydantic `ValidationError` / `RequestValidationError` → `UNPROCESSABLE`, one `ErrorDetail` per field (`rule` via `translators.PYDANTIC_TO_RULE`, `path` as an array, `detail` from the catalog).
-- Catalog `message`/`detail` are **defaults only**: an explicit message passed to a `DomainError`, or an explicit `detail` passed to `ErrorDetail.build(...)`, wins.
-- Adding a validation rule: extend `ValidationRule` (types.py) + add a builder in `VALIDATION_DETAILS` (catalog.py) + map the Pydantic type in `PYDANTIC_TO_RULE` (translators.py).
-- Adding an error code: extend `ErrorCode` (types.py) + add a `CATALOG` entry (catalog.py) + add a `DomainError` subclass (domain.py) and export it from `errors/__init__.py`.
+- Adding an error code: extend `ErrorCode` (types.py) + `CATALOG` entry (catalog.py) + `DomainError` subclass (domain.py) + export from `errors/__init__.py`. Conflicts (409) subclass `ConflictError`. `InvalidStateError` (409, `INVALID_STATE`) is used for wrong-lifecycle-state actions.
+- `IntegrityError` auto-maps by SQLSTATE: unique → `ALREADY_EXISTS`, FK → `IN_USE`, check/not-null → `UnprocessableError`, else `ServerError`.
 
 ### API conventions
 
-- Everything lives under `/api`. CSRF and authentication are **not** attached globally on `api_router` — apply them as explicit dependencies (`require_csrf`, `get_current_user` / `require_admin` from `app/api/dependencies.py`) per-route or per-router on what needs them. Register new routers in `app/api/__init__.py` (they inherit the `/api` prefix). `auth_router` and `users_router` are registered.
-- Inbound and outbound JSON is **camelCase**; Python is snake_case. Conversion is automatic via `BaseIn` / `BaseOut` (`alias_generator=snake_to_camel`). Don't manually rename fields.
-- `BaseIn` is `extra="forbid"` (unknown fields → `EXTRA_FIELD`) and `validate_by_name=True` (can populate by field name). Keep `extra="forbid"`.
-- Outbound serialization is the router's job — return a `BaseOut` model and let FastAPI's `response_model` serialize it (`BaseOut` has no `to_response()` helper). The error handlers are the exception: they return `JSONResponse` directly, so they serialize their body by hand with `model_dump(by_alias=True, exclude_none=True, mode="json")` (see `errors/handlers.py:format_error_response`).
-- Timestamps: stored UTC, serialized as ISO-8601 with trailing `Z` (see `EntityOut.serialize_datetime`).
+- Everything under `/api`. Register feature routers in `app/api/__init__.py`. CSRF/auth are **not** global — apply `require_csrf`, `get_current_user`, `require_admin` (from `app/dependencies`) per-route/router via `dependencies=[...]`.
+- Inbound/outbound JSON is **camelCase**; Python is snake_case. Automatic via `BaseIn`/`BaseOut` (`alias_generator=snake_to_camel`). `BaseOut` sets `validate_by_name=True` + `from_attributes=True` so `model_validate(orm_obj)` reads snake_case attrs; FastAPI serializes out with `by_alias`. Don't rename fields by hand.
+- `BaseIn` is `extra="forbid"` + `validate_by_name=True`. Keep `extra="forbid"`.
+- Return a `BaseOut` model and let `response_model` serialize it. Timestamps: use the `UtcDateTime` annotated type (`app/core/schemas.py`) — stored UTC, serialized ISO-8601 with trailing `Z`.
 
 ### Auth and sessions
 
-- Session token: `crypto.generate_secret_token()` = `secrets.token_urlsafe(32)`. **Only the SHA-256 hash** (`crypto.hash_secret_token`) is stored in `sessions.token_hash`; compare by hashing the incoming token. Don't change this.
-- Session lifetime: `SESSION_TTL_DAYS` (default 7). There is no "remember me".
-- Passwords: bcrypt via `passlib` in `app/core/passwords.py`. Use `hash_password` / `verify_password`; never store plaintext or pick another scheme.
-- Cookies + CSRF live in `app/core/cookies.py`: `Secure = not DEBUG`, `SameSite=Lax`, `Path=/`, `HttpOnly` configurable. The `session_token` cookie is HttpOnly (max-age `SESSION_TTL_DAYS`); the `csrf_token` cookie is readable by JS for the double-submit check (`x-csrf-token` header). Login sets both; logout clears both.
-- Dependencies (`app/api/dependencies.py`): `require_csrf` (double-submit; safe methods skip), `get_current_user` (reads the session cookie → `services.auth.authenticate` → `User`), `require_admin` (builds on `get_current_user`).
-- Services: `services/sessions.py` (`find_valid_with_user`, `create`, `delete_by_token`), `services/auth.py` (`login`, `register`, `authenticate`, `logout`).
+- Session token: `crypto.generate_secret_token()` = `secrets.token_urlsafe(32)`. Only the SHA-256 hash is stored in `sessions.token_hash`; compare by hashing. Session lifetime `SESSION_TTL_DAYS`; no "remember me". Passwords: bcrypt via `passlib` (`app/features/auth/passwords.py`).
+- Cookies: generic `set_cookie`/`delete_cookie` in `app/core/cookies.py` (`Secure = not DEBUG`, `SameSite=Lax`, `Path=/`); named session/CSRF helpers in `app/features/sessions/cookies.py`. `session_token` is HttpOnly; `csrf_token` is JS-readable for the double-submit check (`x-csrf-token` header). `require_csrf` uses `secrets.compare_digest`.
+
+### Document extraction pipeline
+
+The AI reads the uploaded file directly (vision), classifies it, and returns structured data — there is **no OCR**. Layered so the domain never touches a provider SDK:
+
+```
+CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps DocumentClassification[CashoutDocumentType] → its schema
+  → DocumentAIClient (app/documents)                    ← generic: classify() + process(), reads bytes from storage
+      → AIClient protocol (app/integrations/ai)         ← AnthropicAIClient | OpenAIAIClient | GeminiAIClient (structured output)
+      → DocumentStorageClient (app/integrations/storage) ← LocalDocumentStorageClient
+```
+
+- **Provider is swappable.** `AIClient` is a Protocol (`provider`, `model`, `analyze(content, response_model, *, instructions)`) with three implementations: `AnthropicAIClient` (Messages API `messages.parse`), `OpenAIAIClient` (Chat Completions `parse`), `GeminiAIClient` (`generate_content` + `response_schema`). `app/lifespan.py` `_build_ai_client()` picks one from `settings.AI_PROVIDER` and validates its key. All raise `AIAnalysisError` (code in `AIErrorCode`) on provider errors / refusals / invalid output; each maps text + image/PDF `DocumentContent` to its own request shape. The OpenAI/Gemini clients are tested against fakes only — not verified against live APIs.
+- The clients are built once in `app/lifespan.py` and stored on `app.state`; routes get the processor/storage via `get_cashout_document_processor` / `get_document_storage`.
+- **Instructions layer, they don't replace.** Each AI abstraction keeps its own always-present base instructions and appends the caller's `instructions` on top via `compose_instructions(base, extra)` (`integrations/ai/instructions.py`) — the `AnthropicAIClient` has a base persona, `DocumentAIClient` has base classify/extract instructions, and the processor passes domain-specific instructions as the extra. Don't reintroduce a "default OR override" pattern.
+- **`classify` vs `process`.** `DocumentAIClient.classify` returns `DocumentClassification[EnumT]` (`value` + `confidence`). `DocumentAIClient.process` returns `DocumentAnalysis[ResponseModelT]` — the typed `data` plus an extraction `confidence` and a list of `FieldIssue` (`path`, `message`) the model flagged. The cashout service persists both confidences separately: `classification_confidence` and `extraction_confidence`, plus `issues` (JSONB) on `CashoutDocumentAnalysis`.
+- `AnthropicAIClient.analyze` raises `AIAnalysisError` (code in `AIErrorCode`) on provider errors, refusals, or invalid/unparseable output. The cashout service catches it and persists a **FAILED, reviewable** `CashoutDocumentAnalysis` rather than 500-ing.
+- `CashoutDocumentType.UNKNOWN` (or any type with no registered schema) is **not** an error: the processor returns it with `data=None` and the service records a failed analysis.
+- **Extraction schemas are placeholders.** `features/cashout/extraction/schemas.py` defines dummy fields (marked with `TODO(document-ai)`) so the pipeline runs end to end. Define the real per-document fields before trusting extracted data. Deterministic post-extraction validation and real reconciliation in `service._reconcile` are also still TODO.
 
 ### Models
 
-- All entities inherit `Entity` from `app/models/base.py`, which provides `id`, `created_at`, and `await Entity.get_active(db, id_)` (raises `NotFoundError` on miss — use it instead of `db.get` when a miss should be a 404). `base.py` also exposes `enum_column(enum_cls, name)`, which builds a native Postgres enum column that persists member **values**.
-- All models are implemented: `User`, `Session`, `Shift`, `CashoutSubmission`, `CashoutDocument`, `CashoutData`, `OcrResult`. (The former `CashoutCorrection` model was removed.)
-- When adding a model: create the file, export it from `app/models/__init__.py` (otherwise Alembic autogenerate won't see it), then `make revision MESSAGE="…"` and review the diff.
+- All entities inherit `Entity` from `app/core/db/models.py` (`id`, `created_at`, `await Entity.get_active(db, id_)` → `NotFoundError` on miss). `enum_column(enum_cls, name)` builds a native Postgres enum persisting member **values**.
+- Models: `User`, `Session`, `CashoutSubmission`, `CashoutDocument`, `CashoutDocumentAnalysis`, `CashoutData`. (The `Shift` model and shifts feature were removed — cashouts are no longer shift-locked.)
+- **Adding a model:** create it in the feature package, then **import it in `app/core/db/registry.py`** (Alembic autogenerate and the test schema both read `registry.metadata` — a model missing from the registry is invisible to both). Then `make revision MESSAGE="…"` and review the diff.
 
 ### Authorization
 
-Authorization is done with explicit FastAPI dependencies in `app/api/dependencies.py` — `get_current_user` (authentication), `require_admin` (admin-only), `require_csrf` (CSRF). Apply them per-route or per-router via `dependencies=[...]` rather than checking inline. There is no resource/owner-level authorization yet — add it as a dependency when needed.
+Explicit FastAPI deps in `app/dependencies/` (`get_current_user`, `require_admin`, `require_csrf`). Resource/owner checks live in the cashout **service** (`_get_owned_submission`, and `get_submission` allows owner-or-admin) since they need the loaded row.
 
-## Frontend conventions
+## Migrations
 
-- Vue 3 `<script setup lang="ts">` SFCs. Pinia for state, Vue Router with `createWebHistory` (single `index` route → `HomeView.vue`), Tailwind v4.
-- Path alias `@/*` → `frontend/src/*` (configured in both `tsconfig.json` and `vite.config.mts`).
-- Vite builds with `outDir: ../backend/static` and `emptyOutDir: true`. **Don't add anything to `backend/static/` by hand — it gets wiped on every build.**
-- There is no Vite dev proxy. If you add API calls during dev, either configure one in `vite.config.mts` or use absolute URLs.
-- Lint/format/test via npm scripts (`lint` = eslint --fix, `format` = prettier --write, `test` = vitest). ESLint flat config + Prettier (with `prettier-plugin-tailwindcss` for class sorting).
-- Indent: 2-space for JS/TS/Vue/HTML/CSS, 4-space for Python (see `.vscode/settings.json`).
+- Single initial migration `migrations/versions/cbf386fc33b2_initial_schema.py`. `env.py` targets `app.core.db.registry.metadata`. `alembic.ini` `script_location` is `migrations/` (flat — no nested `alembic/` dir).
+- **Native-enum downgrade gotcha:** autogenerate creates enum types but never drops them, so a re-upgrade fails with "type already exists". The initial migration's `downgrade()` drops each enum explicitly (`ENUM_TYPES` list) — do the same in any migration that adds an enum column.
+
+## Testing
+
+- `make test` / `pytest`. Async tests via `pytest-asyncio` (`asyncio_mode = "auto"`). Config in `pyproject.toml` (`[tool.pytest.ini_options]`, `pythonpath = ["."]`).
+- **Real Postgres, not SQLite** (native enums/JSONB/FKs). `tests/conftest.py` uses `TEST_DATABASE_URL` if set, else spins up a throwaway Postgres via **testcontainers** (Ryuk disabled; requires a running Docker). Schema via `registry.metadata.create_all`; tables truncated between tests.
+- The extraction stack is **real** in tests; only the AI provider and object store are faked (`tests/fakes.py`: `FakeAIClient`, `FakeDocumentStorage`). API tests override `get_db`/`get_cashout_document_processor`/`get_document_storage` and drive the app over `httpx.ASGITransport`.
+- Fixtures: `client` (unauthed), `cashier_client`, `admin_client`, `db_session`, `ai_client`, `storage`, `processor`. Helpers in `tests/factories.py` (`register`, `login`, `csrf_headers`). Configure `ai_client.classification` / `.extraction` / `.error` to steer the pipeline.
 
 ## Deployment
 
-Render uses three scripts at the repo root (`scripts/`):
-
-- `build.bash` — backend `make install` (uv sync), then `npm ci && npm run build` in `frontend/`.
-- `pre-deploy.bash` — backend `make migrate` (alembic upgrade head).
-- `start.bash` — `uv run gunicorn -k uvicorn.workers.UvicornWorker app:app --bind 0.0.0.0:$PORT`.
-
-If you change the dependency surface, the install path, or the migration assumptions, update the matching script.
-
-## Known bugs / gotchas
-
-These are real defects / mismatches in committed code. Fix them if the task touches the relevant area; otherwise leave alone and call them out.
-
-1. **Migrations are out of sync with the models.** The only migration (`alembic/versions/0d4aadd52bbb_first_migration.py`) creates the eight tables with only `id` + `created_at`, and still includes a `cashout_corrections` table that no longer has a model. The real columns/enums/FKs now on the models are **not yet captured in any migration** — an autogenerate migration is pending. Don't edit the first migration; add a new one.
-2. **`start.bash` ASGI target mismatch.** It passes `app:app`, but the ASGI object lives at `app.main:app` (what `make run` uses); `app/__init__.py` doesn't expose `app`. Likely needs `app.main:app`.
-3. **`backend/.env.example` sets `ENVIRONMENT=production`**, but the setting only accepts `prod` | `dev` — using `production` will fail validation.
-4. **`frontend/src/vite-end.d.ts`** — typo for `vite-env.d.ts`; the default Vite client types aren't being picked up.
-
-## Stubbed / unimplemented surface
-
-- Schemas (`app/schemas/`): `shifts`, `cashout_data`, `cashout_documents`, `cashout_submissions`, `ocr_results` — every `Response`/`Update`/`Create` is `# TODO`. `users.UserOut` is `# TODO` (`UserCreate` is done). `auth.py` is implemented.
-- Services: `users`, `sessions`, `auth` are implemented; there's no service for shifts / cashouts / OCR yet.
-- API: `api/auth.py` (`login`, `logout`) is implemented; `api/users.py` has a `users_router` whose `get_me` handler is still a `# TODO`. No cashout/shift endpoints yet.
-- Frontend: `App.vue` / `HomeView.vue` are minimal; `api/apiClient.ts` is empty.
-- OCR: Google Cloud Vision is the intended provider; no integration code yet.
-- Tests: `backend/tests/` exists but is empty; `pytest` is in the `dev` dependency group.
+Render uses three repo-root scripts: `build.bash` (backend `make install`, then `npm ci && npm run build`), `pre-deploy.bash` (`make migrate`), `start.bash` (`gunicorn -k uvicorn.workers.UvicornWorker app.main:app`). If you change the dependency surface, install path, or migration assumptions, update the matching script.
 
 ## Rules for editing
 
-- The repo runs **Pylance/pyright strict** (`.vscode/settings.json`). Don't add `# type: ignore` to silence real type errors. The only sanctioned ignores are the existing patterns: `reportUnusedFunction` on decorated FastAPI route handlers, and `reportCallIssue` on the `Settings()` instantiation.
-- Dependencies live in `pyproject.toml` and are managed by **uv** (`uv.lock`). Don't introduce a `requirements.txt`.
-- Don't switch the DB driver from `psycopg` 3 or break the `postgresql+psycopg://` URL assumption (Alembic's async env relies on it).
-- Don't bypass `BaseIn` / `BaseOut` to return raw dicts from API handlers — it skips both the validation and the casing layer.
-- Don't catch `Exception` in services to "convert" it — `app/errors/handlers.py` already has a catch-all and a dedicated `IntegrityError` handler.
-- Don't add CORS middleware; the app is single-origin by design (SPA served by FastAPI). If you need cross-origin during dev, add a proxy in `vite.config.mts`.
-- Files to read before editing related code:
-  - Routes → `app/api/__init__.py`, `app/api/dependencies.py`, `app/errors/__init__.py`
-  - Services → `app/services/users.py` + `app/services/auth.py` (templates), `app/api/dependencies.py` (commit semantics)
-  - Models → `app/models/base.py`, `app/models/__init__.py`
-  - Schemas → `app/schemas/base.py`, `app/lib/casing.py`
-  - Auth changes → `app/services/auth.py`, `app/services/sessions.py`, `app/core/cookies.py`, `app/lib/crypto.py`, `app/core/passwords.py`, `app/api/dependencies.py`
-  - Errors → `app/errors/types.py`, `app/errors/catalog.py`, `app/errors/handlers.py`
-  - Migrations → `app/models/__init__.py`, `alembic/env.py`
+- Repo runs **Pylance/pyright strict** (`.vscode/settings.json`). Don't add `# type: ignore` to silence real errors in `app/`. Sanctioned ignores: `reportUnusedFunction` on decorated FastAPI handlers, `reportCallIssue` on `Settings()`. Test files use a few targeted ignores for untyped test libs (testcontainers). Pyright is an IDE aid — the gate is `make check` (ruff + pytest).
+- Dependencies live in `pyproject.toml`, managed by **uv** (`uv.lock`) — no `requirements.txt`. Don't switch off `psycopg` 3 / `postgresql+psycopg://`.
+- Don't bypass `BaseIn`/`BaseOut` (skips validation + casing). Don't catch `Exception` in services to "convert" it — handlers already have a catch-all + `IntegrityError` handler. Don't add CORS (single-origin by design; use a Vite proxy for dev).
+- Files to read before editing related code: routes → `app/api/__init__.py`, `app/dependencies/`; services → `app/features/*/service.py` templates + `app/dependencies/db.py` (commit semantics); models → `app/core/db/models.py`, `app/core/db/registry.py`; schemas → `app/core/schemas.py`, `app/lib/casing.py`; extraction → `app/documents/`, `app/integrations/`, `app/features/cashout/extraction/`; errors → `app/errors/`; migrations → `app/core/db/registry.py`, `migrations/env.py`.
+
+## Known bugs / gotchas
+
+The previously-tracked scaffold bugs (broken first migration, `start.bash` ASGI target, `.env.example` `ENVIRONMENT=production`, `vite-end.d.ts` typo, missing `bcrypt` dependency) are **fixed**. Remaining known-incomplete work:
+
+1. **Extraction schemas are dummy fields** — see the Document extraction pipeline section. Real fields, deterministic validation, and `service._reconcile` are TODO.
+2. **`LocalDocumentStorageClient` is not durable on Render** (ephemeral disk) — swap in an object-store client before relying on uploaded files surviving a deploy.
+3. **Frontend is minimal / WIP.**

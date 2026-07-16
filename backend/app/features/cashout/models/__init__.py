@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from .analysis import CashoutDocumentAnalysis
 from .data import CashoutData
 from .document import CashoutDocument
-from .ocr_result import CashoutOcrResult
 from .submission import CashoutSubmission
 
-__all__ = ["CashoutData", "CashoutDocument", "CashoutOcrResult", "CashoutSubmission"]
+__all__ = [
+    "CashoutData",
+    "CashoutDocument",
+    "CashoutDocumentAnalysis",
+    "CashoutSubmission",
+]

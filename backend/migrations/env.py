@@ -1,16 +1,16 @@
-# backend/alembic/env.py
+# backend/migrations/env.py
 
 import asyncio
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
-from app import models
+from app.core.db import registry
 
 load_dotenv()
 
@@ -25,11 +25,8 @@ config.set_main_option("sqlalchemy.url", database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = models.Base.metadata
+# MetaData for 'autogenerate' support; registry imports every model.
+target_metadata = registry.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

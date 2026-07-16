@@ -13,7 +13,6 @@ from .types import UserRole
 
 if TYPE_CHECKING:
     from app.features.sessions.model import Session
-    from app.features.shifts.model import Shift
 
 
 class User(Entity):
@@ -38,8 +37,5 @@ class User(Entity):
     )
 
     sessions: Mapped[list[Session]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-    shifts: Mapped[list[Shift]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

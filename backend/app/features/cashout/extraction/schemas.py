@@ -1,3 +1,5 @@
+# backend/app/features/cashout/extraction/schemas.py
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
@@ -9,35 +11,43 @@ class CashoutDocumentSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# TODO(document-ai): Every field below is a placeholder so the pipeline runs
+# end to end. The real observable fields and monetary conventions per document
+# type have NOT been implemented yet — replace them before trusting extracted
+# data.
+
+
 class TouchBistroServerShiftReportData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the observable fields and monetary conventions.
-    pass
+    net_sales: float | None = None
+    total_tips: float | None = None
+    cash_owed: float | None = None
 
 
 class PaystoneTerminalReportData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the observable fields and monetary conventions.
-    pass
+    card_total: float | None = None
+    tip_total: float | None = None
+    transaction_count: int | None = None
 
 
 class PaymentReceiptData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the observable fields and monetary conventions.
-    pass
+    amount: float | None = None
+    tip_amount: float | None = None
+    payment_method: str | None = None
 
 
 class DailyTipOutSheetData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the observable fields and monetary conventions.
-    pass
+    tip_out_total: float | None = None
+    support_staff_share: float | None = None
 
 
 class DailyCashSummaryData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the observable fields and monetary conventions.
-    pass
+    opening_float: float | None = None
+    cash_deposits: float | None = None
+    closing_float: float | None = None
 
 
 class ManualNoteData(CashoutDocumentSchema):
-    # TODO(document-ai): Define the supported note fields without accepting
-    # unconstrained arbitrary JSON.
-    pass
+    note: str | None = None
 
 
 __all__ = [

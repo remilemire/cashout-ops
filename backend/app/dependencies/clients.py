@@ -1,14 +1,19 @@
+# backend/app/dependencies/clients.py
+
 from __future__ import annotations
 
 from fastapi import Request
 
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.integrations.storage import DocumentStorageClient
 
 
 def get_cashout_document_processor(request: Request) -> CashoutDocumentProcessor:
-    # TODO(document-ai): Return the application-scoped processor after the
-    # lifespan owns construction and cleanup of AI and storage clients.
-    raise NotImplementedError
+    return request.app.state.cashout_document_processor
 
 
-__all__ = ["get_cashout_document_processor"]
+def get_document_storage(request: Request) -> DocumentStorageClient:
+    return request.app.state.document_storage
+
+
+__all__ = ["get_cashout_document_processor", "get_document_storage"]

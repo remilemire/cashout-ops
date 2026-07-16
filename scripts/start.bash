@@ -6,4 +6,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/../backend"
 
-uv run gunicorn -k uvicorn.workers.UvicornWorker app:app --bind 0.0.0.0:$PORT
+uv run gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT

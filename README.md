@@ -1,10 +1,10 @@
 # Whiskey District Cashout Operations
 
-Internal operations tool that replaces Whiskey District's paper-based end-of-shift cashout process with a digital workflow: OCR-extracted document data, structured storage in Postgres, and management-side review and reporting.
+Internal operations tool that replaces Whiskey District's paper-based end-of-shift cashout process with a digital workflow: AI-extracted document data, structured storage in Postgres, and management-side review and reporting.
 
 Live deployment: <https://cashout-ops.onrender.com>
 
-> **Status:** early scaffold. Authentication, error handling, the build/deploy pipeline, and most cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes) are in place. The domain layer (shifts, cashout submissions, OCR pipeline, admin views, exports) is stubbed and tracked in the [Planned scope](#planned-scope) section below.
+> **Status:** early build. Authentication, error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the shift + cashout domain, and the AI document-extraction pipeline are implemented and tested. The per-document extraction schemas still hold placeholder fields, and the admin/reporting views and frontend are stubbed — tracked in the [Planned scope](#planned-scope) section below.
 
 ---
 
@@ -33,7 +33,7 @@ Live deployment: <https://cashout-ops.onrender.com>
 
 The current end-of-day cashout process at Whiskey District is heavily manual. Staff reconcile information by hand across paper cashout sheets, debit/credit terminal reports, customer receipts, and TouchBistro shift reports. Management later re-transcribes the same data into spreadsheets. The result is repetitive entry, transcription errors, and discrepancies that aren't noticed until days later.
 
-This project replaces that flow with a single pipeline: photograph documents, run OCR, verify the extracted values, and store everything in Postgres as the source of truth. Spreadsheets continue to be the reporting surface for management via Power Query against the database.
+This project replaces that flow with a single pipeline: photograph documents, have an AI model classify each one and extract its structured data, verify the extracted values, and store everything in Postgres as the source of truth. Spreadsheets continue to be the reporting surface for management via Power Query against the database.
 
 The longer-term goal is to grow this into a broader internal operations platform for the restaurant.
 
@@ -41,7 +41,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 
 | Layer       | Choice                                                  |
 | ----------- | ------------------------------------------------------- |
-| Backend     | FastAPI 0.136, Python 3.12+                             |
+| Backend     | FastAPI 0.136, Python 3.13+                             |
 | ORM         | SQLAlchemy 2.0 (async) + Alembic                        |
 | DB driver   | `psycopg` 3 (binary)                                    |
 | Database    | PostgreSQL 18                                           |
@@ -51,7 +51,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Styling     | Tailwind CSS v4                                         |
 | Lint/format | Ruff (Python), ESLint + Prettier (TS/Vue)               |
 | Prod server | Gunicorn + Uvicorn workers                              |
-| OCR         | Google Cloud Vision *(planned, not yet integrated)*     |
+| Doc AI      | Anthropic / OpenAI / Gemini (vision + structured output) |
 | Hosting     | Render                                                  |
 
 ## What works today
@@ -63,7 +63,9 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
-- Single Alembic migration scaffolding the `users`, `sessions`, `shifts`, `cashout_*`, and `cashout_ocr_results` tables (currently `id` + `created_at` only)
+- Fully-migrated schema: `users`, `sessions`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Cashout domain (create submission, upload document, AI extract, process, review, complete) with a pytest suite over a throwaway Postgres
+- AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - Vue 3 + Pinia + Vue Router shell with a single placeholder `HomeView`
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
 - Render deploy hooks: `backend/scripts/build.bash`, `pre-deploy.bash`, `start.bash`
@@ -72,13 +74,9 @@ The longer-term goal is to grow this into a broader internal operations platform
 
 These are designed but not yet implemented in code. Tracked here so the gap between scaffold and intent is explicit.
 
-**Domain models** — `User`, `Session`, `Shift`, `CashoutSubmission`, `CashoutDocument`, `CashoutData`, `CashoutCorrection`, `OcrResult` all exist as `__tablename__`-only stubs; columns and relationships still need to be added and migrated.
+**Extraction schemas** — the per-document data models (`features/cashout/extraction/schemas.py`) currently hold placeholder fields so the pipeline runs end to end. The real observable fields per document type, deterministic post-extraction validation, and cross-document reconciliation still need to be defined.
 
-**Admin user provisioning** — there is no user-creation endpoint yet. The plan is an admin-only route; the env var `ADMIN_EMAIL` already exists so the first user matching it can be promoted to `admin` on creation (see [services/users.py:31](backend/app/services/users.py#L31)).
-
-**Cashier flow** — start/end shift, upload documents (camera, drag-and-drop, paste, file picker), review extracted fields, submit.
-
-**OCR pipeline** — Google Cloud Vision document text detection, with original images retained alongside extracted data for audit and reprocessing.
+**Frontend cashier flow** — create a cashout, upload documents (camera, drag-and-drop, paste, file picker), review extracted fields, submit. The backend endpoints exist; the Vue UI is minimal.
 
 **Admin flow** — historical views, filtering by date range and server, editing submitted data, discrepancy investigation.
 
@@ -86,28 +84,31 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ## Project structure
 
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/lib`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
+
 ```
 .
 ├── compose.yaml                       # Postgres 18 for local dev
 ├── setup.bash                         # One-shot local bootstrap
 ├── backend/
-│   ├── main.py                        # uvicorn entrypoint (dev)
-│   ├── alembic.ini                    # Alembic config (URL injected from env)
-│   ├── alembic/
-│   │   ├── env.py                     # Async migrations, reads DATABASE_URL
-│   │   └── versions/                  # Migration scripts
-│   ├── pyproject.toml                 # Deps + ruff config
-│   ├── scripts/                       # Render build/pre-deploy/start hooks
+│   ├── alembic.ini                    # Alembic config (script_location = migrations/)
+│   ├── migrations/                    # Async migrations (env.py reads DATABASE_URL) + versions/
+│   ├── pyproject.toml                 # Deps (uv) + ruff + pytest config
+│   ├── Makefile                       # uv-based dev tasks (run/migrate/format/lint/test)
+│   ├── tests/                         # pytest suite (testcontainers Postgres)
 │   ├── static/                        # Built frontend assets (served by FastAPI)
 │   └── app/
-│       ├── __init__.py                # create_app(), SPA fallback, session middleware
-│       ├── core/                      # Settings, DB session dep, lifespan
-│       ├── api/                       # Routers (currently: auth)
-│       ├── services/                  # Business logic (currently: users, sessions)
-│       ├── models/                    # SQLAlchemy ORM classes
-│       ├── schemas/                   # Pydantic request/response models
-│       ├── utils/                     # cookies, csrf, passwords, casing, transactions
-│       └── errors/                    # Domain errors, handlers, OpenAPI shapes
+│       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
+│       ├── lifespan.py                # composition root: DB engine + AI/storage clients on app.state
+│       ├── core/                      # config, cookies, db/ (Base, Entity, registry), schemas
+│       ├── lib/                       # pure helpers: casing, crypto, documents
+│       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients
+│       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
+│       ├── integrations/              # ai/ (AIClient + AnthropicAIClient), storage/
+│       ├── documents/                 # DocumentAIClient (generic classify + extract)
+│       ├── features/                  # auth, sessions, users, cashout (model/service/router/schemas)
+│       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields)
+│       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
     ├── vite.config.mts                # outDir → ../backend/static
@@ -118,7 +119,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
         ├── main.ts                    # Pinia + Router bootstrap
         ├── App.vue
         ├── router.ts
-        ├── api/apiClient.ts           # (empty — to be implemented)
+        ├── api/apiClient.ts           # (minimal — to be implemented)
         └── views/HomeView.vue
 ```
 
@@ -126,7 +127,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.13+
 - Node.js (matching `@types/node` 25.x is fine)
 - Docker (for the Postgres container)
 
@@ -146,18 +147,17 @@ A `setup.bash` script at the repo root automates most of the steps below. It wil
 
 ### Manual setup
 
+Backend tooling is [uv](https://docs.astral.sh/uv/), driven through the backend `Makefile`.
+
 ```bash
 # 1. Backend
 cd backend
-cp .env.example .env                   # then edit SECRET_KEY and ADMIN_EMAIL
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e ".[dev]"
+cp .env.example .env                   # then set SECRET_KEY, ADMIN_EMAIL, and the selected provider's AI key
+make install                           # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
 docker compose -f ../compose.yaml up -d
-alembic upgrade head
+make migrate                           # uv run alembic upgrade head
 
 # 3. Frontend
 cd ../frontend
@@ -169,14 +169,18 @@ npm run build                          # outputs into ../backend/static/
 
 All backend variables are loaded from `backend/.env` (see `backend/.env.example`).
 
-| Variable        | Required | Default                                                         | Notes                                                                                                |
-| --------------- | -------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `ENVIRONMENT`   | no       | `production`                                                    | `production` or `development`. Drives `DEBUG`, secure-cookie flag, and uvicorn auto-reload.          |
-| `SECRET_KEY`    | yes\*    | random per-process                                              | Signs the Starlette session middleware. Must be set and stable in any deployed environment.          |
-| `DATABASE_URL`  | yes      | `postgresql+psycopg://postgres:dev@localhost:5432/cashout_ops`  | Async SQLAlchemy URL. Used by both the app and Alembic.                                              |
-| `ADMIN_EMAIL`   | no       | `admin@test.com`                                                | When a user is created with this email, they are promoted to `admin` (see [services/users.py](backend/app/services/users.py)). |
-
-\* Falls back to a random per-process secret if unset, which invalidates all sessions on restart — fine for ad-hoc local use, not for anything deployed.
+| Variable              | Required | Default                                                        | Notes                                                                                                |
+| --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
+| `SECRET_KEY`          | yes      | —                                                              | Signs the Starlette session middleware. The app fails to start if unset.                             |
+| `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
+| `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
+| `AI_MODEL`            | no       | `claude-opus-4-8`                                              | Model used for classification + extraction; set to one the selected provider serves.                 |
+| `AI_MAX_TOKENS`       | no       | `16000`                                                        | Max output tokens per AI request.                                                                    |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the selected `AI_PROVIDER` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
+| `DOCUMENT_STORAGE_DIR`| no       | `storage/documents`                                            | Where uploaded documents are written by the local storage client.                                    |
+| `SESSION_TTL_DAYS`    | no       | `7`                                                            | Session lifetime; also the `session_token` cookie max-age.                                           |
+| `ADMIN_EMAIL`         | no       | `admin@test.com`                                               | A user registering with this email is promoted to `admin` (see [features/auth/service.py](backend/app/features/auth/service.py)). |
 
 The frontend currently reads no environment variables.
 
@@ -190,25 +194,24 @@ Local Postgres is provisioned by `compose.yaml`:
 - Port: `5432`
 - Named volume: `postgres-data`
 
-Alembic reads `DATABASE_URL` from the environment (see [alembic/env.py](backend/alembic/env.py)) and targets `app.models.Base.metadata`.
+Alembic reads `DATABASE_URL` from the environment (see [migrations/env.py](backend/migrations/env.py)) and targets `app.core.db.registry.metadata` — a module that imports every ORM model so autogenerate sees the full schema. Add new models to that registry.
 
 ```bash
 cd backend
-alembic upgrade head                    # apply
-alembic revision --autogenerate -m "…"  # create new revision
-alembic downgrade -1                    # revert one
+make migrate                            # uv run alembic upgrade head
+make revision MESSAGE="…"               # autogenerate a new revision
+uv run alembic downgrade -1             # revert one
 ```
 
 ## Running the app
 
 ### Development
 
-In one terminal — backend (uvicorn with reload, port `5001`):
+In one terminal — backend (uvicorn with reload, port `8000`):
 
 ```bash
 cd backend
-source .venv/bin/activate
-python main.py
+make run                                # uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 In another terminal — frontend (Vite dev server, HMR):
@@ -218,30 +221,32 @@ cd frontend
 npm run dev
 ```
 
-Vite's default port is `5173`. The dev server serves the SPA directly; the backend is reachable separately at `http://127.0.0.1:5001`. (There is no proxy configured in `vite.config.mts` yet — wiring API calls during dev will need either a Vite proxy or absolute URLs in the API client.)
+Vite's default port is `5173`. The dev server serves the SPA directly; the backend is reachable separately at `http://127.0.0.1:8000`. (There is no proxy configured in `vite.config.mts` yet — wiring API calls during dev will need either a Vite proxy or absolute URLs in the API client.)
 
 ### Production-style (built SPA served by FastAPI)
 
 ```bash
 cd frontend && npm run build            # writes into ../backend/static/
-cd ../backend && python main.py         # FastAPI serves /assets/* and the SPA fallback
+cd ../backend && make run               # FastAPI serves /assets/* and the SPA fallback
 ```
 
 ## Architecture notes
 
-**Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/\_\_init\_\_.py:32-36](backend/app/__init__.py#L32-L36)).
+**Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** Engine and `async_sessionmaker` are created in the lifespan handler and attached to `app.state`; the per-request `get_db` dependency yields an `AsyncSession` from that factory ([core/lifespan.py](backend/app/core/lifespan.py), [core/db.py](backend/app/core/db.py)).
+**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it creates the async engine + `async_sessionmaker` and the document-AI clients, attaching them to `app.state`. The per-request `get_db` dependency ([app/dependencies/db.py](backend/app/dependencies/db.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+
+**AI document pipeline.** Uploaded documents are read directly by Claude (vision) — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented by `AnthropicAIClient` (Messages API + structured output) and a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage. See [CLAUDE.md](CLAUDE.md#document-extraction-pipeline) for the full contract.
 
 **Settings.** `Settings(BaseSettings)` reads `.env`. `DEBUG` is a computed field derived from `ENVIRONMENT`.
 
 ## Authentication and sessions
 
-- Login (`POST /api/auth/login`, see caveat in [Conventions](#conventions)) verifies bcrypt password, creates a `Session` row with an opaque random token (`secrets.token_urlsafe(32)`), and stores **only the SHA-256 hash** of the token in the DB.
+- Register (`POST /api/auth/register`) and login (`POST /api/auth/login`) verify/create the user, then create a `Session` row with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token in the DB.
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
-- A `csrf_token` cookie (non-HTTP-only) is set on login; mutating requests under `/api/*` must echo it back via the `X-CSRF-Token` header. Enforced as a router-level dependency in [api/\_\_init\_\_.py](backend/app/api/__init__.py).
+- A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` / `get_current_user` / `require_admin` dependencies from [app/dependencies/](backend/app/dependencies/).
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
-- Session TTL: 12h by default, 7d when `remember=true`.
+- Session TTL is `SESSION_TTL_DAYS` (default 7). There is no "remember me".
 - Logout clears both cookies and deletes the corresponding session row.
 
 ## Error contract
@@ -250,60 +255,67 @@ All errors come back as a stable JSON shape so the frontend can render them unif
 
 ```json
 {
-  "type": "unprocessable",
+  "error": "Unprocessable Entity",
+  "code": "UNPROCESSABLE",
   "message": "There was a problem with the submission.",
-  "details": [
-    { "field": "email", "code": "missing_field", "message": "This field is required." }
+  "errors": [
+    { "rule": "MISSING_FIELD", "detail": "This field is required.", "path": ["email"] }
   ]
 }
 ```
 
-- `type` is a string-literal discriminator (`server_error`, `bad_request`, `unauthenticated`, `forbidden`, `not_found`, `conflict`, `unprocessable`) and is registered in OpenAPI for every endpoint ([errors/openapi.py](backend/app/errors/openapi.py)).
-- Pydantic validation errors are mapped to a fixed `UnprocessableCode` enum with human-readable, context-aware messages ([errors/translators.py](backend/app/errors/translators.py), [errors/messages.py](backend/app/errors/messages.py)).
-- `IntegrityError` is mapped to `ConflictError` by SQLSTATE in [utils/transactions.py](backend/app/utils/transactions.py).
-- Uncaught exceptions are funneled to a generic `ServerErrorResponse` — no stack traces are leaked.
+- `code` is a `SCREAMING_CASE` `ErrorCode` discriminator (`SERVER_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `ALREADY_EXISTS`, `IN_USE`, `INVALID_STATE`, `UNPROCESSABLE`); `error` is its human name. The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its HTTP status + default message, and the shapes are registered in OpenAPI ([errors/openapi.py](backend/app/errors/openapi.py)).
+- `errors` is present only for validation failures (`UNPROCESSABLE`): one entry per field with a `ValidationRule`, a human `detail`, and a `path` array. Pydantic errors are translated in [errors/translators.py](backend/app/errors/translators.py).
+- `IntegrityError` is auto-mapped by Postgres SQLSTATE (unique → `ALREADY_EXISTS`, FK → `IN_USE`, check/not-null → `UNPROCESSABLE`) in [errors/handlers.py](backend/app/errors/handlers.py).
+- Uncaught exceptions are funneled to a generic `ServerError` — no stack traces are leaked.
 
 ## API surface
 
-Currently implemented under the `/api` prefix:
+Implemented under the `/api` prefix:
 
-| Method | Path                | Auth         | Notes                                                  |
-| ------ | ------------------- | ------------ | ------------------------------------------------------ |
-| GET\*  | `/api/auth/login`   | none         | Sets `session_token` and `csrf_token` cookies on success. |
-| POST   | `/api/auth/logout`  | session cookie | Clears both cookies and deletes the session row.       |
+| Method | Path                                          | Auth            | Notes                                                       |
+| ------ | --------------------------------------------- | --------------- | ----------------------------------------------------------- |
+| POST   | `/api/auth/register`                          | none            | Creates a user, sets `session_token` + `csrf_token` cookies. |
+| POST   | `/api/auth/login`                             | none            | Sets `session_token` + `csrf_token` cookies on success.     |
+| POST   | `/api/auth/logout`                            | session + CSRF  | Clears both cookies and deletes the session row.            |
+| GET    | `/api/users/me`                               | session         | The current user.                                           |
+| POST   | `/api/cashouts`                               | session + CSRF  | Create a cashout submission (any time — not shift-locked).  |
+| GET    | `/api/cashouts/{id}`                          | owner or admin  | Submission detail with documents + reconciled data.         |
+| POST   | `/api/cashouts/{id}/documents`                | session + CSRF  | Upload a document (multipart file).                         |
+| POST   | `/api/cashouts/documents/{id}/extract`        | session + CSRF  | Run AI classification + extraction on a document.           |
+| POST   | `/api/cashouts/{id}/process`                  | session + CSRF  | Reconcile extracted data → `UNDER_REVIEW` (or `FAILED`).    |
+| PATCH  | `/api/cashouts/data/{id}`                     | admin + CSRF    | Review/correct the extracted data.                          |
+| POST   | `/api/cashouts/{id}/complete`                 | admin + CSRF    | Close out a reviewed submission → `COMPLETED`.              |
 
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
-
-\* See [Conventions](#conventions) — the login handler is registered as `GET` but reads a JSON body; it should be `POST`.
 
 ## Deployment
 
 The app is deployed to Render at <https://cashout-ops.onrender.com>.
 
-The three scripts under `backend/scripts/` are the Render deploy hooks:
+The three scripts under `scripts/` (repo root) are the Render deploy hooks:
 
-- `build.bash` — installs Python deps, then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
-- `pre-deploy.bash` — runs `alembic upgrade head`.
-- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app:app --bind 0.0.0.0:$PORT`.
+- `build.bash` — backend `make install` (uv sync), then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
+- `pre-deploy.bash` — backend `make migrate` (`alembic upgrade head`).
+- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT`.
 
-The Render service must have `DATABASE_URL`, `SECRET_KEY`, `ADMIN_EMAIL`, and `ENVIRONMENT=production` configured.
+The Render service must have `DATABASE_URL`, `SECRET_KEY`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), and `ADMIN_EMAIL` configured (and `ENVIRONMENT=prod`, which is also the default).
 
 ## Conventions
 
 - **API casing.** Inbound and outbound JSON is `camelCase`; Python is `snake_case`. Conversion is handled by `BaseIn`/`BaseOut` via `alias_generator=snake_to_camel`. `BaseIn` is `extra="forbid"`; unknown fields surface as `extra_field` validation errors.
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
-- **Python typing.** `pyproject.toml` requires Python 3.12+. The repo is configured for Pylance strict mode (see [.vscode/settings.json](.vscode/settings.json)).
+- **Python typing.** `pyproject.toml` requires Python 3.13+. The repo is configured for Pylance strict mode (see [.vscode/settings.json](.vscode/settings.json)).
 - **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/Vue (the Tailwind plugin sorts classes).
+- **Tests.** `make test` (pytest) runs against a real Postgres — `TEST_DATABASE_URL` if set, otherwise a throwaway container via testcontainers (needs Docker running). The AI provider and object store are faked; the rest of the extraction stack runs for real.
 
-### Known rough edges
+### Known incomplete work
 
-These are real issues in the current code worth fixing before relying on the corresponding paths:
+The backend domain and AI pipeline are implemented and tested. What's left:
 
-- `POST /api/auth/login` is registered as `@router.get(...)` in [api/auth.py:20](backend/app/api/auth.py#L20) while still reading a JSON body.
-- `commit_or_raise` / `flush_or_raise` in [utils/transactions.py](backend/app/utils/transactions.py) call `db.commit()` / `db.flush()` / `db.rollback()` without awaiting them — they return coroutines that are silently dropped.
-- `backend/.env` is checked into the repo (predates the `.gitignore` rule); `git rm --cached backend/.env` will untrack it without deleting the local file.
-- Built frontend assets under `backend/static/` are tracked in git despite `static/` being in `.gitignore`.
-- `pytest` is declared in main dependencies rather than `[project.optional-dependencies].dev`. No tests exist yet.
+- **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
+- **Local document storage is not durable on Render** (ephemeral disk) — swap in an object-store implementation of `DocumentStorageClient` before relying on uploaded files surviving a deploy.
+- **The frontend is minimal** — the backend endpoints exist, but the Vue UI (upload flow, review, admin views) is a placeholder.
 
 ## License
 
