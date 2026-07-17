@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import httpx
 import pytest
@@ -25,7 +26,10 @@ from app.integrations.ai import (
     AIProvider,
     compose_instructions,
 )
-from app.integrations.ai.anthropic import AnthropicAIClient, _to_document_block
+from app.integrations.ai.anthropic import (
+    AnthropicAIClient,
+    _to_document_block,  # pyright: ignore[reportPrivateUsage]
+)
 from app.lib.documents import DocumentContent, DocumentContentType
 
 from .fakes import FakeAIClient, FakeDocumentStorage
@@ -197,7 +201,7 @@ def test_to_document_block_maps_pdf() -> None:
     )
 
     assert block["type"] == "document"
-    assert block["source"]["media_type"] == "application/pdf"
+    assert cast(dict[str, object], block["source"])["media_type"] == "application/pdf"
 
 
 def test_to_document_block_maps_image() -> None:
@@ -206,7 +210,7 @@ def test_to_document_block_maps_image() -> None:
     )
 
     assert block["type"] == "image"
-    assert block["source"]["media_type"] == "image/png"
+    assert cast(dict[str, object], block["source"])["media_type"] == "image/png"
 
 
 async def test_anthropic_client_always_sends_base_instructions() -> None:

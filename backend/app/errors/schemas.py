@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from app.core.schemas import BaseOut
 
 from .catalog import VALIDATION_DETAILS
-from .types import ErrorCode, ErrorStatus, UnprocessableContext, ValidationRule
+from .types import ErrorCode, UnprocessableContext, ValidationRule
 
 # ================================
 # ------------ Details -----------
@@ -56,5 +56,5 @@ class ErrorBody(BaseOut):
 
 @dataclass(frozen=True)
 class ErrorResponse:
-    status: ErrorStatus
+    status: int
     body: ErrorBody

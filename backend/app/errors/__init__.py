@@ -16,13 +16,15 @@ from .domain import (
     UnprocessableError,
 )
 from .handlers import init_error_handlers
-from .openapi import ERROR_RESPONSES
+from .openapi import error_responses
+from .types import ErrorCode
 
 __all__ = [
     "AlreadyExistsError",
     "BadRequestError",
     "ConflictError",
     "DomainError",
+    "ErrorCode",
     "ForbiddenError",
     "InUseError",
     "InvalidStateError",
@@ -30,6 +32,6 @@ __all__ = [
     "ServerError",
     "UnauthorizedError",
     "UnprocessableError",
+    "error_responses",
     "init_error_handlers",
-    "ERROR_RESPONSES",
 ]

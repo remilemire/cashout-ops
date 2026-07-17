@@ -23,7 +23,7 @@ async def test_register_creates_user_and_sets_cookies(client: AsyncClient) -> No
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["email"] == "new@test.com"
     assert body["role"] == UserRole.CASHIER.value
@@ -116,7 +116,7 @@ async def test_logout_clears_session_and_cookies(
 
     response = await client.post("/api/auth/logout", headers=csrf_headers(client))
 
-    assert response.status_code == 200
+    assert response.status_code == 204
     # Cookies cleared, and the session row is deleted.
     assert not client.cookies.get("session_token")
     assert (await db_session.execute(select(Session))).scalars().all() == []

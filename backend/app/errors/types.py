@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from enum import IntEnum, StrEnum
+from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
-
-from fastapi import status
 
 # ================================
 # ------------ Codes -------------
@@ -43,21 +41,6 @@ class ValidationRule(StrEnum):
 
 
 # ================================
-# ------------ Status ------------
-# ================================
-
-
-class ErrorStatus(IntEnum):
-    HTTP_500_SERVER_ERROR = status.HTTP_500_INTERNAL_SERVER_ERROR
-    HTTP_422_UNPROCESSABLE = status.HTTP_422_UNPROCESSABLE_CONTENT
-    HTTP_409_CONFLICT = status.HTTP_409_CONFLICT
-    HTTP_404_NOT_FOUND = status.HTTP_404_NOT_FOUND
-    HTTP_403_FORBIDDEN = status.HTTP_403_FORBIDDEN
-    HTTP_401_UNAUTHORIZED = status.HTTP_401_UNAUTHORIZED
-    HTTP_400_BAD_REQUEST = status.HTTP_400_BAD_REQUEST
-
-
-# ================================
 # ----------- Context ------------
 # ================================
 
@@ -77,7 +60,8 @@ class UnprocessableContext(TypedDict, total=False):
 
 
 class CatalogEntry(TypedDict):
-    status: ErrorStatus
+    error: str
+    status: int
     message: str
     details: NotRequired[Mapping[ValidationRule, Callable[[UnprocessableContext], str]]]
 

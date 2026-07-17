@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -28,7 +29,7 @@ class CashoutSubmission(Entity):
         server_default=CashoutSubmissionStatus.PROCESSING.value,
     )
 
-    submitted_by_user_id: Mapped[int] = mapped_column(
+    submitted_by_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"), nullable=False, index=True
     )
     submitted_at: Mapped[datetime] = mapped_column(

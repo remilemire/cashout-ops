@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from passlib.context import CryptContext
-
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 
 def hash_password(password: str) -> str:
-    return password_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    return password_context.verify(plain_password, password_hash)
+    return bcrypt.checkpw(plain_password.encode(), password_hash.encode())

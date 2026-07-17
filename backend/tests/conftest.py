@@ -23,7 +23,6 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 # Required settings must exist before anything imports app.core.config. Set them
 # here so the suite runs without a .env (e.g. in CI); os.environ wins over .env.
 os.environ.setdefault("ENVIRONMENT", "dev")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("ADMIN_EMAIL", "admin@test.com")
@@ -32,6 +31,7 @@ from app.core.db import registry  # noqa: E402
 from app.dependencies import (  # noqa: E402
     get_cashout_document_processor,
     get_db,
+    get_db_sessionmaker,
     get_document_storage,
 )
 from app.documents import DocumentAIClient  # noqa: E402
@@ -144,6 +144,8 @@ async def app(
                 raise
 
     fastapi_app.dependency_overrides[get_db] = _get_db
+    # Background tasks (document extraction) build their own session from this.
+    fastapi_app.dependency_overrides[get_db_sessionmaker] = lambda: db_sessionmaker
     fastapi_app.dependency_overrides[get_cashout_document_processor] = lambda: processor
     fastapi_app.dependency_overrides[get_document_storage] = lambda: storage
     try:

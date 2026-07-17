@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -24,7 +25,7 @@ class Session(Entity):
         DateTime(timezone=True), nullable=False
     )
 
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user: Mapped[User] = relationship(back_populates="sessions")

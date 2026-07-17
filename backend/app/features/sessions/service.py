@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +34,7 @@ async def find_valid_with_user(db: AsyncSession, *, token: str) -> Session | Non
     return session
 
 
-def create(db: AsyncSession, *, user_id: int) -> SessionWithToken:
+def create(db: AsyncSession, *, user_id: UUID) -> SessionWithToken:
     session_token = generate_secret_token()
     session_ttl = timedelta(days=settings.SESSION_TTL_DAYS)
 

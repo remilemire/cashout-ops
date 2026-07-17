@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -39,5 +40,5 @@ class BaseIn(BaseModel):
 
 
 class EntityOut(BaseOut):
-    id: int
+    id: uuid.UUID
     created_at: UtcDateTime

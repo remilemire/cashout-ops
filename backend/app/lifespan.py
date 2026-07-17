@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -64,9 +63,7 @@ def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
         gemini = genai.Client(api_key=_require_key(settings.GEMINI_API_KEY, "GEMINI"))
 
         async def close_gemini() -> None:
-            result = gemini.close()
-            if inspect.isawaitable(result):
-                await result
+            gemini.close()
 
         return (
             GeminiAIClient(gemini, model=model, max_tokens=max_tokens),

@@ -27,7 +27,7 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[CashoutDocumentType, type[CashoutDocumentSchem
 }
 
 # Classifications without a schema (UNKNOWN) are not domain errors: the
-# processor returns them with no data and the cashout service persists a
-# failed, reviewable analysis instead.
+# processor returns them with no data and the extraction job marks the
+# analysis FAILED with the UNCLASSIFIED error code for the cashier to retry.
 
 __all__ = ["CASHOUT_DOCUMENT_SCHEMAS"]

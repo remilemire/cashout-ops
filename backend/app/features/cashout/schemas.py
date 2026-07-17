@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import uuid
+from decimal import Decimal
 from typing import Any
 
 from app.core.schemas import BaseIn, EntityOut, UtcDateTime
+from app.features.users.schemas import UserOut
 from app.integrations.ai import AIProvider
 from app.lib.documents import DocumentContentType
 
@@ -13,18 +16,12 @@ from .types import CashoutDocumentType, CashoutSubmissionStatus, DocumentAnalysi
 
 class CashoutSubmissionOut(EntityOut):
     status: CashoutSubmissionStatus
-    submitted_by_user_id: int
+    submitted_by_user_id: uuid.UUID
     submitted_at: UtcDateTime
 
 
-class CashoutDocumentOut(EntityOut):
-    document_type: CashoutDocumentType
-    content_type: DocumentContentType
-    original_filename: str
-    checksum_sha256: str
-    uploaded_by_user_id: int
-    uploaded_at: UtcDateTime
-    cashout_submission_id: int
+class CashoutSubmissionListOut(CashoutSubmissionOut):
+    submitted_by: UserOut
 
 
 class CashoutDocumentAnalysisOut(EntityOut):
@@ -40,21 +37,38 @@ class CashoutDocumentAnalysisOut(EntityOut):
     error_code: str | None = None
     error_message: str | None = None
     completed_at: UtcDateTime | None = None
-    cashout_document_id: int
+    verified_data_json: dict[str, Any] | None = None
+    verified_by_user_id: uuid.UUID | None = None
+    verified_at: UtcDateTime | None = None
+    cashout_document_id: uuid.UUID
+
+
+class CashoutDocumentOut(EntityOut):
+    document_type: CashoutDocumentType
+    content_type: DocumentContentType
+    original_filename: str
+    checksum_sha256: str
+    uploaded_by_user_id: uuid.UUID
+    uploaded_at: UtcDateTime
+    cashout_submission_id: uuid.UUID
+    analysis: CashoutDocumentAnalysisOut | None = None
 
 
 class CashoutDataOut(EntityOut):
-    extracted_data_json: dict[str, Any] | None = None
-    reviewed_data_json: dict[str, Any] | None = None
-    reviewed_by_user_id: int | None = None
-    reviewed_at: UtcDateTime | None = None
-    submission_id: int
+    # TODO(document-ai): placeholder reconciled fields; see models/data.py.
+    daily_tipout: Decimal | None = None
+    net_total: Decimal | None = None
+    cash_total: Decimal | None = None
+    card_total: Decimal | None = None
+    submission_id: uuid.UUID
 
 
 class CashoutSubmissionDetailOut(CashoutSubmissionOut):
+    submitted_by: UserOut
     documents: list[CashoutDocumentOut]
     data: CashoutDataOut | None = None
 
 
-class CashoutDataReview(BaseIn):
-    reviewed_data: dict[str, Any]
+class CashoutAnalysisVerify(BaseIn):
+    # Corrections to the extracted data; omit (or null) to confirm it as-is.
+    verified_data: dict[str, Any] | None = None

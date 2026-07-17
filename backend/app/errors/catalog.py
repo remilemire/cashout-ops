@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
+from fastapi import status
+
 from .types import (
     ErrorCatalog,
     ErrorCode,
-    ErrorStatus,
     UnprocessableContext,
     ValidationRule,
 )
@@ -65,39 +66,48 @@ VALIDATION_DETAILS: Mapping[ValidationRule, Callable[[UnprocessableContext], str
 
 CATALOG: ErrorCatalog = {
     ErrorCode.SERVER_ERROR: {
-        "status": ErrorStatus.HTTP_500_SERVER_ERROR,
+        "error": "Server Error",
+        "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
         "message": "Something went wrong.",
     },
     ErrorCode.BAD_REQUEST: {
-        "status": ErrorStatus.HTTP_400_BAD_REQUEST,
+        "error": "Bad Request",
+        "status": status.HTTP_400_BAD_REQUEST,
         "message": "The request could not be processed.",
     },
     ErrorCode.UNAUTHORIZED: {
-        "status": ErrorStatus.HTTP_401_UNAUTHORIZED,
+        "error": "Unauthorized",
+        "status": status.HTTP_401_UNAUTHORIZED,
         "message": "Authentication required.",
     },
     ErrorCode.FORBIDDEN: {
-        "status": ErrorStatus.HTTP_403_FORBIDDEN,
+        "error": "Forbidden",
+        "status": status.HTTP_403_FORBIDDEN,
         "message": "You do not have permission to perform this action.",
     },
     ErrorCode.NOT_FOUND: {
-        "status": ErrorStatus.HTTP_404_NOT_FOUND,
+        "error": "Not Found",
+        "status": status.HTTP_404_NOT_FOUND,
         "message": "The requested resource could not be found.",
     },
     ErrorCode.IN_USE: {
-        "status": ErrorStatus.HTTP_409_CONFLICT,
+        "error": "In Use",
+        "status": status.HTTP_409_CONFLICT,
         "message": "Referenced item does not exist or is in use.",
     },
     ErrorCode.ALREADY_EXISTS: {
-        "status": ErrorStatus.HTTP_409_CONFLICT,
+        "error": "Already Exists",
+        "status": status.HTTP_409_CONFLICT,
         "message": "Already exists.",
     },
     ErrorCode.INVALID_STATE: {
-        "status": ErrorStatus.HTTP_409_CONFLICT,
+        "error": "Invalid State",
+        "status": status.HTTP_409_CONFLICT,
         "message": "The resource is not in a valid state for this action.",
     },
     ErrorCode.UNPROCESSABLE: {
-        "status": ErrorStatus.HTTP_422_UNPROCESSABLE,
+        "error": "Unprocessable Entity",
+        "status": status.HTTP_422_UNPROCESSABLE_CONTENT,
         "message": "There was a problem with the submission.",
         "details": VALIDATION_DETAILS,
     },

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -24,7 +24,6 @@ from .domain import (
 )
 from .schemas import ErrorBody, ErrorResponse
 from .translators import translate_integrity_error, translate_validation_error
-from .types import ErrorStatus
 
 
 def init_error_handlers(app: FastAPI) -> None:
@@ -90,13 +89,13 @@ def init_error_handlers(app: FastAPI) -> None:
 
 
 STATUS_TO_ERROR: Mapping[int, type[DomainError]] = {
-    ErrorStatus.HTTP_400_BAD_REQUEST.value: BadRequestError,
-    ErrorStatus.HTTP_401_UNAUTHORIZED.value: UnauthorizedError,
-    ErrorStatus.HTTP_403_FORBIDDEN.value: ForbiddenError,
-    ErrorStatus.HTTP_404_NOT_FOUND.value: NotFoundError,
-    ErrorStatus.HTTP_409_CONFLICT.value: AlreadyExistsError,
-    ErrorStatus.HTTP_422_UNPROCESSABLE.value: UnprocessableError,
-    ErrorStatus.HTTP_500_SERVER_ERROR.value: ServerError,
+    status.HTTP_400_BAD_REQUEST: BadRequestError,
+    status.HTTP_401_UNAUTHORIZED: UnauthorizedError,
+    status.HTTP_403_FORBIDDEN: ForbiddenError,
+    status.HTTP_404_NOT_FOUND: NotFoundError,
+    status.HTTP_409_CONFLICT: AlreadyExistsError,
+    status.HTTP_422_UNPROCESSABLE_CONTENT: UnprocessableError,
+    status.HTTP_500_INTERNAL_SERVER_ERROR: ServerError,
 }
 
 
@@ -125,6 +124,6 @@ def format_error_response(response: ErrorResponse) -> JSONResponse:
     # Error handlers return JSONResponse directly, so there's no router
     # response_model to serialize the body for us — do it here.
     return JSONResponse(
-        status_code=response.status.value,
+        status_code=response.status,
         content=response.body.model_dump(by_alias=True, exclude_none=True, mode="json"),
     )

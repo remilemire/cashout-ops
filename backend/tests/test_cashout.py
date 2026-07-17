@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from httpx import AsyncClient
 
 from app.documents import DocumentAnalysis, DocumentClassification, FieldIssue
@@ -29,20 +31,43 @@ def _configure_manual_note(ai_client: FakeAIClient, note: str = "cash $100") -> 
     )
 
 
-async def _create_submission(client: AsyncClient) -> int:
-    response = await client.post("/api/cashouts", headers=csrf_headers(client))
-    assert response.status_code == 200, response.text
+async def _create_submission(client: AsyncClient) -> str:
+    response = await client.post(
+        "/api/cashout/submissions", headers=csrf_headers(client)
+    )
+    assert response.status_code == 201, response.text
     return response.json()["id"]
 
 
-async def _upload_pdf(client: AsyncClient, submission_id: int) -> int:
+async def _upload_pdf(client: AsyncClient, submission_id: str) -> dict[str, Any]:
+    """Upload a document; returns the freshly created EXTRACTING analysis."""
     response = await client.post(
-        f"/api/cashouts/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/documents",
         files={"file": PDF},
         headers=csrf_headers(client),
     )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def _poll_analysis(client: AsyncClient, analysis_id: str) -> dict[str, Any]:
+    """One poll is deterministic here: the ASGI transport awaits the whole
+    request lifecycle, including the post-commit extraction job."""
+    response = await client.get(f"/api/cashout/analyses/{analysis_id}")
     assert response.status_code == 200, response.text
-    return response.json()["id"]
+    return response.json()
+
+
+async def _verify(
+    client: AsyncClient, analysis_id: str, body: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    response = await client.post(
+        f"/api/cashout/analyses/{analysis_id}/verify",
+        json=body or {},
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 # ================================
@@ -52,61 +77,133 @@ async def _upload_pdf(client: AsyncClient, submission_id: int) -> int:
 
 async def test_full_cashout_flow(
     cashier_client: AsyncClient,
-    admin_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
     _configure_manual_note(ai_client)
 
     submission_id = await _create_submission(cashier_client)
-    document_id = await _upload_pdf(cashier_client, submission_id)
 
-    # Uploaded documents start UNKNOWN until analyzed.
-    detail = (await cashier_client.get(f"/api/cashouts/{submission_id}")).json()
-    assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
-    assert detail["documents"][0]["documentType"] == CashoutDocumentType.UNKNOWN.value
+    # Upload returns immediately with an EXTRACTING analysis.
+    created = await _upload_pdf(cashier_client, submission_id)
+    assert created["status"] == DocumentAnalysisStatus.EXTRACTING.value
+    assert created["extractedDataJson"] is None
 
-    # Extract: the fake AI classifies + extracts.
-    extract = await cashier_client.post(
-        f"/api/cashouts/documents/{document_id}/extract",
-        headers=csrf_headers(cashier_client),
-    )
-    assert extract.status_code == 200, extract.text
-    analysis = extract.json()
-    assert analysis["status"] == DocumentAnalysisStatus.SUCCEEDED.value
+    # Polling picks up the background extraction's outcome.
+    analysis = await _poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["classification"] == CashoutDocumentType.MANUAL_NOTE.value
     assert analysis["classificationConfidence"] == 0.95
     assert analysis["extractedDataJson"] == {"note": "cash $100"}
     assert analysis["extractionConfidence"] == 0.9
     assert analysis["issues"] == [{"path": "note", "message": "partially legible"}]
 
-    # Process → UNDER_REVIEW with reconciled data.
-    process = await cashier_client.post(
-        f"/api/cashouts/{submission_id}/process",
+    # The detail view embeds each document's analysis.
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
+    document = detail["documents"][0]
+    assert document["documentType"] == CashoutDocumentType.MANUAL_NOTE.value
+    assert document["analysis"]["id"] == analysis["id"]
+
+    # The cashier verifies with a correction.
+    verified = await _verify(
+        cashier_client,
+        analysis["id"],
+        {"verifiedData": {"note": "cash $100 confirmed"}},
+    )
+    assert verified["status"] == DocumentAnalysisStatus.VERIFIED.value
+    assert verified["verifiedDataJson"] == {"note": "cash $100 confirmed"}
+    assert verified["verifiedByUserId"] is not None
+    assert verified["verifiedAt"] is not None
+
+    # Completing reconciles the verified analyses into a cashout data row.
+    complete = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
         headers=csrf_headers(cashier_client),
-    )
-    assert process.status_code == 200, process.text
-    assert process.json()["status"] == CashoutSubmissionStatus.UNDER_REVIEW.value
-
-    detail = (await cashier_client.get(f"/api/cashouts/{submission_id}")).json()
-    data_id = detail["data"]["id"]
-    assert detail["data"]["extractedDataJson"] is not None
-
-    # Review is admin-only.
-    review = await admin_client.patch(
-        f"/api/cashouts/data/{data_id}",
-        json={"reviewedData": {"note": "cash $100 confirmed"}},
-        headers=csrf_headers(admin_client),
-    )
-    assert review.status_code == 200, review.text
-    assert review.json()["reviewedDataJson"] == {"note": "cash $100 confirmed"}
-
-    # Complete is admin-only.
-    complete = await admin_client.post(
-        f"/api/cashouts/{submission_id}/complete",
-        headers=csrf_headers(admin_client),
     )
     assert complete.status_code == 200, complete.text
     assert complete.json()["status"] == CashoutSubmissionStatus.COMPLETED.value
+
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["data"] is not None
+    assert detail["data"]["submissionId"] == submission_id
+
+
+async def test_verify_without_corrections_confirms_extraction(
+    cashier_client: AsyncClient, ai_client: FakeAIClient
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+    analysis = await _poll_analysis(cashier_client, created["id"])
+
+    verified = await _verify(cashier_client, analysis["id"])
+
+    assert verified["verifiedDataJson"] == analysis["extractedDataJson"]
+
+
+# ================================
+# --------- Read endpoints -------
+# ================================
+
+
+async def test_list_submissions_scoped_by_role(
+    cashier_client: AsyncClient, admin_client: AsyncClient
+) -> None:
+    mine = await _create_submission(cashier_client)
+    theirs = await _create_submission(admin_client)
+
+    cashier_list = (await cashier_client.get("/api/cashout/submissions")).json()
+    assert [s["id"] for s in cashier_list] == [mine]
+    assert cashier_list[0]["submittedBy"]["email"] == "cashier@test.com"
+
+    admin_list = (await admin_client.get("/api/cashout/submissions")).json()
+    assert {s["id"] for s in admin_list} == {mine, theirs}
+
+
+async def test_document_content_served_to_owner_and_admin(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+    url = f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
+
+    owner = await cashier_client.get(url)
+    assert owner.status_code == 200
+    assert owner.headers["content-type"].startswith("application/pdf")
+    assert owner.content == PDF[1]
+
+    admin = await admin_client.get(url)
+    assert admin.status_code == 200
+
+
+async def test_data_table_is_admin_only(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+    await _verify(cashier_client, created["id"])
+    complete = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(cashier_client),
+    )
+    assert complete.status_code == 200, complete.text
+
+    forbidden = await cashier_client.get("/api/cashout/data")
+    assert forbidden.status_code == 403
+
+    allowed = await admin_client.get("/api/cashout/data")
+    assert allowed.status_code == 200
+    assert [row["submissionId"] for row in allowed.json()] == [submission_id]
 
 
 # ================================
@@ -129,7 +226,7 @@ async def test_upload_rejects_unsupported_content_type(
     submission_id = await _create_submission(cashier_client)
 
     response = await cashier_client.post(
-        f"/api/cashouts/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/documents",
         files={"file": ("notes.txt", b"plain text", "text/plain")},
         headers=csrf_headers(cashier_client),
     )
@@ -138,7 +235,7 @@ async def test_upload_rejects_unsupported_content_type(
     assert response.json()["code"] == "BAD_REQUEST"
 
 
-async def test_extract_persists_failure_on_ai_error(
+async def test_failed_extraction_and_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
@@ -147,43 +244,85 @@ async def test_extract_persists_failure_on_ai_error(
     ai_client.error = AIAnalysisError(AIErrorCode.REFUSED, "declined")
 
     submission_id = await _create_submission(cashier_client)
-    document_id = await _upload_pdf(cashier_client, submission_id)
+    created = await _upload_pdf(cashier_client, submission_id)
 
-    # The endpoint succeeds; the failure is persisted as a reviewable analysis.
-    extract = await cashier_client.post(
-        f"/api/cashouts/documents/{document_id}/extract",
-        headers=csrf_headers(cashier_client),
-    )
-    assert extract.status_code == 200, extract.text
-    analysis = extract.json()
+    # The provider failure is recorded on the analysis as FAILED.
+    analysis = await _poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
     assert analysis["errorCode"] == AIErrorCode.REFUSED.value
 
-
-async def test_process_without_successful_analysis_marks_failed(
-    cashier_client: AsyncClient,
-) -> None:
-    submission_id = await _create_submission(cashier_client)
-    await _upload_pdf(cashier_client, submission_id)  # uploaded but never extracted
-
-    response = await cashier_client.post(
-        f"/api/cashouts/{submission_id}/process",
+    # A FAILED analysis cannot be verified.
+    blocked = await cashier_client.post(
+        f"/api/cashout/analyses/{analysis['id']}/verify",
+        json={},
         headers=csrf_headers(cashier_client),
     )
+    assert blocked.status_code == 409
 
-    assert response.status_code == 200
-    assert response.json()["status"] == CashoutSubmissionStatus.FAILED.value
+    # Retry once the provider recovers.
+    ai_client.error = None
+    _configure_manual_note(ai_client)
+    retry = await cashier_client.post(
+        f"/api/cashout/documents/{analysis['cashoutDocumentId']}/extract",
+        headers=csrf_headers(cashier_client),
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["status"] == DocumentAnalysisStatus.EXTRACTING.value
+
+    analysis = await _poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert analysis["errorCode"] is None
 
 
-async def test_complete_requires_admin(
+async def test_verify_twice_conflicts(
     cashier_client: AsyncClient, ai_client: FakeAIClient
 ) -> None:
     _configure_manual_note(ai_client)
     submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+    await _verify(cashier_client, created["id"])
 
     response = await cashier_client.post(
-        f"/api/cashouts/{submission_id}/complete",
+        f"/api/cashout/analyses/{created['id']}/verify",
+        json={},
         headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_STATE"
+
+
+async def test_complete_requires_every_analysis_verified(
+    cashier_client: AsyncClient, ai_client: FakeAIClient
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    await _upload_pdf(cashier_client, submission_id)  # extracted, never verified
+
+    response = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_STATE"
+
+
+async def test_complete_requires_owner(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+    await _verify(cashier_client, created["id"])
+
+    # Completion is the cashier's action; even an admin cannot close out
+    # someone else's cashout.
+    response = await admin_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(admin_client),
     )
 
     assert response.status_code == 403
@@ -192,19 +331,28 @@ async def test_complete_requires_admin(
 
 async def test_cannot_access_another_users_submission(
     cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
     app: object,
 ) -> None:
     from httpx import ASGITransport
 
+    _configure_manual_note(ai_client)
     submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
 
-    # A second, unrelated cashier.
+    # A second, unrelated cashier can see neither the submission nor poll
+    # its analyses.
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as other:
         from .factories import register
 
         await register(other, email="other@test.com")
-        response = await other.get(f"/api/cashouts/{submission_id}")
+        submission_response = await other.get(
+            f"/api/cashout/submissions/{submission_id}"
+        )
+        analysis_response = await other.get(f"/api/cashout/analyses/{created['id']}")
 
-    assert response.status_code == 403
-    assert response.json()["code"] == "FORBIDDEN"
+    assert submission_response.status_code == 403
+    assert submission_response.json()["code"] == "FORBIDDEN"
+    assert analysis_response.status_code == 403
+    assert analysis_response.json()["code"] == "FORBIDDEN"

@@ -2,44 +2,40 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+import uuid
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import ForeignKey, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity
 
 if TYPE_CHECKING:
-    from app.features.users.model import User
-
     from .submission import CashoutSubmission
 
 
 class CashoutData(Entity):
+    """The reconciled result of a completed cashout.
+
+    Built from the submission's verified document analyses when the cashout is
+    completed.
+    """
+
     __tablename__ = "cashout_data"
 
-    extracted_data_json: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-    reviewed_data_json: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    # TODO(document-ai): placeholder columns. The real reconciled fields depend
+    # on the per-document extraction schemas (still dummy) — replace these once
+    # those are defined, and fill them in service._reconcile.
+    daily_tipout: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    net_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    cash_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    card_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
-    reviewed_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True
-    )
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    submission_id: Mapped[int] = mapped_column(
+    submission_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cashout_submissions.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
         index=True,
     )
     submission: Mapped[CashoutSubmission] = relationship(back_populates="data")
-
-    reviewed_by: Mapped[User | None] = relationship()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +15,8 @@ from app.features.cashout.types import CashoutDocumentType, DocumentAnalysisStat
 from app.integrations.ai import AIProvider
 
 if TYPE_CHECKING:
+    from app.features.users.model import User
+
     from .document import CashoutDocument
 
 
@@ -30,8 +33,8 @@ class CashoutDocumentAnalysis(Entity):
     status: Mapped[DocumentAnalysisStatus] = mapped_column(
         enum_column(DocumentAnalysisStatus, "document_analysis_status"),
         nullable=False,
-        default=DocumentAnalysisStatus.PROCESSING,
-        server_default=DocumentAnalysisStatus.PROCESSING.value,
+        default=DocumentAnalysisStatus.EXTRACTING,
+        server_default=DocumentAnalysisStatus.EXTRACTING.value,
     )
 
     classification: Mapped[CashoutDocumentType | None] = mapped_column(
@@ -58,14 +61,26 @@ class CashoutDocumentAnalysis(Entity):
         DateTime(timezone=True), nullable=True
     )
 
+    # The cashier-confirmed extraction: the extracted data as-is, or with the
+    # corrections they submitted while verifying.
+    verified_data_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    verified_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # One analysis per document: a retry resets this row in place rather than
     # appending an attempt.
-    cashout_document_id: Mapped[int] = mapped_column(
+    cashout_document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cashout_documents.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
     )
-    cashout_document: Mapped[CashoutDocument] = relationship(
-        back_populates="analysis_result"
-    )
+    cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analysis")
+
+    verified_by: Mapped[User | None] = relationship()

@@ -25,9 +25,6 @@ _REFUSAL_FINISH_REASONS = frozenset(
 )
 
 
-# AGENT: I'm getting quite a view vscode pylance errors as indicated by the comments
-
-
 class GeminiAIClient:
     """`AIClient` backed by the Google Gemini API (structured output).
 
@@ -59,7 +56,11 @@ class GeminiAIClient:
         )
 
         try:
-            response = await self._client.aio.models.generate_content(  # Type of "generate_content" is partially unknown
+            # google-genai rebinds its `PartUnion` type alias inside a runtime
+            # `if _is_pillow_image_imported` block, so pyright can't resolve it and
+            # flags generate_content as partially unknown. The call and its typed
+            # result are fine; suppress only that member-type diagnostic.
+            response = await self._client.aio.models.generate_content(  # pyright: ignore[reportUnknownMemberType]
                 model=self.model,
                 contents=_to_contents(content),
                 config=config,
@@ -80,14 +81,10 @@ class GeminiAIClient:
         return parsed
 
 
-def _to_contents(
-    content: AIContent,
-) -> list[
-    types.PartUnionDict
-]:  # Return type, "list[Unknown]", is partially unknown, Type of "PartUnionDict" is unknown
+def _to_contents(content: AIContent) -> list[str | types.Part]:
     if isinstance(content, str):
-        return [content]  # Return type, "list[Unknown]", is partially unknown
-    return [_to_part(content)]  # Return type, "list[Unknown]", is partially unknown
+        return [content]
+    return [_to_part(content)]
 
 
 def _to_part(content: DocumentContent) -> types.Part:
@@ -104,11 +101,12 @@ def _raise_if_refused(response: types.GenerateContentResponse) -> None:
         )
 
     for candidate in response.candidates or []:
-        if candidate.finish_reason in _REFUSAL_FINISH_REASONS:
+        finish_reason = candidate.finish_reason
+        if finish_reason is not None and finish_reason in _REFUSAL_FINISH_REASONS:
             raise AIAnalysisError(
                 AIErrorCode.REFUSED,
                 f"The provider declined to analyze this content "
-                f"({candidate.finish_reason.name}).",  # "name" is not a known attribute of "None"
+                f"({finish_reason.name}).",
             )
 
 

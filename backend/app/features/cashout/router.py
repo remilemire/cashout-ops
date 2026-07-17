@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from functools import partial
+from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, Path, Response, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.dependencies import (
+    PostCommitTasks,
     get_cashout_document_processor,
     get_current_user,
     get_db,
+    get_db_sessionmaker,
     get_document_storage,
+    get_post_commit_tasks,
     require_admin,
     require_csrf,
 )
-from app.errors import BadRequestError
+from app.errors import BadRequestError, ErrorCode, error_responses
 from app.features.users.model import User
 from app.integrations.storage import DocumentStorageClient
 from app.lib.documents import DocumentContentType
@@ -23,20 +28,43 @@ from app.lib.documents import DocumentContentType
 from . import service as cashout_service
 from .extraction import CashoutDocumentProcessor
 from .schemas import (
+    CashoutAnalysisVerify,
     CashoutDataOut,
-    CashoutDataReview,
     CashoutDocumentAnalysisOut,
-    CashoutDocumentOut,
     CashoutSubmissionDetailOut,
+    CashoutSubmissionListOut,
     CashoutSubmissionOut,
 )
 from .types import DocumentUpload
 
+# get_post_commit_tasks MUST come first: teardown is LIFO, so entering it
+# before get_current_user (which opens the get_db session) is what makes the
+# queued extraction jobs run after the request transaction commits.
 router = APIRouter(
-    prefix="/cashouts",
+    prefix="/cashout",
     tags=["cashout"],
-    dependencies=[Depends(require_csrf), Depends(get_current_user)],
+    dependencies=[
+        Depends(get_post_commit_tasks),
+        Depends(require_csrf),
+        Depends(get_current_user),
+    ],
+    responses=error_responses(ErrorCode.UNAUTHORIZED, ErrorCode.FORBIDDEN),
 )
+
+# Shared by the lifecycle routes: the target may not exist, may be in the wrong
+# state for the action, and the path/body may fail validation.
+_LIFECYCLE_RESPONSES = error_responses(
+    ErrorCode.NOT_FOUND, ErrorCode.INVALID_STATE, ErrorCode.UNPROCESSABLE
+)
+
+# Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
+SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
+DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
+AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
+
+DbSessionmaker = Annotated[
+    async_sessionmaker[AsyncSession], Depends(get_db_sessionmaker)
+]
 
 
 # ================================
@@ -44,50 +72,73 @@ router = APIRouter(
 # ================================
 
 
-@router.post("", response_model=CashoutSubmissionOut)
+@router.post(
+    "/submissions",
+    response_model=CashoutSubmissionOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_submission(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionOut:
+    """Open a new cashout submission (status `PROCESSING`).
+
+    Cashouts are not shift-locked; a cashier may open one at any time.
+    """
     submission = await cashout_service.create_submission(db, user_id=current_user.id)
     return CashoutSubmissionOut.model_validate(submission)
 
 
-@router.get("/{submission_id}", response_model=CashoutSubmissionDetailOut)
+@router.get("/submissions", response_model=list[CashoutSubmissionListOut])
+async def list_submissions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[CashoutSubmissionListOut]:
+    """List submissions, newest first, with the submitting user.
+
+    Cashiers see their own submissions; admins see everyone's.
+    """
+    submissions = await cashout_service.list_submissions(db, user=current_user)
+    return [CashoutSubmissionListOut.model_validate(s) for s in submissions]
+
+
+@router.get(
+    "/submissions/{submission_id}",
+    response_model=CashoutSubmissionDetailOut,
+    responses=error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+)
 async def get_submission(
-    submission_id: int,
+    submission_id: SubmissionId,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionDetailOut:
+    """Return a submission with its documents (analyses included) and data.
+
+    Accessible to the submission's owner or an admin.
+    """
     submission = await cashout_service.get_submission(
         db, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionDetailOut.model_validate(submission)
 
 
-@router.post("/{submission_id}/process", response_model=CashoutSubmissionOut)
-async def process_submission(
-    submission_id: int,
+@router.post(
+    "/submissions/{submission_id}/complete",
+    response_model=CashoutSubmissionOut,
+    responses=_LIFECYCLE_RESPONSES,
+)
+async def complete_submission(
+    submission_id: SubmissionId,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionOut:
-    submission = await cashout_service.process_submission(
-        db, submission_id=submission_id, user_id=current_user.id
-    )
-    return CashoutSubmissionOut.model_validate(submission)
+    """Close out the cashout once every document analysis is verified.
 
-
-@router.post(
-    "/{submission_id}/complete",
-    response_model=CashoutSubmissionOut,
-    dependencies=[Depends(require_admin)],
-)
-async def complete_submission(
-    submission_id: int,
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> CashoutSubmissionOut:
+    Reconciles the verified analyses into the submission's cashout data and
+    moves the submission to `COMPLETED`.
+    """
     submission = await cashout_service.complete_submission(
-        db, submission_id=submission_id
+        db, submission_id=submission_id, user_id=current_user.id
     )
     return CashoutSubmissionOut.model_validate(submission)
 
@@ -97,42 +148,175 @@ async def complete_submission(
 # ================================
 
 
-@router.post("/{submission_id}/documents", response_model=CashoutDocumentOut)
+@router.post(
+    "/submissions/{submission_id}/documents",
+    response_model=CashoutDocumentAnalysisOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=error_responses(
+        ErrorCode.BAD_REQUEST,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.INVALID_STATE,
+        ErrorCode.UNPROCESSABLE,
+    ),
+)
 async def upload_document(
-    submission_id: int,
+    submission_id: SubmissionId,
     file: UploadFile,
+    post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    sessionmaker: DbSessionmaker,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
-) -> CashoutDocumentOut:
+    processor: Annotated[
+        CashoutDocumentProcessor, Depends(get_cashout_document_processor)
+    ],
+) -> CashoutDocumentAnalysisOut:
+    """Upload an end-of-shift document and start its extraction.
+
+    Accepts JPEG, PNG, WebP, or PDF up to 20 MB. The AI extraction runs in the
+    background: this returns the analysis in `EXTRACTING`; poll
+    `GET /cashout/analyses/{id}` until it reaches `NEEDS_VERIFICATION` or
+    `FAILED` (retry via the extract endpoint).
+    """
     payload = DocumentUpload(
         data=await file.read(),
         content_type=_to_content_type(file.content_type),
         original_filename=file.filename or "upload",
     )
-    document = await cashout_service.upload_document(
+    analysis = await cashout_service.upload_document(
         db,
         payload=payload,
         submission_id=submission_id,
         user_id=current_user.id,
         storage=storage,
+        processor=processor,
     )
-    return CashoutDocumentOut.model_validate(document)
+    post_commit.add(
+        partial(
+            cashout_service.run_extraction,
+            sessionmaker,
+            document_id=analysis.cashout_document_id,
+            processor=processor,
+        )
+    )
+    return CashoutDocumentAnalysisOut.model_validate(analysis)
 
 
 @router.post(
-    "/documents/{document_id}/extract", response_model=CashoutDocumentAnalysisOut
+    "/documents/{document_id}/extract",
+    response_model=CashoutDocumentAnalysisOut,
+    responses=_LIFECYCLE_RESPONSES,
 )
 async def extract_document(
-    document_id: int,
+    document_id: DocumentId,
+    post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    sessionmaker: DbSessionmaker,
     current_user: Annotated[User, Depends(get_current_user)],
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
 ) -> CashoutDocumentAnalysisOut:
+    """Restart extraction on a document (e.g. after a `FAILED` attempt).
+
+    Resets the analysis to `EXTRACTING` and runs the AI in the background —
+    poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
+    cannot be re-run, nor one whose extraction is still in progress.
+    """
     analysis = await cashout_service.extract_document(
         db, document_id=document_id, user_id=current_user.id, processor=processor
+    )
+    post_commit.add(
+        partial(
+            cashout_service.run_extraction,
+            sessionmaker,
+            document_id=document_id,
+            processor=processor,
+        )
+    )
+    return CashoutDocumentAnalysisOut.model_validate(analysis)
+
+
+_DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
+    200: {
+        "description": "The original uploaded bytes.",
+        "content": {member.value: {} for member in DocumentContentType},
+    }
+}
+
+
+@router.get(
+    "/documents/{document_id}/content",
+    response_class=Response,
+    responses=_DOCUMENT_CONTENT_OK
+    | error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+)
+async def get_document_content(
+    document_id: DocumentId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
+) -> Response:
+    """Serve the original uploaded document (image or PDF), inline.
+
+    Accessible to the submission's owner or an admin.
+    """
+    document, data = await cashout_service.get_document_content(
+        db, document_id=document_id, user=current_user, storage=storage
+    )
+    filename = document.original_filename.replace('"', "")
+    return Response(
+        content=data,
+        media_type=document.content_type.value,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+# ================================
+# ---------- Analyses ------------
+# ================================
+
+
+@router.get(
+    "/analyses/{analysis_id}",
+    response_model=CashoutDocumentAnalysisOut,
+    responses=error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+)
+async def get_analysis(
+    analysis_id: AnalysisId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CashoutDocumentAnalysisOut:
+    """Poll a document analysis for its extraction progress.
+
+    `EXTRACTING` means the AI is still running; it resolves to
+    `NEEDS_VERIFICATION` or `FAILED`. Accessible to the submission's owner or
+    an admin.
+    """
+    analysis = await cashout_service.get_analysis(
+        db, analysis_id=analysis_id, user=current_user
+    )
+    return CashoutDocumentAnalysisOut.model_validate(analysis)
+
+
+@router.post(
+    "/analyses/{analysis_id}/verify",
+    response_model=CashoutDocumentAnalysisOut,
+    responses=_LIFECYCLE_RESPONSES,
+)
+async def verify_analysis(
+    analysis_id: AnalysisId,
+    payload: CashoutAnalysisVerify,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CashoutDocumentAnalysisOut:
+    """Confirm an extraction, optionally submitting corrected values.
+
+    Marks the analysis `VERIFIED`. `verifiedData` overrides the extracted data;
+    omit it to confirm the extraction as-is.
+    """
+    analysis = await cashout_service.verify_analysis(
+        db, payload=payload, analysis_id=analysis_id, user_id=current_user.id
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 
@@ -142,21 +326,17 @@ async def extract_document(
 # ================================
 
 
-@router.patch(
-    "/data/{data_id}",
-    response_model=CashoutDataOut,
+@router.get(
+    "/data",
+    response_model=list[CashoutDataOut],
     dependencies=[Depends(require_admin)],
 )
-async def review_data(
-    data_id: int,
-    payload: CashoutDataReview,
+async def list_data(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> CashoutDataOut:
-    data = await cashout_service.review_data(
-        db, payload=payload, data_id=data_id, user_id=current_user.id
-    )
-    return CashoutDataOut.model_validate(data)
+) -> list[CashoutDataOut]:
+    """List every reconciled cashout data row, newest first (admin only)."""
+    data = await cashout_service.list_data(db)
+    return [CashoutDataOut.model_validate(row) for row in data]
 
 
 def _to_content_type(content_type: str | None) -> DocumentContentType:

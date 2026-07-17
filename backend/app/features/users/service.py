@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +39,7 @@ def create(
     return user
 
 
-async def delete_by_id(db: AsyncSession, *, user_id: int) -> None:
+async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     user = await User.get_active(db, user_id)
     await db.delete(user)
 

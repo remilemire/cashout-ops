@@ -12,10 +12,11 @@ from app.integrations.ai import AIProvider
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    # extra="ignore": a .env may carry variables not modeled here (or no longer
+    # modeled); they must not prevent boot.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     ENVIRONMENT: Literal["prod", "dev"] = "prod"
-    SECRET_KEY: str
     DATABASE_URL: str
     SESSION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
     # Document-AI provider selection. Only the selected provider's API key is
     # required; the lifespan validates it at startup.
     AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC
-    AI_MODEL: str = "claude-opus-4-8"  # AGENT: create
+    AI_MODEL: str = "claude-opus-4-8"
     AI_MAX_TOKENS: int = 16000
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None

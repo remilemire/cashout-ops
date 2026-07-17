@@ -63,7 +63,7 @@ async def register(
             "password": password,
         },
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
 
 
 async def login(

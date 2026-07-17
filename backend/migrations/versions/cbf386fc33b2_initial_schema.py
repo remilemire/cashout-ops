@@ -2,7 +2,7 @@
 
 Revision ID: cbf386fc33b2
 Revises:
-Create Date: 2026-07-14 04:41:12.978015
+Create Date: 2026-07-16 23:10:49.031736
 
 """
 
@@ -51,7 +51,7 @@ def upgrade() -> None:
         sa.Column(
             "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
         ),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -65,19 +65,13 @@ def upgrade() -> None:
         "cashout_submissions",
         sa.Column(
             "status",
-            sa.Enum(
-                "PROCESSING",
-                "FAILED",
-                "UNDER_REVIEW",
-                "COMPLETED",
-                name="cashout_submission_status",
-            ),
+            sa.Enum("PROCESSING", "COMPLETED", name="cashout_submission_status"),
             server_default="PROCESSING",
             nullable=False,
         ),
-        sa.Column("submitted_by_user_id", sa.Integer(), nullable=False),
+        sa.Column("submitted_by_user_id", sa.Uuid(), nullable=False),
         sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -100,8 +94,8 @@ def upgrade() -> None:
         "sessions",
         sa.Column("token_hash", sa.String(length=64), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -117,18 +111,12 @@ def upgrade() -> None:
     op.create_index(op.f("ix_sessions_user_id"), "sessions", ["user_id"], unique=False)
     op.create_table(
         "cashout_data",
-        sa.Column(
-            "extracted_data_json",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-        ),
-        sa.Column(
-            "reviewed_data_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True
-        ),
-        sa.Column("reviewed_by_user_id", sa.Integer(), nullable=True),
-        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("submission_id", sa.Integer(), nullable=False),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("daily_tipout", sa.Numeric(precision=12, scale=2), nullable=True),
+        sa.Column("net_total", sa.Numeric(precision=12, scale=2), nullable=True),
+        sa.Column("cash_total", sa.Numeric(precision=12, scale=2), nullable=True),
+        sa.Column("card_total", sa.Numeric(precision=12, scale=2), nullable=True),
+        sa.Column("submission_id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -136,19 +124,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["reviewed_by_user_id"],
-            ["users.id"],
-        ),
-        sa.ForeignKeyConstraint(
             ["submission_id"], ["cashout_submissions.id"], ondelete="RESTRICT"
         ),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_cashout_data_reviewed_by_user_id"),
-        "cashout_data",
-        ["reviewed_by_user_id"],
-        unique=False,
     )
     op.create_index(
         op.f("ix_cashout_data_submission_id"),
@@ -187,10 +165,10 @@ def upgrade() -> None:
         sa.Column("storage_key", sa.String(length=512), nullable=False),
         sa.Column("original_filename", sa.String(length=255), nullable=False),
         sa.Column("checksum_sha256", sa.String(length=64), nullable=False),
-        sa.Column("uploaded_by_user_id", sa.Integer(), nullable=False),
+        sa.Column("uploaded_by_user_id", sa.Uuid(), nullable=False),
         sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("cashout_submission_id", sa.Integer(), nullable=False),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("cashout_submission_id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -221,14 +199,22 @@ def upgrade() -> None:
     )
     op.create_table(
         "cashout_document_analyses",
-        sa.Column("provider", sa.Enum("ANTHROPIC", name="ai_provider"), nullable=False),
+        sa.Column(
+            "provider",
+            sa.Enum("ANTHROPIC", "OPENAI", "GEMINI", name="ai_provider"),
+            nullable=False,
+        ),
         sa.Column("model", sa.String(length=100), nullable=False),
         sa.Column(
             "status",
             sa.Enum(
-                "PROCESSING", "SUCCEEDED", "FAILED", name="document_analysis_status"
+                "EXTRACTING",
+                "NEEDS_VERIFICATION",
+                "VERIFIED",
+                "FAILED",
+                name="document_analysis_status",
             ),
-            server_default="PROCESSING",
+            server_default="EXTRACTING",
             nullable=False,
         ),
         sa.Column(
@@ -257,8 +243,13 @@ def upgrade() -> None:
         sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("cashout_document_id", sa.Integer(), nullable=False),
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column(
+            "verified_data_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True
+        ),
+        sa.Column("verified_by_user_id", sa.Uuid(), nullable=True),
+        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cashout_document_id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -268,6 +259,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["cashout_document_id"], ["cashout_documents.id"], ondelete="CASCADE"
         ),
+        sa.ForeignKeyConstraint(
+            ["verified_by_user_id"],
+            ["users.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -276,12 +271,22 @@ def upgrade() -> None:
         ["cashout_document_id"],
         unique=True,
     )
+    op.create_index(
+        op.f("ix_cashout_document_analyses_verified_by_user_id"),
+        "cashout_document_analyses",
+        ["verified_by_user_id"],
+        unique=False,
+    )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(
+        op.f("ix_cashout_document_analyses_verified_by_user_id"),
+        table_name="cashout_document_analyses",
+    )
     op.drop_index(
         op.f("ix_cashout_document_analyses_cashout_document_id"),
         table_name="cashout_document_analyses",
@@ -296,9 +301,6 @@ def downgrade() -> None:
     )
     op.drop_table("cashout_documents")
     op.drop_index(op.f("ix_cashout_data_submission_id"), table_name="cashout_data")
-    op.drop_index(
-        op.f("ix_cashout_data_reviewed_by_user_id"), table_name="cashout_data"
-    )
     op.drop_table("cashout_data")
     op.drop_index(op.f("ix_sessions_user_id"), table_name="sessions")
     op.drop_index(op.f("ix_sessions_token_hash"), table_name="sessions")

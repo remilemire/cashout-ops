@@ -27,6 +27,9 @@ def _is_classification(response_model: type[BaseModel]) -> bool:
 class FakeAIClient:
     """`AIClient` that returns canned structured output (or raises)."""
 
+    # Must be a real AIProvider member: the value flows through the processor
+    # into CashoutDocumentAnalysis.provider, a native Postgres enum column, so
+    # a made-up "FAKE" value would fail to persist. ANTHROPIC is arbitrary.
     provider: AIProvider = AIProvider.ANTHROPIC
 
     def __init__(

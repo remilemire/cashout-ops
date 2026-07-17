@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import datetime
 from typing import Self
 
-from sqlalchemy import DateTime, Integer, func
+from sqlalchemy import DateTime, Uuid, func
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -31,7 +32,7 @@ class Base(DeclarativeBase):
 class Entity(Base):
     __abstract__ = True
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -39,7 +40,7 @@ class Entity(Base):
     )
 
     @classmethod
-    async def get_active(cls, db: AsyncSession, id_: int) -> Self:
+    async def get_active(cls, db: AsyncSession, id_: uuid.UUID) -> Self:
         entity = await db.get(cls, id_)
         if entity is None:
             raise NotFoundError(

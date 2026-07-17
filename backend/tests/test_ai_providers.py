@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from google.genai import types
@@ -18,8 +19,14 @@ from openai import OpenAIError
 
 from app.features.cashout.extraction.schemas import ManualNoteData
 from app.integrations.ai import AIAnalysisError, AIErrorCode
-from app.integrations.ai.gemini import GeminiAIClient, _to_part
-from app.integrations.ai.openai import OpenAIAIClient, _to_content_part
+from app.integrations.ai.gemini import (
+    GeminiAIClient,
+    _to_part,  # pyright: ignore[reportPrivateUsage]
+)
+from app.integrations.ai.openai import (
+    OpenAIAIClient,
+    _to_content_part,  # pyright: ignore[reportPrivateUsage]
+)
 from app.lib.documents import DocumentContent, DocumentContentType
 
 # ================================
@@ -60,8 +67,16 @@ class _OACompletions:
 
 
 class _FakeOpenAI:
-    def __init__(self, **kwargs: object) -> None:
-        self.chat = SimpleNamespace(completions=_OACompletions(**kwargs))
+    def __init__(
+        self,
+        *,
+        parsed: object | None = None,
+        refusal: str | None = None,
+        exc: Exception | None = None,
+    ) -> None:
+        self.chat = SimpleNamespace(
+            completions=_OACompletions(parsed=parsed, refusal=refusal, exc=exc)
+        )
 
 
 def _openai_client(**kwargs: object) -> OpenAIAIClient:
@@ -109,7 +124,7 @@ async def test_openai_sends_base_instructions() -> None:
 
     messages = fake.chat.completions.calls[0]["messages"]
     assert isinstance(messages, list)
-    system = messages[0]["content"]
+    system = str(cast(dict[str, object], messages[0])["content"])
     assert "document-analysis assistant" in system
     assert "EXTRA CONTEXT" in system
 
@@ -137,7 +152,7 @@ def test_openai_content_part_maps_image() -> None:
 @dataclass
 class _GResponse:
     parsed: object | None = None
-    candidates: list[object] = field(default_factory=list)
+    candidates: list[object] = field(default_factory=list[object])
     prompt_feedback: object | None = None
 
 
