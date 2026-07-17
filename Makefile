@@ -4,12 +4,13 @@
 .DEFAULT_GOAL := help
 
 UV := uv --directory backend
+DOCKER_DATABASE_URL := postgresql+psycopg://postgres:dev@localhost:5432/cashout_ops
 
 .PHONY: help install-uv setup install format lint test check migrate \
 	build start \
 	backend-install backend-dev backend-format backend-lint backend-test backend-check backend-migrate backend-revision \
 	frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test \
-	db-up db-down db-logs
+	db-up db-down db-logs db-reset db-migrate
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -89,6 +90,10 @@ db-up: ## Start Postgres (detached)
 
 db-down: ## Stop Postgres
 	docker compose down
+
+db-reset: ## Delete database data and restart Postgres
+	docker compose down --volumes
+	docker compose up -d
 
 db-logs: ## Tail Postgres logs
 	docker compose logs -f db

@@ -281,6 +281,7 @@ Implemented under the `/api` prefix:
 | POST   | `/api/auth/logout`                            | session + CSRF  | 204     | Clears both cookies and deletes the session row.            |
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
+| DELETE | `/api/cashout/submissions/{id}`               | owner + CSRF    | 204     | Delete a submission unless reconciled cashout data exists.  |
 | GET    | `/api/cashout/submissions/{id}`               | owner or admin  | 200     | Submission detail with documents (analyses embedded) + data. |
 | POST   | `/api/cashout/submissions/{id}/documents`     | owner + CSRF    | 201     | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
 | POST   | `/api/cashout/documents/{id}/extract`         | owner + CSRF    | 200     | Restart extraction after a `FAILED` attempt (background, poll again). |

@@ -26,5 +26,8 @@ class LocalDocumentStorageClient:
 
         await asyncio.to_thread(_write)
 
+    async def delete(self, storage_key: str) -> None:
+        await asyncio.to_thread((self._root / storage_key).unlink, missing_ok=True)
+
 
 __all__ = ["LocalDocumentStorageClient"]

@@ -41,4 +41,6 @@ class CashoutSubmission(Entity):
     documents: Mapped[list[CashoutDocument]] = relationship(
         back_populates="cashout_submission", cascade="all, delete-orphan"
     )
-    data: Mapped[CashoutData | None] = relationship(back_populates="submission")
+    data: Mapped[CashoutData | None] = relationship(
+        back_populates="submission", passive_deletes="all"
+    )

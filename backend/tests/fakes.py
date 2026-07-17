@@ -81,3 +81,6 @@ class FakeDocumentStorage:
 
     async def write(self, storage_key: str, data: bytes) -> None:
         self.objects[storage_key] = data
+
+    async def delete(self, storage_key: str) -> None:
+        self.objects.pop(storage_key, None)

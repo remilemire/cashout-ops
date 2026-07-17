@@ -10,5 +10,7 @@ class DocumentStorageClient(Protocol):
 
     async def write(self, storage_key: str, data: bytes) -> None: ...
 
+    async def delete(self, storage_key: str) -> None: ...
+
 
 __all__ = ["DocumentStorageClient"]

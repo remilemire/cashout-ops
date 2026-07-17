@@ -15,7 +15,7 @@ from app.features.cashout.types import (
 )
 
 from .factories import csrf_headers
-from .fakes import FakeAIClient
+from .fakes import FakeAIClient, FakeDocumentStorage
 
 PDF = ("receipt.pdf", b"%PDF-1.4 fake bytes", "application/pdf")
 
@@ -204,6 +204,96 @@ async def test_data_table_is_admin_only(
     allowed = await admin_client.get("/api/cashout/data")
     assert allowed.status_code == 200
     assert [row["submissionId"] for row in allowed.json()] == [submission_id]
+
+
+# ================================
+# ------- Delete endpoints -------
+# ================================
+
+
+async def test_delete_empty_processing_submission(
+    cashier_client: AsyncClient,
+) -> None:
+    submission_id = await _create_submission(cashier_client)
+
+    response = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    missing = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert missing.status_code == 404
+
+
+async def test_delete_processing_submission_removes_documents(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    analysis = await _upload_pdf(cashier_client, submission_id)
+    assert storage.objects
+
+    response = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 204
+    assert storage.objects == {}
+    missing_analysis = await cashier_client.get(
+        f"/api/cashout/analyses/{analysis['id']}"
+    )
+    assert missing_analysis.status_code == 404
+
+
+async def test_delete_completed_submission_is_restricted(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    analysis = await _upload_pdf(cashier_client, submission_id)
+    await _verify(cashier_client, analysis["id"])
+    completed = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(cashier_client),
+    )
+    assert completed.status_code == 200, completed.text
+
+    response = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "IN_USE"
+    detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert detail.status_code == 200
+    assert detail.json()["data"] is not None
+    assert storage.objects
+
+
+async def test_delete_submission_requires_owner(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+) -> None:
+    submission_id = await _create_submission(cashier_client)
+
+    response = await admin_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+    assert (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).status_code == 200
 
 
 # ================================

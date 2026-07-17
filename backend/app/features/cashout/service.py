@@ -69,6 +69,34 @@ async def create_submission(db: AsyncSession, *, user_id: UUID) -> CashoutSubmis
     return submission
 
 
+async def delete_submission(
+    db: AsyncSession,
+    *,
+    submission_id: UUID,
+    user_id: UUID,
+    storage: DocumentStorageClient,
+) -> None:
+    """Delete an owned submission unless reconciled data references it."""
+    submission = await _get_owned_submission(
+        db, submission_id=submission_id, user_id=user_id
+    )
+    storage_keys = list(
+        await db.scalars(
+            select(CashoutDocument.storage_key).where(
+                CashoutDocument.cashout_submission_id == submission.id
+            )
+        )
+    )
+
+    await db.delete(submission)
+    # Surface the cashout_data ON DELETE RESTRICT violation before removing
+    # document objects or returning a successful response.
+    await db.flush()
+
+    for storage_key in storage_keys:
+        await storage.delete(storage_key)
+
+
 async def get_submission(
     db: AsyncSession, *, submission_id: UUID, user: User
 ) -> CashoutSubmission:

@@ -73,8 +73,10 @@ def _to_context(raw: Mapping[str, Any]) -> UnprocessableContext:
 
 
 def translate_integrity_error(exc: IntegrityError) -> DomainError:
-    diag = getattr(exc.orig, "diag", None)
-    sqlstate = getattr(diag, "sqlstate", None)
+    sqlstate = getattr(exc.orig, "sqlstate", None)
+    if sqlstate is None:
+        diag = getattr(exc.orig, "diag", None)
+        sqlstate = getattr(diag, "sqlstate", None)
     return SQLSTATE_TO_ERROR.get(sqlstate or "", ServerError)()
 
 
@@ -127,6 +129,7 @@ PYDANTIC_TO_RULE: Mapping[str, ValidationRule] = {
 SQLSTATE_TO_ERROR: Mapping[str, type[DomainError]] = {
     "23505": AlreadyExistsError,  # unique_violation
     "23503": InUseError,  # foreign_key_violation
+    "23001": InUseError,  # restrict_violation
     "23514": UnprocessableError,  # check_violation
     "23502": UnprocessableError,  # not_null_violation
 }

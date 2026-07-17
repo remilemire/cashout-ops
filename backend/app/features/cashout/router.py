@@ -89,6 +89,28 @@ async def create_submission(
     return CashoutSubmissionOut.model_validate(submission)
 
 
+@router.delete(
+    "/submissions/{submission_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(
+        ErrorCode.NOT_FOUND, ErrorCode.IN_USE, ErrorCode.UNPROCESSABLE
+    ),
+)
+async def delete_submission(
+    submission_id: SubmissionId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
+) -> None:
+    """Delete an owned submission that has no reconciled cashout data."""
+    await cashout_service.delete_submission(
+        db,
+        submission_id=submission_id,
+        user_id=current_user.id,
+        storage=storage,
+    )
+
+
 @router.get("/submissions", response_model=list[CashoutSubmissionListOut])
 async def list_submissions(
     db: Annotated[AsyncSession, Depends(get_db)],
