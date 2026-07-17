@@ -2,14 +2,28 @@
 
 <!doctype html>
 
-<html lang="en" class="bg-bg">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cashout Automation</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Cashout Ops — Whiskey District</title>
+    <script>
+      // Apply the stored theme before first paint to avoid a flash.
+      const stored = localStorage.getItem("theme");
+      if (
+        stored === "dark" ||
+        (stored !== "light" &&
+          matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
   </head>
   <body>
-    <div id="app" class="font-display text-text"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

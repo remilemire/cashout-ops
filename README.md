@@ -47,9 +47,9 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Database    | PostgreSQL 18                                           |
 | Validation  | Pydantic v2 + `pydantic-settings`                       |
 | Auth        | Server-side sessions + CSRF double-submit, bcrypt hashes |
-| Frontend    | Vue 3, TypeScript, Vite, Pinia, Vue Router              |
+| Frontend    | React 19, TypeScript, Vite, TanStack Query, React Router |
 | Styling     | Tailwind CSS v4                                         |
-| Lint/format | Ruff (Python), ESLint + Prettier (TS/Vue)               |
+| Lint/format | Ruff (Python), ESLint + Prettier (TS/React)             |
 | Prod server | Gunicorn + Uvicorn workers                              |
 | Doc AI      | Anthropic / OpenAI / Gemini (vision + structured output) |
 | Hosting     | Render                                                  |
@@ -64,9 +64,9 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
 - Fully-migrated schema: `users`, `sessions`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
-- Cashout domain (create submission, upload document, AI extract, process, review, complete) with a pytest suite over a throwaway Postgres
+- Cashout domain (create submission, upload document with background AI extraction + polling, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
-- Vue 3 + Pinia + Vue Router shell with a single placeholder `HomeView`
+- React 19 SPA (first pass): auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (upload → poll extraction → correct → verify → complete), and admin submissions/data views
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
 - Render deploy hooks: `backend/scripts/build.bash`, `pre-deploy.bash`, `start.bash`
 
@@ -76,7 +76,9 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 **Extraction schemas** — the per-document data models (`features/cashout/extraction/schemas.py`) currently hold placeholder fields so the pipeline runs end to end. The real observable fields per document type, deterministic post-extraction validation, and cross-document reconciliation still need to be defined.
 
-**Frontend cashier flow** — create a cashout, upload documents (camera, drag-and-drop, paste, file picker), review extracted fields, submit. The backend endpoints exist; the Vue UI is minimal.
+**Email verification** — planned for the backend (verify on register, resend, and a verified flag on users). The frontend auth flow already reserves a blocking verification dialog step (`src/auth/EmailVerificationGate.tsx`).
+
+**Frontend polish** — the React frame (routing, contracts, wiring) is in place; visual design polish, drag-and-drop/paste uploads, and field-typed correction editors (once the extraction schemas are real) are still to come.
 
 **Admin flow** — historical views, filtering by date range and server, editing submitted data, discrepancy investigation.
 
@@ -94,7 +96,6 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   ├── alembic.ini                    # Alembic config (script_location = migrations/)
 │   ├── migrations/                    # Async migrations (env.py reads DATABASE_URL) + versions/
 │   ├── pyproject.toml                 # Deps (uv) + ruff + pytest config
-│   ├── Makefile                       # uv-based dev tasks (run/migrate/format/lint/test)
 │   ├── tests/                         # pytest suite (testcontainers Postgres)
 │   ├── static/                        # Built frontend assets (served by FastAPI)
 │   └── app/
@@ -111,16 +112,22 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
-    ├── vite.config.mts                # outDir → ../backend/static
+    ├── vite.config.mts                # outDir → ../backend/static; /api dev proxy
     ├── tsconfig.json                  # @ → src
     ├── eslint.config.mts
     ├── prettier.config.mts
     └── src/
-        ├── main.ts                    # Pinia + Router bootstrap
-        ├── App.vue
-        ├── router.ts
-        ├── api/apiClient.ts           # (minimal — to be implemented)
-        └── views/HomeView.vue
+        ├── main.tsx                   # React bootstrap
+        ├── App.tsx                    # QueryClient + Theme + Auth providers
+        ├── router.tsx                 # auth-guarded routes (cashier + admin)
+        ├── api/                       # fetch client (CSRF, error contract) + typed contracts
+        ├── auth/                      # AuthProvider, guards, login/register, EmailVerificationGate
+        ├── components/ui.tsx          # shared primitives (token-driven colors only)
+        ├── layout/AppLayout.tsx       # mobile-first shell: top bar + bottom nav
+        ├── lib/                       # theme provider, formatting helpers
+        ├── features/cashout/          # cashier submission flow
+        ├── features/admin/            # submissions + data tables
+        └── styles/global.css          # Tailwind v4 + centralized light/dark tokens
 ```
 
 ## Local development setup
@@ -147,22 +154,20 @@ A `setup.bash` script at the repo root automates most of the steps below. It wil
 
 ### Manual setup
 
-Backend tooling is [uv](https://docs.astral.sh/uv/), driven through the backend `Makefile`.
+Backend tooling is [uv](https://docs.astral.sh/uv/), driven through the repo-root `Makefile` (there is no `backend/Makefile` — backend targets call `uv --directory backend` directly).
 
 ```bash
 # 1. Backend
-cd backend
-cp .env.example .env                   # then set SECRET_KEY, ADMIN_EMAIL, and the selected provider's AI key
-make install                           # uv sync (creates .venv, installs incl. dev group)
+cp backend/.env.example backend/.env   # then set ADMIN_EMAIL and the selected provider's AI key
+make backend-install                   # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
-docker compose -f ../compose.yaml up -d
-make migrate                           # uv run alembic upgrade head
+make db-up                             # docker compose up -d
+make backend-migrate                   # uv run alembic upgrade head
 
 # 3. Frontend
-cd ../frontend
-npm ci
-npm run build                          # outputs into ../backend/static/
+make frontend-install                  # npm ci
+make frontend-build                    # outputs into backend/static/
 ```
 
 ## Environment variables
@@ -172,7 +177,6 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | Variable              | Required | Default                                                        | Notes                                                                                                |
 | --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
-| `SECRET_KEY`          | yes      | —                                                              | Signs the Starlette session middleware. The app fails to start if unset.                             |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
 | `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
 | `AI_MODEL`            | no       | `claude-opus-4-8`                                              | Model used for classification + extraction; set to one the selected provider serves.                 |
@@ -197,37 +201,34 @@ Local Postgres is provisioned by `compose.yaml`:
 Alembic reads `DATABASE_URL` from the environment (see [migrations/env.py](backend/migrations/env.py)) and targets `app.core.db.registry.metadata` — a module that imports every ORM model so autogenerate sees the full schema. Add new models to that registry.
 
 ```bash
-cd backend
-make migrate                            # uv run alembic upgrade head
-make revision MESSAGE="…"               # autogenerate a new revision
-uv run alembic downgrade -1             # revert one
+make backend-migrate                    # uv run alembic upgrade head
+make backend-revision MESSAGE="…"       # autogenerate a new revision
+cd backend && uv run alembic downgrade -1  # revert one
 ```
 
 ## Running the app
 
 ### Development
 
-In one terminal — backend (uvicorn with reload, port `8000`):
+In one terminal — backend ([fastapi dev](https://fastapi.tiangolo.com/fastapi-cli/), reload, port `8000`):
 
 ```bash
-cd backend
-make run                                # uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+make backend-dev                        # uv run fastapi dev
 ```
 
 In another terminal — frontend (Vite dev server, HMR):
 
 ```bash
-cd frontend
-npm run dev
+make frontend-dev                       # npm run dev
 ```
 
-Vite's default port is `5173`. The dev server serves the SPA directly; the backend is reachable separately at `http://127.0.0.1:8000`. (There is no proxy configured in `vite.config.mts` yet — wiring API calls during dev will need either a Vite proxy or absolute URLs in the API client.)
+Vite's default port is `5173`. `vite.config.mts` proxies `/api` to `http://127.0.0.1:8000`, so the SPA and API are same-origin in dev (cookies and CSRF work unchanged).
 
 ### Production-style (built SPA served by FastAPI)
 
 ```bash
-cd frontend && npm run build            # writes into ../backend/static/
-cd ../backend && make run               # FastAPI serves /assets/* and the SPA fallback
+make frontend-build                     # writes into backend/static/
+make backend-dev                        # FastAPI serves /assets/* and the SPA fallback
 ```
 
 ## Architecture notes
@@ -264,7 +265,7 @@ All errors come back as a stable JSON shape so the frontend can render them unif
 }
 ```
 
-- `code` is a `SCREAMING_CASE` `ErrorCode` discriminator (`SERVER_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `ALREADY_EXISTS`, `IN_USE`, `INVALID_STATE`, `UNPROCESSABLE`); `error` is its human name. The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its HTTP status + default message, and the shapes are registered in OpenAPI ([errors/openapi.py](backend/app/errors/openapi.py)).
+- `code` is a `SCREAMING_CASE` `ErrorCode` discriminator (`SERVER_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `ALREADY_EXISTS`, `IN_USE`, `INVALID_STATE`, `UNPROCESSABLE`); `error` is its human name. The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its human name, HTTP status, and default message; each route documents its actual error statuses in OpenAPI via `error_responses(*codes)` ([errors/openapi.py](backend/app/errors/openapi.py)).
 - `errors` is present only for validation failures (`UNPROCESSABLE`): one entry per field with a `ValidationRule`, a human `detail`, and a `path` array. Pydantic errors are translated in [errors/translators.py](backend/app/errors/translators.py).
 - `IntegrityError` is auto-mapped by Postgres SQLSTATE (unique → `ALREADY_EXISTS`, FK → `IN_USE`, check/not-null → `UNPROCESSABLE`) in [errors/handlers.py](backend/app/errors/handlers.py).
 - Uncaught exceptions are funneled to a generic `ServerError` — no stack traces are leaked.
@@ -273,19 +274,19 @@ All errors come back as a stable JSON shape so the frontend can render them unif
 
 Implemented under the `/api` prefix:
 
-| Method | Path                                          | Auth            | Notes                                                       |
-| ------ | --------------------------------------------- | --------------- | ----------------------------------------------------------- |
-| POST   | `/api/auth/register`                          | none            | Creates a user, sets `session_token` + `csrf_token` cookies. |
-| POST   | `/api/auth/login`                             | none            | Sets `session_token` + `csrf_token` cookies on success.     |
-| POST   | `/api/auth/logout`                            | session + CSRF  | Clears both cookies and deletes the session row.            |
-| GET    | `/api/users/me`                               | session         | The current user.                                           |
-| POST   | `/api/cashouts`                               | session + CSRF  | Create a cashout submission (any time — not shift-locked).  |
-| GET    | `/api/cashouts/{id}`                          | owner or admin  | Submission detail with documents + reconciled data.         |
-| POST   | `/api/cashouts/{id}/documents`                | session + CSRF  | Upload a document (multipart file).                         |
-| POST   | `/api/cashouts/documents/{id}/extract`        | session + CSRF  | Run AI classification + extraction on a document.           |
-| POST   | `/api/cashouts/{id}/process`                  | session + CSRF  | Reconcile extracted data → `UNDER_REVIEW` (or `FAILED`).    |
-| PATCH  | `/api/cashouts/data/{id}`                     | admin + CSRF    | Review/correct the extracted data.                          |
-| POST   | `/api/cashouts/{id}/complete`                 | admin + CSRF    | Close out a reviewed submission → `COMPLETED`.              |
+| Method | Path                                          | Auth            | Success | Notes                                                       |
+| ------ | --------------------------------------------- | --------------- | ------- | ----------------------------------------------------------- |
+| POST   | `/api/auth/register`                          | none            | 201     | Creates a user, sets `session_token` + `csrf_token` cookies. |
+| POST   | `/api/auth/login`                             | none            | 200     | Sets `session_token` + `csrf_token` cookies on success.     |
+| POST   | `/api/auth/logout`                            | session + CSRF  | 204     | Clears both cookies and deletes the session row.            |
+| GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
+| POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
+| GET    | `/api/cashout/submissions/{id}`               | owner or admin  | 200     | Submission detail with documents (analyses embedded) + data. |
+| POST   | `/api/cashout/submissions/{id}/documents`     | owner + CSRF    | 201     | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
+| POST   | `/api/cashout/documents/{id}/extract`         | owner + CSRF    | 200     | Restart extraction after a `FAILED` attempt (background, poll again). |
+| GET    | `/api/cashout/analyses/{id}`                  | owner or admin  | 200     | Poll the analysis: `EXTRACTING` → `NEEDS_VERIFICATION` \| `FAILED`. |
+| POST   | `/api/cashout/analyses/{id}/verify`           | owner + CSRF    | 200     | Confirm an extraction, optionally with corrected values.    |
+| POST   | `/api/cashout/submissions/{id}/complete`      | owner + CSRF    | 200     | Reconcile the verified analyses → `COMPLETED`.              |
 
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
 
@@ -295,18 +296,18 @@ The app is deployed to Render at <https://cashout-ops.onrender.com>.
 
 The three scripts under `scripts/` (repo root) are the Render deploy hooks:
 
-- `build.bash` — backend `make install` (uv sync), then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
-- `pre-deploy.bash` — backend `make migrate` (`alembic upgrade head`).
+- `build.bash` — `uv sync` in `backend/`, then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
+- `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
 - `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT`.
 
-The Render service must have `DATABASE_URL`, `SECRET_KEY`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), and `ADMIN_EMAIL` configured (and `ENVIRONMENT=prod`, which is also the default).
+The Render service must have `DATABASE_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), and `ADMIN_EMAIL` configured (and `ENVIRONMENT=prod`, which is also the default).
 
 ## Conventions
 
 - **API casing.** Inbound and outbound JSON is `camelCase`; Python is `snake_case`. Conversion is handled by `BaseIn`/`BaseOut` via `alias_generator=snake_to_camel`. `BaseIn` is `extra="forbid"`; unknown fields surface as `extra_field` validation errors.
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
 - **Python typing.** `pyproject.toml` requires Python 3.13+. The repo is configured for Pylance strict mode (see [.vscode/settings.json](.vscode/settings.json)).
-- **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/Vue (the Tailwind plugin sorts classes).
+- **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/React (the Tailwind plugin sorts classes).
 - **Tests.** `make test` (pytest) runs against a real Postgres — `TEST_DATABASE_URL` if set, otherwise a throwaway container via testcontainers (needs Docker running). The AI provider and object store are faked; the rest of the extraction stack runs for real.
 
 ### Known incomplete work
@@ -315,7 +316,7 @@ The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
 - **Local document storage is not durable on Render** (ephemeral disk) — swap in an object-store implementation of `DocumentStorageClient` before relying on uploaded files surviving a deploy.
-- **The frontend is minimal** — the backend endpoints exist, but the Vue UI (upload flow, review, admin views) is a placeholder.
+- **The frontend is a first pass** — the React frame (contracts, guards, flows) works end to end, but visual polish and schema-specific correction editors are pending.
 
 ## License
 

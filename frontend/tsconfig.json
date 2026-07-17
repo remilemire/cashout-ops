@@ -1,11 +1,25 @@
 // frontend/tsconfig.json
 
 {
-  "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["src"],
+  "extends": ["@tsconfig/vite-react/tsconfig.json"],
   "compilerOptions": {
+    "paths": { "@/*": ["./src/*"], "@test/*": ["./test/*"] },
+
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+
+    "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "exactOptionalPropertyTypes": true,
     "noUncheckedSideEffectImports": true,
-    "paths": { "@/*": ["./src/*"] }
-  }
+
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "test", "*.config.mts"]
 }

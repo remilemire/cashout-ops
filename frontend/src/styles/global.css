@@ -1,0 +1,74 @@
+/* frontend/src/styles/global.css */
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Centralized palette. Semantic tokens only — components never hardcode
+ * colors. Swap the accent (whiskey amber) or any surface here and the whole
+ * app follows, in both light and dark mode.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: oklch(0.98 0.005 85);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.955 0.006 85);
+  --line: oklch(0.9 0.008 80);
+  --ink: oklch(0.25 0.02 60);
+  --ink-muted: oklch(0.51 0.02 65);
+
+  --accent: oklch(0.6 0.13 60);
+  --accent-strong: oklch(0.5 0.12 55);
+  --on-accent: oklch(0.99 0.01 85);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: oklch(0.19 0.012 60);
+  --surface: oklch(0.235 0.012 60);
+  --surface-2: oklch(0.28 0.012 60);
+  --line: oklch(0.33 0.012 60);
+  --ink: oklch(0.93 0.01 85);
+  --ink-muted: oklch(0.67 0.015 75);
+
+  --accent: oklch(0.75 0.13 70);
+  --accent-strong: oklch(0.8 0.12 75);
+  --on-accent: oklch(0.22 0.04 60);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+
+  /* Status hues, tuned to read on both modes via opacity modifiers. */
+  --color-success: oklch(0.62 0.15 150);
+  --color-warning: oklch(0.68 0.15 75);
+  --color-danger: oklch(0.6 0.19 25);
+  --color-info: oklch(0.6 0.13 250);
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ink antialiased;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
