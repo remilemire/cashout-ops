@@ -1,11 +1,11 @@
 // frontend/src/features/cashout/CashoutsPage.tsx
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, ReceiptText } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import { useAuth } from "@/auth/AuthProvider";
+import { useAuth } from "@/auth/useAuth";
 import {
   Button,
   Card,
@@ -21,23 +21,14 @@ import { SubmissionStatusBadge } from "./status";
 export function CashoutsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const submissionsQuery = useQuery({
     queryKey: cashoutKeys.submissions,
     queryFn: cashoutApi.listSubmissions,
   });
 
-  const start = useMutation({
-    mutationFn: cashoutApi.createSubmission,
-    onSuccess: (submission) => {
-      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
-      navigate(`/cashouts/${submission.id}`);
-    },
-  });
-
   const startButton = (
-    <Button onClick={() => start.mutate()} loading={start.isPending}>
+    <Button onClick={() => navigate("/cashouts/new")}>
       <Plus className="size-4" />
       Start cashout
     </Button>
@@ -55,7 +46,7 @@ export function CashoutsPage() {
         subtitle="End-of-shift cashout submissions."
         action={startButton}
       />
-      <ErrorBanner error={start.error ?? submissionsQuery.error} />
+      <ErrorBanner error={submissionsQuery.error} />
 
       {submissionsQuery.isLoading ? (
         <SkeletonList />

@@ -1,24 +1,15 @@
 // frontend/src/auth/AuthProvider.tsx
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { authApi } from "@/api/auth";
 import { ApiError } from "@/api/client";
-import type { LoginInput, RegisterInput, User } from "@/api/types";
+import type { User } from "@/api/types";
+
+import { AuthContext, type AuthContextValue } from "./useAuth";
 
 const ME_KEY = ["me"] as const;
-
-interface AuthContextValue {
-  /** null = definitely signed out; undefined never escapes isLoading. */
-  user: User | null;
-  isLoading: boolean;
-  login: (input: LoginInput) => Promise<User>;
-  register: (input: RegisterInput) => Promise<User>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -58,10 +49,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
 }

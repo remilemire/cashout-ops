@@ -7,7 +7,7 @@ import type { User } from "@/api/types";
 import { Dialog } from "@/components/dialog";
 import { Button, TextField } from "@/components/ui";
 
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./useAuth";
 
 /**
  * TODO(email-verification): the backend will add email verification. Once

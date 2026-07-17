@@ -57,12 +57,15 @@ export async function api<T>(
     headers.set("x-csrf-token", readCookie("csrf_token") ?? "");
   }
 
-  const response = await fetch(`/api${path}`, {
+  const request: RequestInit = {
     method,
     headers,
     credentials: "same-origin",
-    body: json !== undefined ? JSON.stringify(json) : body,
-  });
+  };
+  if (json !== undefined) request.body = JSON.stringify(json);
+  else if (body !== undefined) request.body = body;
+
+  const response = await fetch(`/api${path}`, request);
 
   if (response.status === 204) return undefined as T;
 

@@ -4,7 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { FullScreenSpinner } from "@/components/ui";
 
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./useAuth";
 import { EmailVerificationGate } from "./EmailVerificationGate";
 
 /** Everything behind this requires a session; unauthenticated → /login. */

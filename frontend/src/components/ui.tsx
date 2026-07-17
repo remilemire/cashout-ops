@@ -10,10 +10,7 @@ import type {
 } from "react";
 
 import { ApiError } from "@/api/client";
-
-export function cx(...parts: (string | false | null | undefined)[]): string {
-  return parts.filter(Boolean).join(" ");
-}
+import { cx } from "@/lib/cx";
 
 // ---------- Button ----------
 
@@ -94,7 +91,7 @@ export function PageHeader({
   action,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   action?: ReactNode;
 }) {
   return (
@@ -275,7 +272,10 @@ export function TextField({
   error,
   className,
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  error?: string | undefined;
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>

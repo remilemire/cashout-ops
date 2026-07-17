@@ -3,7 +3,8 @@
 import { Camera, FolderOpen, UploadCloud } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { Button, ErrorBanner, cx } from "@/components/ui";
+import { Button, ErrorBanner } from "@/components/ui";
+import { cx } from "@/lib/cx";
 
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,application/pdf";
 

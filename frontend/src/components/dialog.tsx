@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { cx } from "./ui";
+import { cx } from "@/lib/cx";
 
 /**
  * Native `<dialog>`-based modal: focus trapping, Esc handling, and the

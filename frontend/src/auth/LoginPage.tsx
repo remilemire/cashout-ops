@@ -6,7 +6,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { Button, Card, ErrorBanner, TextField } from "@/components/ui";
 
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./useAuth";
 
 export function AuthShell({ children }: { children: ReactNode }) {
   return (

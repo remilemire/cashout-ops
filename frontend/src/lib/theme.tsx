@@ -1,24 +1,8 @@
 // frontend/src/lib/theme.tsx
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-export type Theme = "light" | "dark" | "system";
-
-interface ThemeContextValue {
-  theme: Theme;
-  /** The mode actually applied right now. */
-  resolved: "light" | "dark";
-  setTheme: (theme: Theme) => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+import { ThemeContext, type Theme } from "./useTheme";
 
 const query = () => matchMedia("(prefers-color-scheme: dark)");
 
@@ -57,10 +41,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
-  return ctx;
 }

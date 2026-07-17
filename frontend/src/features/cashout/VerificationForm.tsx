@@ -6,7 +6,8 @@ import { useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import type { CashoutDocumentAnalysis, FieldIssue } from "@/api/types";
-import { Button, ConfidenceMeter, ErrorBanner, cx } from "@/components/ui";
+import { Button, ConfidenceMeter, ErrorBanner } from "@/components/ui";
+import { cx } from "@/lib/cx";
 import { buildVerifiedData, displayValue, fieldLabel } from "@/lib/format";
 
 import { FieldList } from "./FieldList";

@@ -6,8 +6,8 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/client";
 import { Button, Card, ErrorBanner, TextField } from "@/components/ui";
 
-import { useAuth } from "./AuthProvider";
 import { AuthShell } from "./LoginPage";
+import { useAuth } from "./useAuth";
 
 export function RegisterPage() {
   const { user, isLoading, register } = useAuth();

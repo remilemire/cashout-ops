@@ -5,7 +5,7 @@ import { ArrowLeft, CheckCircle2, PartyPopper, Plus } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import { useAuth } from "@/auth/AuthProvider";
+import { useAuth } from "@/auth/useAuth";
 import {
   Badge,
   Button,

@@ -12,9 +12,9 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
-import { useAuth } from "@/auth/AuthProvider";
-import { cx } from "@/components/ui";
-import { useTheme, type Theme } from "@/lib/theme";
+import { useAuth } from "@/auth/useAuth";
+import { cx } from "@/lib/cx";
+import { useTheme, type Theme } from "@/lib/useTheme";
 
 const THEME_ORDER: Theme[] = ["system", "light", "dark"];
 const THEME_ICONS: Record<Theme, LucideIcon> = {

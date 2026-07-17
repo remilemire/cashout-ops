@@ -1,28 +1,18 @@
 // frontend/src/router.tsx
 
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 
-import { useAuth } from "@/auth/AuthProvider";
 import { RequireAdmin, RequireAuth } from "@/auth/guards";
+import { HomeRedirect } from "@/auth/HomeRedirect";
 import { LoginPage } from "@/auth/LoginPage";
 import { RegisterPage } from "@/auth/RegisterPage";
 import { EmptyState } from "@/components/ui";
 import { AdminDataPage } from "@/features/admin/AdminDataPage";
 import { AdminSubmissionsPage } from "@/features/admin/AdminSubmissionsPage";
 import { CashoutsPage } from "@/features/cashout/CashoutsPage";
+import { NewCashoutPage } from "@/features/cashout/NewCashoutPage";
 import { SubmissionPage } from "@/features/cashout/SubmissionPage";
 import { AppLayout } from "@/layout/AppLayout";
-
-/** Role-appropriate landing page. */
-function HomeRedirect() {
-  const { user } = useAuth();
-  return (
-    <Navigate
-      to={user?.role === "ADMIN" ? "/admin/submissions" : "/cashouts"}
-      replace
-    />
-  );
-}
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -35,6 +25,7 @@ export const router = createBrowserRouter([
         children: [
           { path: "/", element: <HomeRedirect /> },
           { path: "/cashouts", element: <CashoutsPage /> },
+          { path: "/cashouts/new", element: <NewCashoutPage /> },
           { path: "/cashouts/:submissionId", element: <SubmissionPage /> },
           {
             element: <RequireAdmin />,
