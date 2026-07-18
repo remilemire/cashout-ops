@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from .domain import (
     AlreadyExistsError,
+    AppError,
     BadRequestError,
     ConflictError,
-    DomainError,
     ForbiddenError,
     InUseError,
     InvalidStateError,
@@ -21,9 +21,9 @@ from .types import ErrorCode
 
 __all__ = [
     "AlreadyExistsError",
+    "AppError",
     "BadRequestError",
     "ConflictError",
-    "DomainError",
     "ErrorCode",
     "ForbiddenError",
     "InUseError",

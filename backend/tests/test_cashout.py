@@ -329,9 +329,10 @@ async def test_failed_extraction_and_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
+    from app.features.cashout.types import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
-    ai_client.error = AIAnalysisError(AIErrorCode.REFUSED, "declined")
+    ai_client.error = AIAnalysisError(AIErrorCode.REFUSED, "declined: raw provider text")
 
     submission_id = await _create_submission(cashier_client)
     created = await _upload_pdf(cashier_client, submission_id)
@@ -340,6 +341,9 @@ async def test_failed_extraction_and_retry(
     analysis = await _poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
     assert analysis["errorCode"] == AIErrorCode.REFUSED.value
+    # The raw provider text must not leak; a safe mapped message is surfaced.
+    assert analysis["errorMessage"] == analysis_error_message(AIErrorCode.REFUSED.value)
+    assert "raw provider text" not in analysis["errorMessage"]
 
     # A FAILED analysis cannot be verified.
     blocked = await cashier_client.post(

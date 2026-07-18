@@ -37,6 +37,7 @@ from .types import (
     DocumentAnalysisErrorCode,
     DocumentAnalysisStatus,
     DocumentUpload,
+    analysis_error_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -288,7 +289,9 @@ async def run_extraction(
         ):
             analysis.status = DocumentAnalysisStatus.FAILED
             analysis.error_code = DocumentAnalysisErrorCode.INTERNAL.value
-            analysis.error_message = "Extraction failed unexpectedly."
+            analysis.error_message = analysis_error_message(
+                DocumentAnalysisErrorCode.INTERNAL.value
+            )
             analysis.completed_at = datetime.now(UTC)
             await db.commit()
 
@@ -401,9 +404,17 @@ async def _apply_extraction(
     try:
         result = await processor.process(ref)
     except AIAnalysisError as exc:
+        # Persist the code + a safe mapped message; the raw provider text can
+        # leak internal detail, so keep it in the logs only.
+        logger.warning(
+            "Extraction failed for document %s (%s): %s",
+            document.id,
+            exc.code.value,
+            exc.message,
+        )
         analysis.status = DocumentAnalysisStatus.FAILED
         analysis.error_code = exc.code.value
-        analysis.error_message = exc.message
+        analysis.error_message = analysis_error_message(exc.code.value)
         analysis.completed_at = datetime.now(UTC)
         return
 
@@ -414,7 +425,9 @@ async def _apply_extraction(
     if result.data is None:
         analysis.status = DocumentAnalysisStatus.FAILED
         analysis.error_code = DocumentAnalysisErrorCode.UNCLASSIFIED.value
-        analysis.error_message = "The document could not be classified."
+        analysis.error_message = analysis_error_message(
+            DocumentAnalysisErrorCode.UNCLASSIFIED.value
+        )
     else:
         analysis.status = DocumentAnalysisStatus.NEEDS_VERIFICATION
         analysis.schema_name = result.schema_name

@@ -5,28 +5,91 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from fastapi import status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.lib.casing import snake_to_camel
 
+from .catalog import CATALOG
 from .domain import (
     AlreadyExistsError,
-    DomainError,
+    AppError,
+    BadRequestError,
+    ForbiddenError,
     InUseError,
+    NotFoundError,
     ServerError,
+    UnauthorizedError,
     UnprocessableError,
 )
-from .schemas import ErrorDetail
+from .schemas import ErrorBody, ErrorDetail, ErrorResponse
 from .types import UnprocessableContext, ValidationRule
+
+# ================================
+# ------------ Entry -------------
+# ================================
+
+
+def translate_error(exc: Exception) -> JSONResponse:
+    """Turn any raised exception into the canonical error `JSONResponse`.
+
+    The single entry point for the exception handlers: it maps the exception to
+    an `AppError` (translation) and serializes the catalog-backed body
+    (formatting). Anything unrecognized becomes a `ServerError`.
+    """
+    return _format_response(_build_response(_to_app_error(exc)))
+
+
+def _to_app_error(exc: Exception) -> AppError:
+    if isinstance(exc, AppError):
+        return exc
+    if isinstance(exc, (ValidationError, RequestValidationError)):
+        return UnprocessableError(errors=_translate_validation_error(exc))
+    if isinstance(exc, IntegrityError):
+        return translate_integrity_error(exc)
+    if isinstance(exc, StarletteHTTPException):
+        return _http_error(exc.status_code)
+    return ServerError()
+
+
+# ================================
+# ----------- Response -----------
+# ================================
+
+
+def _build_response(exc: AppError) -> ErrorResponse:
+    entry = CATALOG[exc.code]
+    errors = exc.errors if isinstance(exc, UnprocessableError) else None
+    return ErrorResponse(
+        status=entry["status"],
+        body=ErrorBody(
+            error=exc.name,
+            code=exc.code,
+            message=exc.message,
+            errors=errors or None,
+        ),
+    )
+
+
+def _format_response(response: ErrorResponse) -> JSONResponse:
+    # Error handlers return JSONResponse directly, so there's no router
+    # response_model to serialize the body for us — do it here.
+    return JSONResponse(
+        status_code=response.status,
+        content=response.body.model_dump(by_alias=True, exclude_none=True, mode="json"),
+    )
+
 
 # ================================
 # ----------- Pydantic -----------
 # ================================
 
 
-def translate_validation_error(
+def _translate_validation_error(
     exc: ValidationError | RequestValidationError,
 ) -> list[ErrorDetail]:
     return [_to_detail(e) for e in exc.errors()]
@@ -72,7 +135,7 @@ def _to_context(raw: Mapping[str, Any]) -> UnprocessableContext:
 # ================================
 
 
-def translate_integrity_error(exc: IntegrityError) -> DomainError:
+def translate_integrity_error(exc: IntegrityError) -> AppError:
     sqlstate = getattr(exc.orig, "sqlstate", None)
     if sqlstate is None:
         diag = getattr(exc.orig, "diag", None)
@@ -81,8 +144,31 @@ def translate_integrity_error(exc: IntegrityError) -> DomainError:
 
 
 # ================================
+# ---------- Starlette -----------
+# ================================
+
+
+def _http_error(status_code: int) -> AppError:
+    factory = STATUS_TO_ERROR.get(status_code)
+    if factory is not None:
+        return factory()
+    return BadRequestError() if 400 <= status_code < 500 else ServerError()
+
+
+# ================================
 # ------------ Tables ------------
 # ================================
+
+
+STATUS_TO_ERROR: Mapping[int, type[AppError]] = {
+    status.HTTP_400_BAD_REQUEST: BadRequestError,
+    status.HTTP_401_UNAUTHORIZED: UnauthorizedError,
+    status.HTTP_403_FORBIDDEN: ForbiddenError,
+    status.HTTP_404_NOT_FOUND: NotFoundError,
+    status.HTTP_409_CONFLICT: AlreadyExistsError,
+    status.HTTP_422_UNPROCESSABLE_CONTENT: UnprocessableError,
+    status.HTTP_500_INTERNAL_SERVER_ERROR: ServerError,
+}
 
 
 PYDANTIC_TO_RULE: Mapping[str, ValidationRule] = {
@@ -126,7 +212,7 @@ PYDANTIC_TO_RULE: Mapping[str, ValidationRule] = {
 
 
 # Postgres class 23 (integrity_constraint_violation) SQLSTATEs.
-SQLSTATE_TO_ERROR: Mapping[str, type[DomainError]] = {
+SQLSTATE_TO_ERROR: Mapping[str, type[AppError]] = {
     "23505": AlreadyExistsError,  # unique_violation
     "23503": InUseError,  # foreign_key_violation
     "23001": InUseError,  # restrict_violation

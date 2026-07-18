@@ -9,7 +9,7 @@ from .schemas import ErrorDetail
 from .types import ErrorCode
 
 
-class DomainError(Exception, ABC):
+class AppError(Exception, ABC):
     code: ErrorCode
     message: str
 
@@ -22,27 +22,27 @@ class DomainError(Exception, ABC):
         return CATALOG[self.code]["error"]
 
 
-class ServerError(DomainError):
+class ServerError(AppError):
     code = ErrorCode.SERVER_ERROR
 
 
-class BadRequestError(DomainError):
+class BadRequestError(AppError):
     code = ErrorCode.BAD_REQUEST
 
 
-class UnauthorizedError(DomainError):
+class UnauthorizedError(AppError):
     code = ErrorCode.UNAUTHORIZED
 
 
-class ForbiddenError(DomainError):
+class ForbiddenError(AppError):
     code = ErrorCode.FORBIDDEN
 
 
-class NotFoundError(DomainError):
+class NotFoundError(AppError):
     code = ErrorCode.NOT_FOUND
 
 
-class ConflictError(DomainError):
+class ConflictError(AppError):
     """Base for 409 conflicts. Conflicts never carry validation details."""
 
 
@@ -58,7 +58,7 @@ class InvalidStateError(ConflictError):
     code = ErrorCode.INVALID_STATE
 
 
-class UnprocessableError(DomainError):
+class UnprocessableError(AppError):
     code = ErrorCode.UNPROCESSABLE
     errors: list[ErrorDetail]
 

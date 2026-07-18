@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.integrations.ai import AIErrorCode
 from app.lib.documents import DocumentContentType
 
 
@@ -40,6 +41,37 @@ class DocumentAnalysisStatus(StrEnum):
 class DocumentAnalysisErrorCode(StrEnum):
     UNCLASSIFIED = "UNCLASSIFIED"
     INTERNAL = "INTERNAL"
+
+
+# Safe, user-facing messages keyed by the persisted error_code (AIErrorCode from
+# the AI layer plus DocumentAnalysisErrorCode above). Raw provider messages are
+# never surfaced on the analysis — they can leak internal/provider detail — so
+# every failure maps its code to one of these. Log the raw text instead.
+_ANALYSIS_ERROR_MESSAGES: dict[str, str] = {
+    AIErrorCode.PROVIDER_ERROR.value: (
+        "The document service is temporarily unavailable. Please try again."
+    ),
+    AIErrorCode.REFUSED.value: (
+        "This document could not be processed. Please check it and try again."
+    ),
+    AIErrorCode.INVALID_RESPONSE.value: (
+        "The document could not be read. Please retry or re-upload a clearer copy."
+    ),
+    AIErrorCode.UNSUPPORTED_CONTENT.value: (
+        "This file type isn't supported. Please upload a photo or PDF."
+    ),
+    DocumentAnalysisErrorCode.UNCLASSIFIED.value: (
+        "The document could not be classified."
+    ),
+    DocumentAnalysisErrorCode.INTERNAL.value: "Extraction failed unexpectedly.",
+}
+
+_DEFAULT_ANALYSIS_ERROR_MESSAGE = "Extraction failed. Please try again."
+
+
+def analysis_error_message(code: str) -> str:
+    """User-facing message for a persisted analysis error_code."""
+    return _ANALYSIS_ERROR_MESSAGES.get(code, _DEFAULT_ANALYSIS_ERROR_MESSAGE)
 
 
 @dataclass(frozen=True)
