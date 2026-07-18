@@ -332,7 +332,9 @@ async def test_failed_extraction_and_retry(
     from app.features.cashout.types import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
-    ai_client.error = AIAnalysisError(AIErrorCode.REFUSED, "declined: raw provider text")
+    ai_client.error = AIAnalysisError(
+        AIErrorCode.REFUSED, "declined: raw provider text"
+    )
 
     submission_id = await _create_submission(cashier_client)
     created = await _upload_pdf(cashier_client, submission_id)

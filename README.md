@@ -91,7 +91,6 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 ```
 .
 ├── compose.yaml                       # Postgres 18 for local dev
-├── setup.bash                         # One-shot local bootstrap
 ├── backend/
 │   ├── alembic.ini                    # Alembic config (script_location = migrations/)
 │   ├── migrations/                    # Async migrations (env.py reads DATABASE_URL) + versions/
@@ -138,19 +137,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 - Node.js (matching `@types/node` 25.x is fine)
 - Docker (for the Postgres container)
 
-### Quick bootstrap
 
-A `setup.bash` script at the repo root automates most of the steps below. It will:
-
-- copy `backend/.env.example` to `backend/.env` if missing
-- create `backend/.venv` and install backend deps (incl. `[dev]`)
-- run `npm ci` in `frontend/` and build the frontend into `backend/static/`
-- start the Postgres container via `docker compose up -d`
-- run `alembic upgrade head`
-
-```bash
-./setup.bash
-```
 
 ### Manual setup
 
