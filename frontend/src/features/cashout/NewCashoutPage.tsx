@@ -45,7 +45,7 @@ export function NewCashoutPage() {
     <div className="mx-auto max-w-2xl space-y-4">
       <Link
         to="/cashouts"
-        className="text-ink-muted hover:text-ink inline-flex items-center gap-1 text-sm"
+        className="text-ink-muted hover:text-ink inline-flex items-center gap-1 text-sm transition-colors"
       >
         <ArrowLeft className="size-4" />
         My cashouts

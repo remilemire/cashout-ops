@@ -57,6 +57,75 @@
   --color-info: oklch(0.6 0.13 250);
 }
 
+/*
+ * Palette cross-fade: the tokens are registered as typed properties so a theme
+ * switch animates the variables themselves at :root. Every var() consumer
+ * (text, backgrounds, borders) reads the same interpolated values, so nothing
+ * can fall out of sync or snap mid-fade. The variables only change when the
+ * theme flips (class toggle or OS change), so the transition can live on
+ * :root permanently. Unsupported browsers switch instantly.
+ */
+@property --bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --surface-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --line {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ink-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --accent-strong {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --on-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    transition:
+      --bg 300ms ease,
+      --surface 300ms ease,
+      --surface-2 300ms ease,
+      --line 300ms ease,
+      --ink 300ms ease,
+      --ink-muted 300ms ease,
+      --accent 300ms ease,
+      --accent-strong 300ms ease,
+      --on-accent 300ms ease;
+  }
+}
+
 @layer base {
   body {
     @apply bg-bg text-ink antialiased;

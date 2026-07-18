@@ -21,6 +21,9 @@ export const cashoutApi = {
     api<CashoutSubmission>(`/cashout/submissions/${id}/complete`, {
       method: "POST",
     }),
+  /** Cancel an incomplete cashout: deletes it and its uploaded documents. */
+  cancelSubmission: (id: string) =>
+    api<void>(`/cashout/submissions/${id}`, { method: "DELETE" }),
 
   uploadDocument: (submissionId: string, file: File) => {
     const body = new FormData();

@@ -1,11 +1,14 @@
 // frontend/src/features/cashout/CashoutsPage.tsx
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, ReceiptText } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import type { CashoutSubmissionListItem } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Button,
   Card,
@@ -21,10 +24,22 @@ import { SubmissionStatusBadge } from "./status";
 export function CashoutsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const submissionsQuery = useQuery({
     queryKey: cashoutKeys.submissions,
     queryFn: cashoutApi.listSubmissions,
+  });
+
+  // The submission awaiting cancel confirmation (drives the dialog).
+  const [pendingCancel, setPendingCancel] =
+    useState<CashoutSubmissionListItem | null>(null);
+
+  const cancel = useMutation({
+    mutationFn: (id: string) => cashoutApi.cancelSubmission(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    },
   });
 
   const startButton = (
@@ -61,8 +76,14 @@ export function CashoutsPage() {
         <ul className="space-y-2">
           {mine.map((submission) => (
             <li key={submission.id}>
-              <Link to={`/cashouts/${submission.id}`} className="group block">
-                <Card className="group-hover:border-accent/50 flex items-center gap-3 transition-colors">
+              <Card
+                padded={false}
+                className="hover:border-accent/50 flex items-center gap-2 pr-3 transition-colors"
+              >
+                <Link
+                  to={`/cashouts/${submission.id}`}
+                  className="flex min-w-0 flex-1 items-center gap-3 p-4"
+                >
                   <span className="bg-accent/10 text-accent-strong grid size-10 shrink-0 place-items-center rounded-lg">
                     <ReceiptText className="size-5" />
                   </span>
@@ -75,13 +96,41 @@ export function CashoutsPage() {
                     </p>
                   </div>
                   <SubmissionStatusBadge status={submission.status} />
+                </Link>
+                {submission.status === "COMPLETED" ? (
                   <ChevronRight className="text-ink-muted size-4 shrink-0" />
-                </Card>
-              </Link>
+                ) : (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setPendingCancel(submission)}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </Card>
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={pendingCancel !== null}
+        onClose={() => setPendingCancel(null)}
+        title="Cancel cashout?"
+        confirmLabel="Cancel cashout"
+        cancelLabel="Keep cashout"
+        confirmTone="danger"
+        onConfirm={() => {
+          if (!pendingCancel) return;
+          cancel.mutate(pendingCancel.id);
+          setPendingCancel(null);
+        }}
+      >
+        This permanently deletes cashout #{pendingCancel?.id.slice(0, 8)} and
+        any documents uploaded to it. This can&rsquo;t be undone.
+      </ConfirmDialog>
     </div>
   );
 }

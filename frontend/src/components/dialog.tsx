@@ -34,6 +34,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
+      aria-label={title}
       onCancel={(event) => {
         if (!dismissible) event.preventDefault();
       }}
@@ -41,6 +42,14 @@ export function Dialog({
       className={cx(
         "border-line bg-surface text-ink m-auto w-[calc(100vw-2rem)] max-w-sm",
         "rounded-2xl border p-5 shadow-lg backdrop:bg-black/50",
+        // Fade + slight zoom on open/close. Discrete display/overlay
+        // transitions keep the closing dialog rendered until the fade ends;
+        // browsers without @starting-style fall back to instant open/close.
+        "scale-95 opacity-0 transition-[display,overlay,opacity,scale] transition-discrete duration-150 ease-out",
+        "open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0",
+        "backdrop:opacity-0 backdrop:transition-[display,overlay,opacity] backdrop:transition-discrete backdrop:duration-150 backdrop:ease-out",
+        "open:backdrop:opacity-100 starting:open:backdrop:opacity-0",
+        "motion-reduce:transition-none motion-reduce:backdrop:transition-none",
       )}
     >
       <h2 className="mb-3 text-lg font-semibold">{title}</h2>

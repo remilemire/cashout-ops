@@ -2,10 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, PartyPopper, Plus } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { useAuth } from "@/auth/useAuth";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Badge,
   Button,
@@ -26,6 +28,8 @@ export function SubmissionPage() {
   const { submissionId = "" } = useParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: cashoutKeys.submission(submissionId),
@@ -53,6 +57,14 @@ export function SubmissionPage() {
     },
   });
 
+  const cancel = useMutation({
+    mutationFn: () => cashoutApi.cancelSubmission(submissionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+      navigate("/cashouts");
+    },
+  });
+
   const submission = detailQuery.data;
   if (detailQuery.isLoading) return <FullScreenSpinner />;
   if (!submission) return <ErrorBanner error={detailQuery.error} />;
@@ -61,6 +73,8 @@ export function SubmissionPage() {
   const isOwner = submission.submittedByUserId === user?.id;
   const isAdminView = !isOwner;
   const editable = isOwner && submission.status === "PROCESSING";
+  // Cancel stays available for the owner until the cashout is completed.
+  const canCancel = isOwner && submission.status !== "COMPLETED";
   const documents = submission.documents;
   const verifiedCount = documents.filter(
     (doc) => doc.analysis?.status === "VERIFIED",
@@ -70,13 +84,24 @@ export function SubmissionPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <Link
-        to={isAdminView ? "/admin/submissions" : "/cashouts"}
-        className="text-ink-muted hover:text-ink inline-flex items-center gap-1 text-sm"
-      >
-        <ArrowLeft className="size-4" />
-        {isAdminView ? "All submissions" : "My cashouts"}
-      </Link>
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          to={isAdminView ? "/admin/submissions" : "/cashouts"}
+          className="text-ink-muted hover:text-ink inline-flex items-center gap-1 text-sm transition-colors"
+        >
+          <ArrowLeft className="size-4" />
+          {isAdminView ? "All submissions" : "My cashouts"}
+        </Link>
+        {canCancel && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setCancelOpen(true)}
+          >
+            Cancel cashout
+          </Button>
+        )}
+      </div>
 
       <PageHeader
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
@@ -140,6 +165,22 @@ export function SubmissionPage() {
           onComplete={() => complete.mutate()}
         />
       )}
+
+      <ConfirmDialog
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title="Cancel cashout?"
+        confirmLabel="Cancel cashout"
+        cancelLabel="Keep cashout"
+        confirmTone="danger"
+        onConfirm={() => {
+          cancel.mutate();
+          setCancelOpen(false);
+        }}
+      >
+        This permanently deletes this cashout and any documents uploaded to it.
+        This can&rsquo;t be undone.
+      </ConfirmDialog>
     </div>
   );
 }

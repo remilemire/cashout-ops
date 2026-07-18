@@ -31,7 +31,7 @@ interface NavItem {
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return cx(
-    "flex flex-1 flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[11px] font-medium",
+    "flex flex-1 flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors",
     "md:flex-none md:flex-row md:gap-2 md:py-2 md:text-sm",
     isActive
       ? "text-accent-strong md:bg-accent/10"
@@ -99,7 +99,7 @@ export function AppLayout() {
               onClick={cycleTheme}
               title={`Theme: ${theme}`}
               aria-label={`Theme: ${theme}`}
-              className="hover:bg-surface-2 text-ink-muted hover:text-ink grid size-10 place-items-center rounded-lg"
+              className="hover:bg-surface-2 text-ink-muted hover:text-ink grid size-10 place-items-center rounded-lg transition-colors"
             >
               <ThemeIcon className="size-4.5" />
             </button>
@@ -115,7 +115,7 @@ export function AppLayout() {
               onClick={() => void onLogout()}
               title="Log out"
               aria-label="Log out"
-              className="hover:bg-surface-2 text-ink-muted hover:text-ink grid size-10 place-items-center rounded-lg"
+              className="hover:bg-surface-2 text-ink-muted hover:text-ink grid size-10 place-items-center rounded-lg transition-colors"
             >
               <LogOut className="size-4.5" />
             </button>
