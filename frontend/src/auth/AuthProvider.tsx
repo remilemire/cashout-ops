@@ -42,9 +42,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return user;
     },
     logout: async () => {
-      await authApi.logout();
-      queryClient.clear();
+      try {
+        await authApi.logout();
+      } catch {
+        // Signing out is best-effort on the client: even if the request
+        // fails, we still drop local auth state so guards send us to /login.
+      }
+      // Mark signed-out first so route guards observe `null` immediately, then
+      // drop the rest of the cached per-user data without refetching `me`.
       queryClient.setQueryData(ME_KEY, null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== ME_KEY[0],
+      });
     },
   };
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.sessions.model import Session
 from app.features.users.types import UserRole
 
-from .factories import ADMIN_EMAIL, csrf_headers, register
+from .factories import ADMIN_EMAIL, register
 
 
 async def test_register_creates_user_and_sets_cookies(client: AsyncClient) -> None:
@@ -115,7 +115,7 @@ async def test_logout_clears_session_and_cookies(
     await register(client, email="out@test.com")
     assert (await db_session.execute(select(Session))).scalars().all()
 
-    response = await client.post("/api/auth/logout", headers=csrf_headers(client))
+    response = await client.post("/api/auth/logout")
 
     assert response.status_code == 204
     # Cookies cleared, and the session row is deleted.
@@ -123,11 +123,11 @@ async def test_logout_clears_session_and_cookies(
     assert (await db_session.execute(select(Session))).scalars().all() == []
 
 
-async def test_logout_requires_csrf(client: AsyncClient) -> None:
-    await register(client, email="csrf@test.com")
+async def test_logout_with_invalid_session_returns_204(client: AsyncClient) -> None:
+    # Logout requires neither auth nor CSRF: a missing or already-invalid
+    # session still clears the cookies and returns 204 rather than erroring.
+    client.cookies.set("session_token", "not-a-real-token")
 
-    # No x-csrf-token header → rejected by the double-submit check.
     response = await client.post("/api/auth/logout")
 
-    assert response.status_code == 403
-    assert response.json()["code"] == "INVALID_CSRF_TOKEN"
+    assert response.status_code == 204

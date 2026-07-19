@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db, require_csrf
+from app.dependencies import get_db
 from app.errors.openapi import error_responses
 from app.features.sessions.cookies import (
     clear_csrf_cookie,
@@ -64,20 +64,17 @@ async def login(
     return _authenticated_response(response, result)
 
 
-@router.post(
-    "/logout",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_csrf), Depends(get_current_user)],
-    responses=error_responses(
-        "UNAUTHENTICATED", "INVALID_SESSION", "INVALID_CSRF_TOKEN"
-    ),
-)
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """End the current session and clear the auth cookies."""
+    """End the current session and clear the auth cookies.
+
+    Best-effort and unauthenticated: a missing or already-invalid session still
+    clears the cookies and returns 204 rather than erroring.
+    """
     session_token = get_session_cookie(request)
     if session_token is not None:
         await auth_service.logout(db, session_token=session_token)
