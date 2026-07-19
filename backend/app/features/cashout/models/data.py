@@ -33,7 +33,13 @@ class CashoutData(Entity):
     card_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     submission_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("cashout_submissions.id", ondelete="RESTRICT"),
+        # Name the FK explicitly: cashout/errors.py maps it to SUBMISSION_HAS_DATA,
+        # and the ON DELETE RESTRICT violation reports the constraint name.
+        ForeignKey(
+            "cashout_submissions.id",
+            ondelete="RESTRICT",
+            name="cashout_data_submission_id_fkey",
+        ),
         nullable=False,
         unique=True,
         index=True,
