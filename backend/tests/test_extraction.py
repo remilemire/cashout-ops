@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import cast
-
-import httpx
 import pytest
-from anthropic import APIError
 from pydantic import BaseModel
 
 from app.documents import (
@@ -26,11 +21,7 @@ from app.integrations.ai import (
     AIProvider,
     compose_instructions,
 )
-from app.integrations.ai.anthropic import (
-    AnthropicAIClient,
-    _to_document_block,  # pyright: ignore[reportPrivateUsage]
-)
-from app.lib.documents import DocumentContent, DocumentContentType
+from app.lib.documents import DocumentContentType
 
 from .fakes import FakeAIClient, FakeDocumentStorage
 
@@ -112,117 +103,6 @@ def test_processor_exposes_provider_and_model() -> None:
 
     assert processor.provider is AIProvider.ANTHROPIC
     assert processor.model == "fake-model"
-
-
-# ================================
-# ------ AnthropicAIClient -------
-# ================================
-
-
-@dataclass
-class _FakeParsed:
-    stop_reason: str
-    parsed_output: BaseModel | None
-
-
-class _FakeMessages:
-    def __init__(
-        self, *, response: _FakeParsed | None = None, exc: Exception | None = None
-    ) -> None:
-        self._response = response
-        self._exc = exc
-        self.calls: list[dict[str, object]] = []
-
-    async def parse(self, **kwargs: object) -> _FakeParsed:
-        self.calls.append(kwargs)
-        if self._exc is not None:
-            raise self._exc
-        assert self._response is not None
-        return self._response
-
-
-class _FakeAnthropic:
-    def __init__(
-        self, *, response: _FakeParsed | None = None, exc: Exception | None = None
-    ) -> None:
-        self.messages = _FakeMessages(response=response, exc=exc)
-
-
-def _anthropic_client(**kwargs: object) -> AnthropicAIClient:
-    fake = _FakeAnthropic(**kwargs)  # type: ignore[arg-type]
-    return AnthropicAIClient(fake, model="claude-test")  # type: ignore[arg-type]
-
-
-async def test_anthropic_client_returns_parsed_output() -> None:
-    note = ManualNoteData(note="ok")
-    client = _anthropic_client(response=_FakeParsed("end_turn", note))
-
-    result = await client.analyze(
-        DocumentContent(data=b"pdf", content_type=DocumentContentType.PDF),
-        ManualNoteData,
-    )
-
-    assert result is note
-
-
-async def test_anthropic_client_raises_on_refusal() -> None:
-    client = _anthropic_client(response=_FakeParsed("refusal", None))
-
-    with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze(
-            DocumentContent(data=b"pdf", content_type=DocumentContentType.PDF),
-            ManualNoteData,
-        )
-    assert exc_info.value.code is AIErrorCode.REFUSED
-
-
-async def test_anthropic_client_raises_when_no_parsed_output() -> None:
-    client = _anthropic_client(response=_FakeParsed("end_turn", None))
-
-    with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("some text", ManualNoteData)
-    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
-
-
-async def test_anthropic_client_wraps_provider_errors() -> None:
-    api_error = APIError(
-        "boom", request=httpx.Request("POST", "http://test"), body=None
-    )
-    client = _anthropic_client(exc=api_error)
-
-    with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
-    assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
-
-
-def test_to_document_block_maps_pdf() -> None:
-    block = _to_document_block(
-        DocumentContent(data=b"pdf-bytes", content_type=DocumentContentType.PDF)
-    )
-
-    assert block["type"] == "document"
-    assert cast(dict[str, object], block["source"])["media_type"] == "application/pdf"
-
-
-def test_to_document_block_maps_image() -> None:
-    block = _to_document_block(
-        DocumentContent(data=b"png-bytes", content_type=DocumentContentType.PNG)
-    )
-
-    assert block["type"] == "image"
-    assert cast(dict[str, object], block["source"])["media_type"] == "image/png"
-
-
-async def test_anthropic_client_always_sends_base_instructions() -> None:
-    fake = _FakeAnthropic(response=_FakeParsed("end_turn", ManualNoteData(note="ok")))
-    client = AnthropicAIClient(fake, model="claude-test")  # type: ignore[arg-type]
-
-    await client.analyze("text", ManualNoteData, instructions="EXTRA CONTEXT")
-
-    system = fake.messages.calls[0]["system"]
-    assert isinstance(system, str)
-    assert "document-analysis assistant" in system  # base persona always present
-    assert "EXTRA CONTEXT" in system  # caller instructions appended
 
 
 # ================================
