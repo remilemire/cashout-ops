@@ -178,6 +178,7 @@ async def complete_submission(
     responses=error_responses(
         "UNSUPPORTED_DOCUMENT_TYPE",
         "DOCUMENT_TOO_LARGE",
+        "DOCUMENT_DUPLICATE",
         "NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "VALIDATION_FAILED",
@@ -197,7 +198,8 @@ async def upload_document(
 ) -> CashoutDocumentAnalysisOut:
     """Upload an end-of-shift document and start its extraction.
 
-    Accepts JPEG, PNG, WebP, or PDF up to 20 MB. The AI extraction runs in the
+    Accepts JPEG, PNG, WebP, or PDF up to 20 MB; a file already uploaded to
+    this submission (same checksum) is rejected. The AI extraction runs in the
     background: this returns the analysis in `EXTRACTING`; poll
     `GET /cashout/analyses/{id}` until it reaches `NEEDS_VERIFICATION` or
     `FAILED` (retry via the extract endpoint).

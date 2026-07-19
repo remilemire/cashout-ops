@@ -205,9 +205,11 @@ async def upload_document(
         cashout_submission_id=submission.id,
     )
 
-    await storage.write(document.storage_key, payload.data)
+    # Flush before writing to storage: the (submission, checksum) unique index
+    # rejects a duplicate upload before its bytes land in the object store.
     db.add(document)
     await db.flush()
+    await storage.write(document.storage_key, payload.data)
 
     return await _reset_analysis(db, document=document, processor=processor)
 

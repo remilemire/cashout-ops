@@ -41,6 +41,7 @@ export type ErrorCode =
   | "EXTRACTION_IN_PROGRESS"
   | "EXTRACTION_FAILED"
   | "DOCUMENT_TOO_LARGE"
+  | "DOCUMENT_DUPLICATE"
   | "UNSUPPORTED_DOCUMENT_TYPE";
 
 export interface ValidationIssue {

@@ -72,7 +72,7 @@ Backend loads from `backend/.env` via `pydantic-settings`. `.env` is gitignored;
 - `SESSION_TTL_DAYS` — default `7`.
 - `ADMIN_EMAIL` — default `admin@test.com`. `auth.register` promotes a matching email to `UserRole.ADMIN`.
 - `AI_PROVIDER` — `ANTHROPIC` (default), `OPENAI`, or `GEMINI`. Selects which client the lifespan builds. **Only the selected provider's API key is required** — the lifespan raises at startup if it's missing.
-- `AI_MODEL` — default `claude-opus-4-8`. Set it to a model the selected provider serves.
+- **AI model** — not an env var. `Settings.AI_MODELS` (`app/core/config.py`) maps each `AIProvider` to its model (`claude-sonnet-4-6` / `gpt-5.6-terra` / `gemini-3.5-flash`); the `AI_MODEL` computed field resolves the entry for `AI_PROVIDER`. Change a provider's model by editing that map.
 - `AI_MAX_TOKENS` — default `16000`; passed to the client constructor.
 - `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` — all optional at the settings layer; the one matching `AI_PROVIDER` is required at runtime. A placeholder lets the app boot; a real key is only needed to hit the extract endpoint.
 - `DOCUMENT_STORAGE_DIR` — default `storage/documents`; where `LocalDocumentStorageClient` writes uploads.

@@ -328,6 +328,33 @@ async def test_upload_rejects_unsupported_content_type(
     assert response.json()["code"] == "UNSUPPORTED_DOCUMENT_TYPE"
 
 
+async def test_upload_rejects_duplicate_document(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    await _upload_pdf(cashier_client, submission_id)
+    stored_before = len(storage.objects)
+
+    # Same bytes again (filename doesn't matter): rejected by checksum.
+    response = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/documents",
+        files={"file": ("renamed.pdf", PDF[1], PDF[2])},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "DOCUMENT_DUPLICATE"
+    # The duplicate was rejected before its bytes were written to storage.
+    assert len(storage.objects) == stored_before
+
+    # The same file is still allowed in a *different* submission.
+    other_submission_id = await _create_submission(cashier_client)
+    await _upload_pdf(cashier_client, other_submission_id)
+
+
 async def test_failed_extraction_and_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity, enum_column
@@ -21,6 +21,16 @@ if TYPE_CHECKING:
 
 class CashoutDocument(Entity):
     __tablename__ = "cashout_documents"
+    # Name the unique index explicitly: cashout/errors.py maps it to
+    # DOCUMENT_DUPLICATE, and a unique-index violation reports the index name.
+    __table_args__ = (
+        Index(
+            "ix_cashout_documents_submission_checksum",
+            "cashout_submission_id",
+            "checksum_sha256",
+            unique=True,
+        ),
+    )
 
     # The classified document type lives on the analysis
     # (CashoutDocumentAnalysis.classification), not here.
@@ -30,7 +40,8 @@ class CashoutDocument(Entity):
 
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    # SHA-256 of the stored bytes, for auditing what the AI analyzed.
+    # SHA-256 of the stored bytes: audits what the AI analyzed and rejects
+    # duplicate uploads within a submission (unique with the submission id).
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(

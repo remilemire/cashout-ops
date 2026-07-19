@@ -16,6 +16,7 @@ type CashoutErrorCode = Literal[
     "EXTRACTION_IN_PROGRESS",
     "EXTRACTION_FAILED",
     "DOCUMENT_TOO_LARGE",
+    "DOCUMENT_DUPLICATE",
     "UNSUPPORTED_DOCUMENT_TYPE",
 ]
 
@@ -56,6 +57,10 @@ cashout_error_catalog: ErrorCatalog[CashoutErrorCode] = {
         "kind": "BAD_REQUEST",
         "message": "Document exceeds the 20 MB size limit.",
     },
+    "DOCUMENT_DUPLICATE": {
+        "kind": "CONFLICT",
+        "message": "This document has already been uploaded to this cashout.",
+    },
     "UNSUPPORTED_DOCUMENT_TYPE": {
         "kind": "BAD_REQUEST",
         "message": "Unsupported document content type.",
@@ -63,9 +68,11 @@ cashout_error_catalog: ErrorCatalog[CashoutErrorCode] = {
 }
 
 # cashout_data.submission_id is ON DELETE RESTRICT: reconciled data blocks
-# deleting its submission.
+# deleting its submission. The (submission, checksum) unique index rejects
+# uploading the same file twice into one cashout.
 cashout_constraint_to_code: ConstraintToCode[CashoutErrorCode] = {
-    "cashout_data_submission_id_fkey": "SUBMISSION_HAS_DATA"
+    "cashout_data_submission_id_fkey": "SUBMISSION_HAS_DATA",
+    "ix_cashout_documents_submission_checksum": "DOCUMENT_DUPLICATE",
 }
 
 __all__ = ["CashoutErrorCode", "cashout_constraint_to_code", "cashout_error_catalog"]
