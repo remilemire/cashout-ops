@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
     async def serve_spa(full_path: str):  # type: ignore[reportUnusedFunction]
         # Unknown /api paths must surface as JSON 404s, not the SPA shell.
         if full_path == "api" or full_path.startswith("api/"):
-            raise AppError("NOT_FOUND")
+            raise AppError("ROUTE_NOT_FOUND")
         return FileResponse("static/index.html")
 
     return app

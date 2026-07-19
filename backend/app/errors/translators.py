@@ -35,10 +35,10 @@ def translate_integrity_error(error: IntegrityError) -> AppError:
     """
     constraint = _diag(error, "constraint_name")
     if constraint is not None and (code := constraint_to_code.get(constraint)):
-        return AppError(code, cause=error)
+        return AppError(code, str(error.orig))
 
     sqlstate = getattr(error.orig, "sqlstate", None) or _diag(error, "sqlstate")
-    return AppError(_sqlstate_to_code.get(sqlstate or "", "INTERNAL"), cause=error)
+    return AppError(_sqlstate_to_code.get(sqlstate or "", "INTERNAL"), str(error.orig))
 
 
 def _diag(error: IntegrityError, attribute: str) -> str | None:
@@ -56,7 +56,7 @@ def translate_validation_error(
     error: PydanticValidationError | RequestValidationError,
 ) -> ValidationError:
     """Flatten pydantic's error list into cataloged validation issues."""
-    return ValidationError([_to_issue(e) for e in error.errors()], cause=error)
+    return ValidationError([_to_issue(e) for e in error.errors()])
 
 
 def _to_issue(error: Mapping[str, Any]) -> ValidationIssueData:

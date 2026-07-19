@@ -89,7 +89,9 @@ async def create_submission(
 @router.delete(
     "/submissions/{submission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses("NOT_FOUND", "SUBMISSION_HAS_DATA", "VALIDATION_FAILED"),
+    responses=error_responses(
+        "SUBMISSION_NOT_FOUND", "SUBMISSION_HAS_DATA", "VALIDATION_FAILED"
+    ),
 )
 async def delete_submission(
     submission_id: SubmissionId,
@@ -122,7 +124,7 @@ async def list_submissions(
 @router.get(
     "/submissions/{submission_id}",
     response_model=CashoutSubmissionDetailOut,
-    responses=error_responses("NOT_FOUND", "VALIDATION_FAILED"),
+    responses=error_responses("SUBMISSION_NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_submission(
     submission_id: SubmissionId,
@@ -143,7 +145,7 @@ async def get_submission(
     "/submissions/{submission_id}/complete",
     response_model=CashoutSubmissionOut,
     responses=error_responses(
-        "NOT_FOUND",
+        "SUBMISSION_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "SUBMISSION_EMPTY",
         "SUBMISSION_UNVERIFIED",
@@ -179,7 +181,7 @@ async def complete_submission(
         "UNSUPPORTED_DOCUMENT_TYPE",
         "DOCUMENT_TOO_LARGE",
         "DOCUMENT_DUPLICATE",
-        "NOT_FOUND",
+        "SUBMISSION_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "VALIDATION_FAILED",
     ),
@@ -232,7 +234,7 @@ async def upload_document(
     "/documents/{document_id}/extract",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
-        "NOT_FOUND",
+        "DOCUMENT_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "ANALYSIS_VERIFIED",
         "EXTRACTION_IN_PROGRESS",
@@ -280,7 +282,8 @@ _DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
 @router.get(
     "/documents/{document_id}/content",
     response_class=Response,
-    responses=_DOCUMENT_CONTENT_OK | error_responses("NOT_FOUND", "VALIDATION_FAILED"),
+    responses=_DOCUMENT_CONTENT_OK
+    | error_responses("DOCUMENT_NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_document_content(
     document_id: DocumentId,
@@ -311,7 +314,7 @@ async def get_document_content(
 @router.get(
     "/analyses/{analysis_id}",
     response_model=CashoutDocumentAnalysisOut,
-    responses=error_responses("NOT_FOUND", "VALIDATION_FAILED"),
+    responses=error_responses("ANALYSIS_NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_analysis(
     analysis_id: AnalysisId,
@@ -334,7 +337,7 @@ async def get_analysis(
     "/analyses/{analysis_id}/verify",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
-        "NOT_FOUND",
+        "ANALYSIS_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "ANALYSIS_VERIFIED",
         "EXTRACTION_IN_PROGRESS",
@@ -381,8 +384,7 @@ def _to_content_type(content_type: str | None) -> DocumentContentType:
     try:
         return DocumentContentType(content_type or "")
     except ValueError:
-        supported = ", ".join(member.value for member in DocumentContentType)
         raise AppError(
             "UNSUPPORTED_DOCUMENT_TYPE",
-            message=f"Unsupported document content type. Supported types: {supported}.",
+            f"Unsupported document content type: {content_type!r}.",
         ) from None

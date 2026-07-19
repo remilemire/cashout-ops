@@ -30,7 +30,7 @@ async def get_current_user(
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
     if user.role != UserRole.ADMIN:
-        raise AppError("FORBIDDEN", message="Admin access required.")
+        raise AppError("FORBIDDEN", "Admin access required.")
     return user
 
 

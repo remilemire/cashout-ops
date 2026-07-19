@@ -9,14 +9,15 @@ from app.features.cashout.errors import CashoutErrorCode
 from app.features.users.errors import UserErrorCode
 
 # Cross-cutting codes raised outside any feature (translators, dependencies,
-# Entity.get_active, the SPA catch-all). Features add specific codes on top.
+# the SPA catch-all). Features add specific codes on top; there is no generic
+# NOT_FOUND — missing entities use their feature's *_NOT_FOUND code.
 type BaseErrorCode = Literal[
     "INTERNAL",
     "BAD_REQUEST",
     "VALIDATION_FAILED",
     "UNAUTHENTICATED",
     "FORBIDDEN",
-    "NOT_FOUND",
+    "ROUTE_NOT_FOUND",
     "CONFLICT",
     "SERVICE_UNAVAILABLE",
 ]

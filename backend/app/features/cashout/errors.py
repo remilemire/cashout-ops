@@ -8,6 +8,8 @@ from app.errors.contracts import ConstraintToCode, ErrorCatalog
 
 type CashoutErrorCode = Literal[
     "SUBMISSION_NOT_FOUND",
+    "DOCUMENT_NOT_FOUND",
+    "ANALYSIS_NOT_FOUND",
     "SUBMISSION_COMPLETED",
     "SUBMISSION_EMPTY",
     "SUBMISSION_UNVERIFIED",
@@ -24,6 +26,14 @@ cashout_error_catalog: ErrorCatalog[CashoutErrorCode] = {
     "SUBMISSION_NOT_FOUND": {
         "kind": "NOT_FOUND",
         "message": "Cashout submission not found.",
+    },
+    "DOCUMENT_NOT_FOUND": {
+        "kind": "NOT_FOUND",
+        "message": "Cashout document not found.",
+    },
+    "ANALYSIS_NOT_FOUND": {
+        "kind": "NOT_FOUND",
+        "message": "Document analysis not found.",
     },
     "SUBMISSION_COMPLETED": {
         "kind": "CONFLICT",

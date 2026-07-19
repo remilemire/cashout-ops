@@ -188,8 +188,7 @@ async def upload_document(
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
-            "SUBMISSION_COMPLETED",
-            message="Documents cannot be added after completion.",
+            "SUBMISSION_COMPLETED", "Documents cannot be added after completion."
         )
 
     if len(payload.data) > MAX_DOCUMENT_SIZE:
@@ -222,8 +221,8 @@ async def get_document_content(
     storage: DocumentStorageClient,
 ) -> tuple[CashoutDocument, bytes]:
     """The original uploaded bytes, for viewing; owner or admin."""
-    document = await CashoutDocument.get_active(db, document_id)
-    submission = await CashoutSubmission.get_active(db, document.cashout_submission_id)
+    document = await _get_document(db, document_id)
+    submission = await _get_submission(db, document.cashout_submission_id)
     _ensure_can_view(submission, user)
 
     return document, await storage.read(document.storage_key)
@@ -242,14 +241,13 @@ async def extract_document(
     background task. Verified analyses cannot be re-run, and an extraction
     already in flight cannot be restarted.
     """
-    document = await CashoutDocument.get_active(db, document_id)
+    document = await _get_document(db, document_id)
     submission = await _get_owned_submission(
         db, submission_id=document.cashout_submission_id, user_id=user_id
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
-            "SUBMISSION_COMPLETED",
-            message="Documents cannot be analyzed after completion.",
+            "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
         )
 
     return await _reset_analysis(db, document=document, processor=processor)
@@ -269,7 +267,11 @@ async def run_extraction(
     """
     async with sessionmaker() as db:
         try:
-            document = await CashoutDocument.get_active(db, document_id)
+            document = await CashoutDocument.find_by_id(db, document_id)
+            if document is None:
+                # Deleted between the request committing and this job running;
+                # the cascade removed its analysis too — nothing to update.
+                return
             await _apply_extraction(db, document=document, processor=processor)
             await db.commit()
             return
@@ -306,10 +308,10 @@ async def get_analysis(
     db: AsyncSession, *, analysis_id: UUID, user: User
 ) -> CashoutDocumentAnalysis:
     """Poll target for extraction progress; owner or admin."""
-    analysis = await CashoutDocumentAnalysis.get_active(db, analysis_id)
+    analysis = await _get_analysis(db, analysis_id)
 
-    document = await CashoutDocument.get_active(db, analysis.cashout_document_id)
-    submission = await CashoutSubmission.get_active(db, document.cashout_submission_id)
+    document = await _get_document(db, analysis.cashout_document_id)
+    submission = await _get_submission(db, document.cashout_submission_id)
     _ensure_can_view(submission, user)
 
     return analysis
@@ -323,9 +325,9 @@ async def verify_analysis(
     user_id: UUID,
 ) -> CashoutDocumentAnalysis:
     """Cashier confirmation of an extraction, optionally with corrections."""
-    analysis = await CashoutDocumentAnalysis.get_active(db, analysis_id)
+    analysis = await _get_analysis(db, analysis_id)
 
-    document = await CashoutDocument.get_active(db, analysis.cashout_document_id)
+    document = await _get_document(db, analysis.cashout_document_id)
     submission = await _get_owned_submission(
         db, submission_id=document.cashout_submission_id, user_id=user_id
     )
@@ -335,9 +337,7 @@ async def verify_analysis(
     if analysis.status is DocumentAnalysisStatus.VERIFIED:
         raise AppError("ANALYSIS_VERIFIED")
     if analysis.status is DocumentAnalysisStatus.EXTRACTING:
-        raise AppError(
-            "EXTRACTION_IN_PROGRESS", message="The extraction is still in progress."
-        )
+        raise AppError("EXTRACTION_IN_PROGRESS", "The extraction is still in progress.")
     if analysis.status is DocumentAnalysisStatus.FAILED:
         raise AppError("EXTRACTION_FAILED")
 
@@ -370,13 +370,34 @@ async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
 # ================================
 
 
+async def _get_submission(db: AsyncSession, submission_id: UUID) -> CashoutSubmission:
+    submission = await CashoutSubmission.find_by_id(db, submission_id)
+    if submission is None:
+        raise AppError("SUBMISSION_NOT_FOUND")
+    return submission
+
+
+async def _get_document(db: AsyncSession, document_id: UUID) -> CashoutDocument:
+    document = await CashoutDocument.find_by_id(db, document_id)
+    if document is None:
+        raise AppError("DOCUMENT_NOT_FOUND")
+    return document
+
+
+async def _get_analysis(db: AsyncSession, analysis_id: UUID) -> CashoutDocumentAnalysis:
+    analysis = await CashoutDocumentAnalysis.find_by_id(db, analysis_id)
+    if analysis is None:
+        raise AppError("ANALYSIS_NOT_FOUND")
+    return analysis
+
+
 async def _get_owned_submission(
     db: AsyncSession, *, submission_id: UUID, user_id: UUID
 ) -> CashoutSubmission:
-    submission = await CashoutSubmission.get_active(db, submission_id)
+    submission = await _get_submission(db, submission_id)
     if submission.submitted_by_user_id != user_id:
         raise AppError(
-            "FORBIDDEN", message="You do not have access to this cashout submission."
+            "FORBIDDEN", "You do not have access to this cashout submission."
         )
     return submission
 
@@ -384,7 +405,7 @@ async def _get_owned_submission(
 def _ensure_can_view(submission: CashoutSubmission, user: User) -> None:
     if user.role != UserRole.ADMIN and submission.submitted_by_user_id != user.id:
         raise AppError(
-            "FORBIDDEN", message="You do not have access to this cashout submission."
+            "FORBIDDEN", "You do not have access to this cashout submission."
         )
 
 
@@ -458,8 +479,7 @@ async def _reset_analysis(
     if analysis is not None:
         if analysis.status is DocumentAnalysisStatus.VERIFIED:
             raise AppError(
-                "ANALYSIS_VERIFIED",
-                message="This document has already been verified.",
+                "ANALYSIS_VERIFIED", "This document has already been verified."
             )
         if analysis.status is DocumentAnalysisStatus.EXTRACTING:
             raise AppError("EXTRACTION_IN_PROGRESS")

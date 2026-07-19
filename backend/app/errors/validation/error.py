@@ -24,11 +24,9 @@ class ValidationError(AppError):
     def __init__(
         self,
         issues: Sequence[ValidationIssueData],
-        *,
         message: str | None = None,
-        cause: Exception | None = None,
     ):
-        super().__init__("VALIDATION_FAILED", message=message, cause=cause)
+        super().__init__("VALIDATION_FAILED", message)
         self.issues = issues
 
 

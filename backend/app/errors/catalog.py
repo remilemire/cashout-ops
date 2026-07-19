@@ -28,9 +28,9 @@ base_error_catalog: ErrorCatalog[BaseErrorCode] = {
         "kind": "FORBIDDEN",
         "message": "You do not have permission to perform this action.",
     },
-    "NOT_FOUND": {
+    "ROUTE_NOT_FOUND": {
         "kind": "NOT_FOUND",
-        "message": "The requested resource could not be found.",
+        "message": "The requested route does not exist.",
     },
     "CONFLICT": {
         "kind": "CONFLICT",

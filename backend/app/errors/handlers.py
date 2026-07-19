@@ -51,13 +51,13 @@ def init_error_handlers(app: FastAPI) -> None:
     def handle_http_exception(  # type: ignore[reportUnusedFunction]
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
-        return _to_response(AppError(_to_code(exc.status_code), cause=exc))
+        return _to_response(AppError(_to_code(exc.status_code)))
 
     @app.exception_handler(Exception)
     def handle_uncaught_exception(  # type: ignore[reportUnusedFunction]
         request: Request, exc: Exception
     ) -> JSONResponse:
-        return _to_response(AppError("INTERNAL", cause=exc))
+        return _to_response(AppError("INTERNAL"))
 
 
 # ================================
@@ -67,10 +67,12 @@ def init_error_handlers(app: FastAPI) -> None:
 
 def _to_response(error: AppError) -> JSONResponse:
     entry = error_catalog[error.code]
+    # The catalog message is the only one clients see; AppError.message is
+    # internal-only context and must not leak here.
     body = ErrorResponseSchema(
         kind=entry["kind"],
         code=error.code,
-        message=error.message or entry["message"],
+        message=entry["message"],
         issues=_to_issue_schemas(error) if isinstance(error, ValidationError) else None,
     )
     # Error handlers return JSONResponse directly, so there's no router
@@ -115,7 +117,7 @@ _status_to_code: Mapping[int, ErrorCode] = {
     status.HTTP_400_BAD_REQUEST: "BAD_REQUEST",
     status.HTTP_401_UNAUTHORIZED: "UNAUTHENTICATED",
     status.HTTP_403_FORBIDDEN: "FORBIDDEN",
-    status.HTTP_404_NOT_FOUND: "NOT_FOUND",
+    status.HTTP_404_NOT_FOUND: "ROUTE_NOT_FOUND",
     status.HTTP_409_CONFLICT: "CONFLICT",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "VALIDATION_FAILED",
     status.HTTP_500_INTERNAL_SERVER_ERROR: "INTERNAL",

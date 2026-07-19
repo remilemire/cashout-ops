@@ -13,26 +13,19 @@ if TYPE_CHECKING:
 class AppError(Exception):
     """Raise with a cataloged code; the handlers format the response.
 
-    `message` overrides the catalog default for this occurrence; `cause` keeps
-    the originating exception for logging without leaking it to the client.
+    `message` is internal-only context (it reaches logs and tracebacks, never
+    the client) — the response message is always the catalog default for
+    `code`.
     """
 
     code: ErrorCode
     message: str | None
-    cause: Exception | None
 
-    def __init__(
-        self,
-        code: ErrorCode,
-        *,
-        message: str | None = None,
-        cause: Exception | None = None,
-    ):
+    def __init__(self, code: ErrorCode, message: str | None = None):
         super().__init__(message or code)
 
         self.code = code
         self.message = message
-        self.cause = cause
 
 
 __all__ = ["AppError"]

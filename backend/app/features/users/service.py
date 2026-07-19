@@ -7,6 +7,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.errors import AppError
+
 from .model import User
 from .schemas import UserCreate
 from .types import UserRole
@@ -40,7 +42,9 @@ def create(
 
 
 async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
-    user = await User.get_active(db, user_id)
+    user = await User.find_by_id(db, user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND")
     await db.delete(user)
 
 
