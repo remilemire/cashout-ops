@@ -20,7 +20,8 @@ from app.dependencies import (
     require_admin,
     require_csrf,
 )
-from app.errors import BadRequestError, ErrorCode, error_responses
+from app.errors import AppError
+from app.errors.openapi import error_responses
 from app.features.users.model import User
 from app.integrations.storage import DocumentStorageClient
 from app.lib.documents import DocumentContentType
@@ -48,13 +49,9 @@ router = APIRouter(
         Depends(require_csrf),
         Depends(get_current_user),
     ],
-    responses=error_responses(ErrorCode.UNAUTHORIZED, ErrorCode.FORBIDDEN),
-)
-
-# Shared by the lifecycle routes: the target may not exist, may be in the wrong
-# state for the action, and the path/body may fail validation.
-_LIFECYCLE_RESPONSES = error_responses(
-    ErrorCode.NOT_FOUND, ErrorCode.INVALID_STATE, ErrorCode.UNPROCESSABLE
+    responses=error_responses(
+        "UNAUTHENTICATED", "INVALID_SESSION", "INVALID_CSRF_TOKEN", "FORBIDDEN"
+    ),
 )
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
@@ -92,9 +89,7 @@ async def create_submission(
 @router.delete(
     "/submissions/{submission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses(
-        ErrorCode.NOT_FOUND, ErrorCode.IN_USE, ErrorCode.UNPROCESSABLE
-    ),
+    responses=error_responses("NOT_FOUND", "SUBMISSION_HAS_DATA", "VALIDATION_FAILED"),
 )
 async def delete_submission(
     submission_id: SubmissionId,
@@ -127,7 +122,7 @@ async def list_submissions(
 @router.get(
     "/submissions/{submission_id}",
     response_model=CashoutSubmissionDetailOut,
-    responses=error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+    responses=error_responses("NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_submission(
     submission_id: SubmissionId,
@@ -147,7 +142,13 @@ async def get_submission(
 @router.post(
     "/submissions/{submission_id}/complete",
     response_model=CashoutSubmissionOut,
-    responses=_LIFECYCLE_RESPONSES,
+    responses=error_responses(
+        "NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "SUBMISSION_EMPTY",
+        "SUBMISSION_UNVERIFIED",
+        "VALIDATION_FAILED",
+    ),
 )
 async def complete_submission(
     submission_id: SubmissionId,
@@ -175,10 +176,11 @@ async def complete_submission(
     response_model=CashoutDocumentAnalysisOut,
     status_code=status.HTTP_201_CREATED,
     responses=error_responses(
-        ErrorCode.BAD_REQUEST,
-        ErrorCode.NOT_FOUND,
-        ErrorCode.INVALID_STATE,
-        ErrorCode.UNPROCESSABLE,
+        "UNSUPPORTED_DOCUMENT_TYPE",
+        "DOCUMENT_TOO_LARGE",
+        "NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "VALIDATION_FAILED",
     ),
 )
 async def upload_document(
@@ -227,7 +229,13 @@ async def upload_document(
 @router.post(
     "/documents/{document_id}/extract",
     response_model=CashoutDocumentAnalysisOut,
-    responses=_LIFECYCLE_RESPONSES,
+    responses=error_responses(
+        "NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "ANALYSIS_VERIFIED",
+        "EXTRACTION_IN_PROGRESS",
+        "VALIDATION_FAILED",
+    ),
 )
 async def extract_document(
     document_id: DocumentId,
@@ -270,8 +278,7 @@ _DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
 @router.get(
     "/documents/{document_id}/content",
     response_class=Response,
-    responses=_DOCUMENT_CONTENT_OK
-    | error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+    responses=_DOCUMENT_CONTENT_OK | error_responses("NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_document_content(
     document_id: DocumentId,
@@ -302,7 +309,7 @@ async def get_document_content(
 @router.get(
     "/analyses/{analysis_id}",
     response_model=CashoutDocumentAnalysisOut,
-    responses=error_responses(ErrorCode.NOT_FOUND, ErrorCode.UNPROCESSABLE),
+    responses=error_responses("NOT_FOUND", "VALIDATION_FAILED"),
 )
 async def get_analysis(
     analysis_id: AnalysisId,
@@ -324,7 +331,14 @@ async def get_analysis(
 @router.post(
     "/analyses/{analysis_id}/verify",
     response_model=CashoutDocumentAnalysisOut,
-    responses=_LIFECYCLE_RESPONSES,
+    responses=error_responses(
+        "NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "ANALYSIS_VERIFIED",
+        "EXTRACTION_IN_PROGRESS",
+        "EXTRACTION_FAILED",
+        "VALIDATION_FAILED",
+    ),
 )
 async def verify_analysis(
     analysis_id: AnalysisId,
@@ -366,6 +380,7 @@ def _to_content_type(content_type: str | None) -> DocumentContentType:
         return DocumentContentType(content_type or "")
     except ValueError:
         supported = ", ".join(member.value for member in DocumentContentType)
-        raise BadRequestError(
-            f"Unsupported document content type. Supported types: {supported}."
+        raise AppError(
+            "UNSUPPORTED_DOCUMENT_TYPE",
+            message=f"Unsupported document content type. Supported types: {supported}.",
         ) from None

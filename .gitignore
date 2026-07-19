@@ -15,3 +15,4 @@ instance
 *.egg-info
 static
 .ruff_cache
+storage/documents/

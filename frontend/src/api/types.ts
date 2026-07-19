@@ -4,28 +4,57 @@
 
 // ---------- Errors (app/errors) ----------
 
-export type ErrorCode =
-  | "SERVER_ERROR"
+export type ErrorKind =
   | "BAD_REQUEST"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "VALIDATION"
+  | "FORBIDDEN"
   | "UNAUTHORIZED"
+  | "INTERNAL"
+  | "SERVICE_UNAVAILABLE";
+
+/** Base codes plus each feature's codes (see the backend errors.py modules). */
+export type ErrorCode =
+  | "INTERNAL"
+  | "BAD_REQUEST"
+  | "VALIDATION_FAILED"
+  | "UNAUTHENTICATED"
   | "FORBIDDEN"
   | "NOT_FOUND"
-  | "UNPROCESSABLE"
-  | "IN_USE"
-  | "ALREADY_EXISTS"
-  | "INVALID_STATE";
+  | "CONFLICT"
+  | "SERVICE_UNAVAILABLE"
+  // users
+  | "USER_NOT_FOUND"
+  | "EMAIL_TAKEN"
+  // auth
+  | "INVALID_CREDENTIALS"
+  | "INVALID_SESSION"
+  | "INVALID_CSRF_TOKEN"
+  // cashout
+  | "SUBMISSION_NOT_FOUND"
+  | "SUBMISSION_COMPLETED"
+  | "SUBMISSION_EMPTY"
+  | "SUBMISSION_UNVERIFIED"
+  | "SUBMISSION_HAS_DATA"
+  | "ANALYSIS_VERIFIED"
+  | "EXTRACTION_IN_PROGRESS"
+  | "EXTRACTION_FAILED"
+  | "DOCUMENT_TOO_LARGE"
+  | "UNSUPPORTED_DOCUMENT_TYPE";
 
-export interface ErrorDetail {
-  rule: string;
-  detail: string;
+export interface ValidationIssue {
+  code: string;
   path: (string | number)[];
+  message: string;
 }
 
-export interface ErrorBody {
-  error: string;
+export interface ErrorResponse {
+  kind: ErrorKind;
   code: ErrorCode;
   message: string;
-  errors?: ErrorDetail[];
+  /** Per-field details; present only when `kind` is "VALIDATION". */
+  issues?: ValidationIssue[];
 }
 
 // ---------- Users / auth ----------

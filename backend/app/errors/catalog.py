@@ -2,113 +2,62 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 
 from fastapi import status
 
-from .types import (
-    ErrorCatalog,
-    ErrorCode,
-    UnprocessableContext,
-    ValidationRule,
-)
+from app.features.auth.errors import auth_error_catalog
+from app.features.cashout.errors import cashout_error_catalog
+from app.features.users.errors import user_error_catalog
 
-# ================================
-# ---------- Validation ----------
-# ================================
+from .codes import BaseErrorCode, ErrorCode
+from .contracts import ErrorCatalog, ErrorKind
 
-# Per-rule message builders. Each receives the validation ctx and returns a
-# human-readable detail; rules without contextual data ignore it.
-VALIDATION_DETAILS: Mapping[ValidationRule, Callable[[UnprocessableContext], str]] = {
-    ValidationRule.EXTRA_FIELD: lambda ctx: "This field isn't allowed.",
-    ValidationRule.MISSING_FIELD: lambda ctx: "This field is required.",
-    ValidationRule.BOOLEAN_TYPE: lambda ctx: "Enter true or false.",
-    ValidationRule.STRING_TYPE: lambda ctx: "Enter valid text.",
-    ValidationRule.INTEGER_TYPE: lambda ctx: "Enter a whole number.",
-    ValidationRule.DECIMAL_TYPE: lambda ctx: "Enter a valid number.",
-    ValidationRule.OBJECT_TYPE: lambda ctx: "Enter a valid object or list.",
-    ValidationRule.TOO_SMALL: lambda ctx: (
-        f"Must be greater than {ctx['min_value']}."
-        if "min_value" in ctx
-        else "Too small."
-    ),
-    ValidationRule.TOO_LARGE: lambda ctx: (
-        f"Must be less than {ctx['max_value']}." if "max_value" in ctx else "Too big."
-    ),
-    ValidationRule.TOO_SHORT: lambda ctx: (
-        f"Minimum {ctx['min_length']} characters required."
-        if "min_length" in ctx
-        else "Too short."
-    ),
-    ValidationRule.TOO_LONG: lambda ctx: (
-        f"Maximum {ctx['max_length']} characters allowed."
-        if "max_length" in ctx
-        else "Too long."
-    ),
-    ValidationRule.INVALID_OPTION: lambda ctx: (
-        f"Choose from: {' | '.join(f'{v}' for v in ctx['allowed_values'])}."
-        if "allowed_values" in ctx
-        else "Choose one of the allowed values."
-    ),
-    ValidationRule.INVALID_MULTIPLE: lambda ctx: (
-        f"Must be a multiple of {ctx['multiple_of']}."
-        if "multiple_of" in ctx
-        else "Enter a valid multiple."
-    ),
-    ValidationRule.INVALID_VALUE: lambda ctx: "Invalid value.",
-}
-
-
-# ================================
-# ----------- Catalog ------------
-# ================================
-
-
-CATALOG: ErrorCatalog = {
-    ErrorCode.SERVER_ERROR: {
-        "error": "Server Error",
-        "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
-        "message": "Something went wrong.",
-    },
-    ErrorCode.BAD_REQUEST: {
-        "error": "Bad Request",
-        "status": status.HTTP_400_BAD_REQUEST,
+base_error_catalog: ErrorCatalog[BaseErrorCode] = {
+    "INTERNAL": {"kind": "INTERNAL", "message": "Something went wrong."},
+    "BAD_REQUEST": {
+        "kind": "BAD_REQUEST",
         "message": "The request could not be processed.",
     },
-    ErrorCode.UNAUTHORIZED: {
-        "error": "Unauthorized",
-        "status": status.HTTP_401_UNAUTHORIZED,
-        "message": "Authentication required.",
+    "VALIDATION_FAILED": {
+        "kind": "VALIDATION",
+        "message": "There was a problem with the submission.",
     },
-    ErrorCode.FORBIDDEN: {
-        "error": "Forbidden",
-        "status": status.HTTP_403_FORBIDDEN,
+    "UNAUTHENTICATED": {"kind": "UNAUTHORIZED", "message": "Authentication required."},
+    "FORBIDDEN": {
+        "kind": "FORBIDDEN",
         "message": "You do not have permission to perform this action.",
     },
-    ErrorCode.NOT_FOUND: {
-        "error": "Not Found",
-        "status": status.HTTP_404_NOT_FOUND,
+    "NOT_FOUND": {
+        "kind": "NOT_FOUND",
         "message": "The requested resource could not be found.",
     },
-    ErrorCode.IN_USE: {
-        "error": "In Use",
-        "status": status.HTTP_409_CONFLICT,
-        "message": "Referenced item does not exist or is in use.",
+    "CONFLICT": {
+        "kind": "CONFLICT",
+        "message": "The request conflicts with the current state.",
     },
-    ErrorCode.ALREADY_EXISTS: {
-        "error": "Already Exists",
-        "status": status.HTTP_409_CONFLICT,
-        "message": "Already exists.",
-    },
-    ErrorCode.INVALID_STATE: {
-        "error": "Invalid State",
-        "status": status.HTTP_409_CONFLICT,
-        "message": "The resource is not in a valid state for this action.",
-    },
-    ErrorCode.UNPROCESSABLE: {
-        "error": "Unprocessable Entity",
-        "status": status.HTTP_422_UNPROCESSABLE_CONTENT,
-        "message": "There was a problem with the submission.",
-        "details": VALIDATION_DETAILS,
+    "SERVICE_UNAVAILABLE": {
+        "kind": "SERVICE_UNAVAILABLE",
+        "message": "The service is temporarily unavailable.",
     },
 }
+
+error_catalog: ErrorCatalog[ErrorCode] = {
+    **base_error_catalog,
+    **user_error_catalog,
+    **auth_error_catalog,
+    **cashout_error_catalog,
+}
+
+kind_to_status: Mapping[ErrorKind, int] = {
+    "BAD_REQUEST": status.HTTP_400_BAD_REQUEST,
+    "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
+    "FORBIDDEN": status.HTTP_403_FORBIDDEN,
+    "NOT_FOUND": status.HTTP_404_NOT_FOUND,
+    "CONFLICT": status.HTTP_409_CONFLICT,
+    "VALIDATION": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "INTERNAL": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
+}
+
+__all__ = ["base_error_catalog", "error_catalog", "kind_to_status"]

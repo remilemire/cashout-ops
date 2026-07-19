@@ -111,8 +111,8 @@ describe("NewCashoutPage", () => {
   it("reuses the created submission when the first upload is retried", async () => {
     uploadDocumentMock.mockRejectedValueOnce(
       new ApiError(500, {
-        error: "Server Error",
-        code: "SERVER_ERROR",
+        kind: "INTERNAL",
+        code: "INTERNAL",
         message: "Upload failed.",
       }),
     );

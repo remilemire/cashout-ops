@@ -8,7 +8,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import api_router
 from app.core.config import settings
-from app.errors import ErrorCode, NotFoundError, error_responses, init_error_handlers
+from app.errors import AppError
+from app.errors.handlers import init_error_handlers
+from app.errors.openapi import error_responses
 from app.lifespan import lifespan
 
 DESCRIPTION = """\
@@ -25,8 +27,9 @@ completes the cashout.
 - Authentication is a `session_token` HttpOnly cookie (set by register/login).
 - Unsafe methods require the double-submit CSRF check: send the JS-readable
   `csrf_token` cookie's value in the `x-csrf-token` header.
-- Errors always use one body shape: `{ "error", "code", "message", "errors" }`,
-  where `errors` (per-field details) is present only for `UNPROCESSABLE`.
+- Errors always use one body shape: `{ "kind", "code", "message", "issues" }`,
+  where `issues` (per-field details) is present only for validation failures
+  (`kind: "VALIDATION"`).
 """
 
 OPENAPI_TAGS = [
@@ -53,7 +56,7 @@ def create_app() -> FastAPI:
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
         debug=settings.DEBUG,
-        responses=error_responses(ErrorCode.SERVER_ERROR),
+        responses=error_responses("INTERNAL"),
     )
 
     init_error_handlers(app)
@@ -66,7 +69,7 @@ def create_app() -> FastAPI:
     async def serve_spa(full_path: str):  # type: ignore[reportUnusedFunction]
         # Unknown /api paths must surface as JSON 404s, not the SPA shell.
         if full_path == "api" or full_path.startswith("api/"):
-            raise NotFoundError()
+            raise AppError("NOT_FOUND")
         return FileResponse("static/index.html")
 
     return app

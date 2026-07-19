@@ -1,30 +1,32 @@
 // frontend/src/api/client.ts
 
-import type { ErrorBody, ErrorDetail } from "./types";
+import type { ErrorResponse, ValidationIssue } from "./types";
 
-/** A backend error response (`{ error, code, message, errors }`). */
+/** A backend error response (`{ kind, code, message, issues }`). */
 export class ApiError extends Error {
   readonly status: number;
-  readonly code: ErrorBody["code"];
-  readonly details: ErrorDetail[];
+  readonly kind: ErrorResponse["kind"];
+  readonly code: ErrorResponse["code"];
+  readonly issues: ValidationIssue[];
 
-  constructor(status: number, body: ErrorBody) {
+  constructor(status: number, body: ErrorResponse) {
     super(body.message);
     this.name = "ApiError";
     this.status = status;
+    this.kind = body.kind;
     this.code = body.code;
-    this.details = body.errors ?? [];
+    this.issues = body.issues ?? [];
   }
 
-  /** The validation detail for a field, if the backend flagged one. */
-  detailFor(field: string): string | undefined {
-    return this.details.find((d) => d.path.at(-1) === field)?.detail;
+  /** The validation message for a field, if the backend flagged one. */
+  messageFor(field: string): string | undefined {
+    return this.issues.find((issue) => issue.path.at(-1) === field)?.message;
   }
 }
 
-const FALLBACK_BODY: ErrorBody = {
-  error: "Server Error",
-  code: "SERVER_ERROR",
+const FALLBACK_BODY: ErrorResponse = {
+  kind: "INTERNAL",
+  code: "INTERNAL",
   message: "Something went wrong.",
 };
 
@@ -77,7 +79,7 @@ export async function api<T>(
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      (data as ErrorBody | null) ?? FALLBACK_BODY,
+      (data as ErrorResponse | null) ?? FALLBACK_BODY,
     );
   }
   return data as T;

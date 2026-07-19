@@ -52,9 +52,9 @@ describe("api client", () => {
   it("maps the error contract to ApiError", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(409, {
-        error: "Already Exists",
-        code: "ALREADY_EXISTS",
-        message: "A user with this email already exists.",
+        kind: "CONFLICT",
+        code: "EMAIL_TAKEN",
+        message: "This email is already in use.",
       }),
     );
 
@@ -63,8 +63,9 @@ describe("api client", () => {
     await expect(failure).rejects.toBeInstanceOf(ApiError);
     await failure.catch((error: ApiError) => {
       expect(error.status).toBe(409);
-      expect(error.code).toBe("ALREADY_EXISTS");
-      expect(error.message).toBe("A user with this email already exists.");
+      expect(error.kind).toBe("CONFLICT");
+      expect(error.code).toBe("EMAIL_TAKEN");
+      expect(error.message).toBe("This email is already in use.");
     });
   });
 
@@ -78,7 +79,7 @@ describe("api client", () => {
 
     await expect(api("/users/me")).rejects.toMatchObject({
       status: 502,
-      code: "SERVER_ERROR",
+      code: "INTERNAL",
     });
   });
 

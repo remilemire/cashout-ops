@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db, require_csrf
-from app.errors import ErrorCode, error_responses
+from app.errors.openapi import error_responses
 from app.features.sessions.cookies import (
     clear_csrf_cookie,
     clear_session_cookie,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     "/register",
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
-    responses=error_responses(ErrorCode.ALREADY_EXISTS, ErrorCode.UNPROCESSABLE),
+    responses=error_responses("EMAIL_TAKEN", "VALIDATION_FAILED"),
 )
 async def register(
     response: Response,
@@ -49,7 +49,7 @@ async def register(
 @router.post(
     "/login",
     response_model=UserOut,
-    responses=error_responses(ErrorCode.UNAUTHORIZED, ErrorCode.UNPROCESSABLE),
+    responses=error_responses("INVALID_CREDENTIALS", "VALIDATION_FAILED"),
 )
 async def login(
     response: Response,
@@ -68,7 +68,9 @@ async def login(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_csrf), Depends(get_current_user)],
-    responses=error_responses(ErrorCode.UNAUTHORIZED, ErrorCode.FORBIDDEN),
+    responses=error_responses(
+        "UNAUTHENTICATED", "INVALID_SESSION", "INVALID_CSRF_TOKEN"
+    ),
 )
 async def logout(
     request: Request,

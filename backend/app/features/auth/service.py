@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.errors import AlreadyExistsError, UnauthorizedError
+from app.errors import AppError
 from app.features.sessions import service as sessions_service
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
@@ -20,10 +20,10 @@ async def login(db: AsyncSession, *, payload: AuthLogin) -> UserWithSessionToken
     user = await users_service.find_by_email(db, email=payload.email)
 
     if user is None:
-        raise UnauthorizedError("Incorrect email or password.")
+        raise AppError("INVALID_CREDENTIALS")
 
     if not verify_password(payload.password, user.password_hash):
-        raise UnauthorizedError("Incorrect email or password.")
+        raise AppError("INVALID_CREDENTIALS")
 
     result = sessions_service.create(db, user_id=user.id)
     return UserWithSessionToken(user=user, session_token=result.session_token)
@@ -31,7 +31,7 @@ async def login(db: AsyncSession, *, payload: AuthLogin) -> UserWithSessionToken
 
 async def register(db: AsyncSession, *, payload: AuthRegister) -> UserWithSessionToken:
     if await users_service.find_by_email(db, email=payload.email) is not None:
-        raise AlreadyExistsError("A user with this email already exists.")
+        raise AppError("EMAIL_TAKEN")
 
     role = UserRole.ADMIN if payload.email == settings.ADMIN_EMAIL else None
     user = users_service.create(
@@ -56,7 +56,7 @@ async def authenticate(db: AsyncSession, *, session_token: str) -> AuthContext:
     session = await sessions_service.find_valid_with_user(db, token=session_token)
 
     if session is None:
-        raise UnauthorizedError("Invalid or expired session.")
+        raise AppError("INVALID_SESSION")
 
     return AuthContext(user=session.user, session=session)
 

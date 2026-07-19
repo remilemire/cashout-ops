@@ -4,31 +4,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from .catalog import CATALOG
-from .schemas import ErrorBody, ErrorDetail
-from .types import ErrorCode, ValidationRule
+from .catalog import error_catalog, kind_to_status
+from .codes import ErrorCode
+from .schemas import ErrorResponseSchema, ValidationIssueSchema
+from .validation import validation_issue_catalog
 
 
 def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
     """Build a FastAPI `responses` mapping documenting the given error codes.
 
-    Codes sharing a status (the 409 family) are merged into a single response
-    with one example per code. Pass the result as `responses=` on an app,
-    router, or route; FastAPI merges the three levels per route.
+    Codes sharing a status (e.g. the CONFLICT family) are merged into a single
+    response with one example per code. Pass the result as `responses=` on an
+    app, router, or route; FastAPI merges the three levels per route.
     """
     by_status: dict[int, list[ErrorCode]] = {}
     for code in codes:
-        by_status.setdefault(CATALOG[code]["status"], []).append(code)
+        status = kind_to_status[error_catalog[code]["kind"]]
+        by_status.setdefault(status, []).append(code)
 
     return {
         status: {
-            "model": ErrorBody,
-            "description": " / ".join(CATALOG[code]["error"] for code in status_codes),
+            "model": ErrorResponseSchema,
+            "description": " / ".join(status_codes),
             "content": {
                 "application/json": {
                     "examples": {
-                        code.value: {"value": _example_body(code)}
-                        for code in status_codes
+                        code: {"value": _example_body(code)} for code in status_codes
                     }
                 }
             },
@@ -38,8 +39,20 @@ def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
 
 
 def _example_body(code: ErrorCode) -> dict[str, Any]:
-    entry = CATALOG[code]
-    body = ErrorBody(error=entry["error"], code=code, message=entry["message"])
-    if code is ErrorCode.UNPROCESSABLE:
-        body.errors = [ErrorDetail.build(ValidationRule.MISSING_FIELD, path=["field"])]
+    entry = error_catalog[code]
+    issues = None
+    if entry["kind"] == "VALIDATION":
+        issues = [
+            ValidationIssueSchema(
+                code="MISSING_FIELD",
+                path=["field"],
+                message=validation_issue_catalog["MISSING_FIELD"]["create_message"]({}),
+            )
+        ]
+    body = ErrorResponseSchema(
+        kind=entry["kind"], code=code, message=entry["message"], issues=issues
+    )
     return body.model_dump(by_alias=True, exclude_none=True, mode="json")
+
+
+__all__ = ["error_responses"]

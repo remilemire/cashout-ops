@@ -13,12 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.documents import DocumentRef
-from app.errors import (
-    BadRequestError,
-    ForbiddenError,
-    InvalidStateError,
-    NotFoundError,
-)
+from app.errors import AppError
 from app.features.users.model import User
 from app.features.users.types import UserRole
 from app.integrations.ai import AIAnalysisError
@@ -115,7 +110,7 @@ async def get_submission(
 
     submission = (await db.execute(stmt)).scalar_one_or_none()
     if submission is None:
-        raise NotFoundError("Cashout submission not found.")
+        raise AppError("SUBMISSION_NOT_FOUND")
 
     _ensure_can_view(submission, user)
 
@@ -145,7 +140,7 @@ async def complete_submission(
         db, submission_id=submission_id, user_id=user_id
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
-        raise InvalidStateError("This cashout has already been completed.")
+        raise AppError("SUBMISSION_COMPLETED")
 
     stmt = (
         select(CashoutDocument)
@@ -154,15 +149,13 @@ async def complete_submission(
     )
     documents = (await db.execute(stmt)).scalars().all()
     if not documents:
-        raise InvalidStateError("Upload at least one document before completing.")
+        raise AppError("SUBMISSION_EMPTY")
 
     analyses: list[CashoutDocumentAnalysis] = []
     for document in documents:
         analysis = document.analysis
         if analysis is None or analysis.status is not DocumentAnalysisStatus.VERIFIED:
-            raise InvalidStateError(
-                "Every document must be verified before completing."
-            )
+            raise AppError("SUBMISSION_UNVERIFIED")
         analyses.append(analysis)
 
     db.add(_reconcile(submission.id, analyses))
@@ -194,10 +187,13 @@ async def upload_document(
         db, submission_id=submission_id, user_id=user_id
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
-        raise InvalidStateError("Documents cannot be added after completion.")
+        raise AppError(
+            "SUBMISSION_COMPLETED",
+            message="Documents cannot be added after completion.",
+        )
 
     if len(payload.data) > MAX_DOCUMENT_SIZE:
-        raise BadRequestError("Document exceeds the 20 MB size limit.")
+        raise AppError("DOCUMENT_TOO_LARGE")
 
     document = CashoutDocument(
         content_type=payload.content_type,
@@ -249,7 +245,10 @@ async def extract_document(
         db, submission_id=document.cashout_submission_id, user_id=user_id
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
-        raise InvalidStateError("Documents cannot be analyzed after completion.")
+        raise AppError(
+            "SUBMISSION_COMPLETED",
+            message="Documents cannot be analyzed after completion.",
+        )
 
     return await _reset_analysis(db, document=document, processor=processor)
 
@@ -329,14 +328,16 @@ async def verify_analysis(
         db, submission_id=document.cashout_submission_id, user_id=user_id
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
-        raise InvalidStateError("This cashout has already been completed.")
+        raise AppError("SUBMISSION_COMPLETED")
 
     if analysis.status is DocumentAnalysisStatus.VERIFIED:
-        raise InvalidStateError("This analysis has already been verified.")
+        raise AppError("ANALYSIS_VERIFIED")
     if analysis.status is DocumentAnalysisStatus.EXTRACTING:
-        raise InvalidStateError("The extraction is still in progress.")
+        raise AppError(
+            "EXTRACTION_IN_PROGRESS", message="The extraction is still in progress."
+        )
     if analysis.status is DocumentAnalysisStatus.FAILED:
-        raise InvalidStateError("The extraction failed; retry it before verifying.")
+        raise AppError("EXTRACTION_FAILED")
 
     # The cashier either confirms the extraction as-is or submits corrections.
     if payload.verified_data is not None:
@@ -372,13 +373,17 @@ async def _get_owned_submission(
 ) -> CashoutSubmission:
     submission = await CashoutSubmission.get_active(db, submission_id)
     if submission.submitted_by_user_id != user_id:
-        raise ForbiddenError("You do not have access to this cashout submission.")
+        raise AppError(
+            "FORBIDDEN", message="You do not have access to this cashout submission."
+        )
     return submission
 
 
 def _ensure_can_view(submission: CashoutSubmission, user: User) -> None:
     if user.role != UserRole.ADMIN and submission.submitted_by_user_id != user.id:
-        raise ForbiddenError("You do not have access to this cashout submission.")
+        raise AppError(
+            "FORBIDDEN", message="You do not have access to this cashout submission."
+        )
 
 
 async def _apply_extraction(
@@ -451,9 +456,12 @@ async def _reset_analysis(
 
     if analysis is not None:
         if analysis.status is DocumentAnalysisStatus.VERIFIED:
-            raise InvalidStateError("This document has already been verified.")
+            raise AppError(
+                "ANALYSIS_VERIFIED",
+                message="This document has already been verified.",
+            )
         if analysis.status is DocumentAnalysisStatus.EXTRACTING:
-            raise InvalidStateError("An extraction is already in progress.")
+            raise AppError("EXTRACTION_IN_PROGRESS")
 
     if analysis is None:
         analysis = CashoutDocumentAnalysis(

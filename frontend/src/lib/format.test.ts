@@ -58,21 +58,21 @@ describe("buildVerifiedData", () => {
 });
 
 describe("ApiError", () => {
-  it("exposes field details from the error contract", () => {
+  it("exposes field issues from the error contract", () => {
     const error = new ApiError(422, {
-      error: "Unprocessable Entity",
-      code: "UNPROCESSABLE",
+      kind: "VALIDATION",
+      code: "VALIDATION_FAILED",
       message: "There was a problem with the submission.",
-      errors: [
+      issues: [
         {
-          rule: "TOO_SHORT",
-          detail: "Minimum 8 characters required.",
+          code: "TOO_SHORT",
+          message: "Minimum 8 characters required.",
           path: ["password"],
         },
       ],
     });
-    expect(error.detailFor("password")).toBe("Minimum 8 characters required.");
-    expect(error.detailFor("email")).toBeUndefined();
+    expect(error.messageFor("password")).toBe("Minimum 8 characters required.");
+    expect(error.messageFor("email")).toBeUndefined();
     expect(error.message).toBe("There was a problem with the submission.");
   });
 });

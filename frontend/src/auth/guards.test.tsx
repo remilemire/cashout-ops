@@ -64,8 +64,8 @@ describe("RequireAuth", () => {
   it("redirects signed-out visitors to the login page", async () => {
     meMock.mockRejectedValue(
       new ApiError(401, {
-        error: "Unauthorized",
-        code: "UNAUTHORIZED",
+        kind: "UNAUTHORIZED",
+        code: "UNAUTHENTICATED",
         message: "Authentication required.",
       }),
     );

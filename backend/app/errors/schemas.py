@@ -2,59 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.core.schemas import BaseOut
 
-from .catalog import VALIDATION_DETAILS
-from .types import ErrorCode, UnprocessableContext, ValidationRule
-
-# ================================
-# ------------ Details -----------
-# ================================
+from .codes import ErrorCode
+from .contracts import ErrorKind
+from .validation import ValidationIssueCode
 
 
-class ErrorDetail(BaseOut):
-    rule: ValidationRule
-    detail: str
+class ValidationIssueSchema(BaseOut):
+    code: ValidationIssueCode
     path: list[str | int]
-
-    @classmethod
-    def build(
-        cls,
-        rule: ValidationRule,
-        *,
-        path: list[str | int],
-        ctx: UnprocessableContext | None = None,
-        detail: str | None = None,
-    ) -> ErrorDetail:
-        # The catalog message for the rule is only a fallback: an explicitly
-        # provided `detail` always wins; `ctx` feeds contextual messages.
-        return cls(
-            rule=rule,
-            detail=detail or VALIDATION_DETAILS[rule](ctx or {}),
-            path=path,
-        )
+    message: str
 
 
-# ================================
-# ------------- Body -------------
-# ================================
-
-
-class ErrorBody(BaseOut):
-    error: str
+class ErrorResponseSchema(BaseOut):
+    kind: ErrorKind
     code: ErrorCode
     message: str
-    errors: list[ErrorDetail] | None = None
+    issues: list[ValidationIssueSchema] | None = None
 
 
-# ================================
-# ----------- Response -----------
-# ================================
-
-
-@dataclass(frozen=True)
-class ErrorResponse:
-    status: int
-    body: ErrorBody
+__all__ = ["ErrorResponseSchema", "ValidationIssueSchema"]

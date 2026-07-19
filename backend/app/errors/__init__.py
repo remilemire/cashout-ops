@@ -2,36 +2,11 @@
 
 from __future__ import annotations
 
-from .domain import (
-    AlreadyExistsError,
-    AppError,
-    BadRequestError,
-    ConflictError,
-    ForbiddenError,
-    InUseError,
-    InvalidStateError,
-    NotFoundError,
-    ServerError,
-    UnauthorizedError,
-    UnprocessableError,
-)
-from .handlers import init_error_handlers
-from .openapi import error_responses
-from .types import ErrorCode
+# Deliberately minimal: feature error modules import `app.errors.contracts`,
+# which initializes this package, so pulling the aggregators (codes, catalog,
+# handlers, ...) in here would be a circular import. Import `error_responses`
+# from `app.errors.openapi` and `init_error_handlers` from `app.errors.handlers`.
+from .app_error import AppError
+from .validation import ValidationError
 
-__all__ = [
-    "AlreadyExistsError",
-    "AppError",
-    "BadRequestError",
-    "ConflictError",
-    "ErrorCode",
-    "ForbiddenError",
-    "InUseError",
-    "InvalidStateError",
-    "NotFoundError",
-    "ServerError",
-    "UnauthorizedError",
-    "UnprocessableError",
-    "error_responses",
-    "init_error_handlers",
-]
+__all__ = ["AppError", "ValidationError"]

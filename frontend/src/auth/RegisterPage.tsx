@@ -18,7 +18,7 @@ export function RegisterPage() {
   if (!isLoading && user) return <Navigate to="/" replace />;
 
   const fieldError = (field: string) =>
-    error instanceof ApiError ? error.detailFor(field) : undefined;
+    error instanceof ApiError ? error.messageFor(field) : undefined;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

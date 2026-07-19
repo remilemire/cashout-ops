@@ -19,4 +19,4 @@ async def test_me_requires_authentication(client: AsyncClient) -> None:
     response = await client.get("/api/users/me")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "UNAUTHORIZED"
+    assert response.json()["code"] == "UNAUTHENTICATED"

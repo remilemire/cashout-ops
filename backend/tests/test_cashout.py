@@ -271,7 +271,7 @@ async def test_delete_completed_submission_is_restricted(
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "IN_USE"
+    assert response.json()["code"] == "SUBMISSION_HAS_DATA"
     detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     assert detail.status_code == 200
     assert detail.json()["data"] is not None
@@ -322,7 +322,7 @@ async def test_upload_rejects_unsupported_content_type(
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "BAD_REQUEST"
+    assert response.json()["code"] == "UNSUPPORTED_DOCUMENT_TYPE"
 
 
 async def test_failed_extraction_and_retry(
@@ -385,7 +385,7 @@ async def test_verify_twice_conflicts(
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "INVALID_STATE"
+    assert response.json()["code"] == "ANALYSIS_VERIFIED"
 
 
 async def test_complete_requires_every_analysis_verified(
@@ -401,7 +401,7 @@ async def test_complete_requires_every_analysis_verified(
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "INVALID_STATE"
+    assert response.json()["code"] == "SUBMISSION_UNVERIFIED"
 
 
 async def test_complete_requires_owner(

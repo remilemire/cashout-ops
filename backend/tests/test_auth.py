@@ -54,7 +54,7 @@ async def test_register_duplicate_email_conflicts(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "ALREADY_EXISTS"
+    assert response.json()["code"] == "EMAIL_TAKEN"
 
 
 async def test_register_rejects_short_password(client: AsyncClient) -> None:
@@ -70,8 +70,9 @@ async def test_register_rejects_short_password(client: AsyncClient) -> None:
 
     assert response.status_code == 422
     body = response.json()
-    assert body["code"] == "UNPROCESSABLE"
-    assert body["errors"][0]["path"] == ["password"]
+    assert body["code"] == "VALIDATION_FAILED"
+    assert body["kind"] == "VALIDATION"
+    assert body["issues"][0]["path"] == ["password"]
 
 
 async def test_login_succeeds_with_correct_password(client: AsyncClient) -> None:
@@ -96,7 +97,7 @@ async def test_login_wrong_password_unauthorized(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "UNAUTHORIZED"
+    assert response.json()["code"] == "INVALID_CREDENTIALS"
 
 
 async def test_login_unknown_email_unauthorized(client: AsyncClient) -> None:
@@ -129,4 +130,4 @@ async def test_logout_requires_csrf(client: AsyncClient) -> None:
     response = await client.post("/api/auth/logout")
 
     assert response.status_code == 403
-    assert response.json()["code"] == "FORBIDDEN"
+    assert response.json()["code"] == "INVALID_CSRF_TOKEN"

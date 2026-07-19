@@ -21,16 +21,16 @@ backend/
   app/core/               config (pydantic-settings), cookies (generic set/delete helpers), db/ (Base, Entity, enum_column, registry), schemas (BaseIn/BaseOut/EntityOut/UtcDateTime)
   app/lib/                pure helpers: casing, crypto, documents (DocumentContent/DocumentContentType)
   app/dependencies/       FastAPI deps: get_db, get_db_sessionmaker, get_post_commit_tasks, get_current_user, require_admin, require_csrf, get_cashout_document_processor, get_document_storage
-  app/errors/             domain errors, catalog, handlers, translators, schemas, types, OpenAPI shapes
+  app/errors/             error framework: contracts (types features use), codes/catalog/constraints (aggregators), app_error (AppError), validation/ (ValidationError + issue catalog), translators, handlers, schemas, openapi
   app/integrations/       provider adapters:
     ai/                     AIClient protocol + Anthropic/OpenAI/Gemini clients (structured output), compose_instructions, AIProvider, AIAnalysisError
     storage/                DocumentStorageClient protocol + LocalDocumentStorageClient
   app/documents/          DocumentAIClient (generic classify + structured extraction over AIClient + storage), DocumentRef, DocumentClassification
   app/features/
-    auth/                   passwords (bcrypt), service (login/register/authenticate/logout), router, schemas, types
+    auth/                   passwords (bcrypt), service (login/register/authenticate/logout), router, schemas, errors, types
     sessions/               model, service, cookies (session/CSRF cookie helpers), types
-    users/                  model, service, router, schemas (UserOut/UserCreate), types (UserRole)
-    cashout/                models/ (submission, document, analysis, data), service, router, schemas, types
+    users/                  model, service, router, schemas (UserOut/UserCreate), errors, types (UserRole)
+    cashout/                models/ (submission, document, analysis, data), service, router, schemas, errors, types
       extraction/           CashoutDocumentProcessor, registry (type→schema), schemas (DUMMY fields — see below)
   app/api/__init__.py     mounts each feature router under /api
   migrations/             alembic (env.py reads DATABASE_URL, target = app.core.db.registry.metadata); versions/
@@ -89,12 +89,14 @@ Backend loads from `backend/.env` via `pydantic-settings`. `.env` is gitignored;
 
 ### Errors
 
-Always raise the app errors from `app.errors` (subclasses of `AppError`) — never `HTTPException`. Handlers in `app/errors/handlers.py` funnel app errors + translated Pydantic / `IntegrityError` / Starlette HTTP / uncaught exceptions into one body: `{ "error", "code", "message", "errors" }`. `errors` is present only for `UNPROCESSABLE`. Don't hand-craft error JSON.
+Always raise `AppError` from `app.errors` — never `HTTPException`. `AppError(code, *, message=None, cause=None)`: `code` is a string literal from the catalog, `message` overrides the catalog default for that occurrence, `cause` keeps the original exception for logs without leaking it. Handlers in `app/errors/handlers.py` funnel app errors + translated Pydantic / `RequestValidationError` / `IntegrityError` / Starlette HTTP / uncaught exceptions into one body: `{ "kind", "code", "message", "issues" }`; `issues` is present only for validation failures (`kind: "VALIDATION"`). Don't hand-craft error JSON.
 
-- The catalog (`catalog.py`) is the single source of truth per code: human-readable `error` name, HTTP `status` (a plain `int` — use `fastapi.status` constants), and default `message`. `AppError` subclasses declare only `code`; `AppError.name` reads the catalog.
-- Adding an error code: extend `ErrorCode` (types.py) + `CATALOG` entry (catalog.py) + `AppError` subclass (domain.py) + export from `errors/__init__.py`. Conflicts (409) subclass `ConflictError`. `InvalidStateError` (409, `INVALID_STATE`) is used for wrong-lifecycle-state actions.
-- `IntegrityError` auto-maps by SQLSTATE: unique → `ALREADY_EXISTS`, FK → `IN_USE`, check/not-null → `UnprocessableError`, else `ServerError`.
-- **OpenAPI:** document each route's error statuses with `error_responses(*codes)` (`app/errors/openapi.py`) passed as `responses=` on the router (shared statuses like 401/403) or route (404/409/422/…). The app level registers only 500. Supplying a 422 this way also replaces FastAPI's default `HTTPValidationError` schema — never let that default leak into the docs.
+- **Each feature owns its codes** in `app/features/<feature>/errors.py`: a `<Feature>ErrorCode` Literal, a `<feature>_error_catalog` (kind + default message per code), and optionally `<feature>_constraint_to_code` mapping DB constraint/index names to codes (unique violations report the *index* name, e.g. `ix_users_email`). Feature error modules import only `app.errors.contracts`.
+- **`app/errors` aggregates:** `contracts.py` holds the types features use (`ErrorKind`, `ErrorCatalog`, `ConstraintToCode`); `codes.py` unions base + feature codes into `ErrorCode`; `catalog.py` merges the catalogs and maps `kind_to_status` (the only place statuses live — a code's HTTP status always derives from its kind); `constraints.py` merges the constraint maps. Cross-cutting base codes (`INTERNAL`, `BAD_REQUEST`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `SERVICE_UNAVAILABLE`) live in `codes.py`/`catalog.py` directly.
+- Adding a feature code: extend the feature's Literal + catalog (+ constraint map if DB-enforced). A new feature's exports must also be wired into `codes.py`, `catalog.py`, and `constraints.py`.
+- **Validation:** `ValidationError` (an `AppError` with code `VALIDATION_FAILED`, `app/errors/validation/`) carries `issues` (`{code, path, ctx}`); response messages come from `validation_issue_catalog`. `translate_validation_error` converts Pydantic/FastAPI validation errors (camelCasing paths, stripping the `body`/`query`/... prefix); `translate_integrity_error` looks up the violated constraint in `constraint_to_code`, falling back by SQLSTATE class (unique/FK/restrict → `CONFLICT`, check/not-null → `VALIDATION_FAILED`, else `INTERNAL`).
+- **`app/errors/__init__` is deliberately minimal** (`AppError`, `ValidationError` only): feature error modules initialize the package via `app.errors.contracts`, so pulling the aggregators into the init would be a circular import. Import `error_responses` from `app.errors.openapi` and `init_error_handlers` from `app.errors.handlers`.
+- **OpenAPI:** document each route's error codes with `error_responses(*codes)` (`app/errors/openapi.py`) passed as `responses=` on the router (shared codes like `UNAUTHENTICATED`/`INVALID_CSRF_TOKEN`) or route; codes sharing a status merge into one response with an example per code. The app level registers only `INTERNAL`. Supplying `VALIDATION_FAILED` this way also replaces FastAPI's default `HTTPValidationError` schema — never let that default leak into the docs.
 
 ### API conventions
 
@@ -132,7 +134,7 @@ CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps Documen
 
 ### Models
 
-- All entities inherit `Entity` from `app/core/db/models.py` (`id`, `created_at`, `await Entity.get_active(db, id_)` → `NotFoundError` on miss). `enum_column(enum_cls, name)` builds a native Postgres enum persisting member **values**.
+- All entities inherit `Entity` from `app/core/db/models.py` (`id`, `created_at`, `await Entity.get_active(db, id_)` → `AppError("NOT_FOUND")` on miss). `enum_column(enum_cls, name)` builds a native Postgres enum persisting member **values**.
 - Models: `User`, `Session`, `CashoutSubmission`, `CashoutDocument`, `CashoutDocumentAnalysis`, `CashoutData`. (The `Shift` model and shifts feature were removed — cashouts are no longer shift-locked.)
 - **Adding a model:** create it in the feature package, then **import it in `app/core/db/registry.py`** (Alembic autogenerate and the test schema both read `registry.metadata` — a model missing from the registry is invisible to both). Then `make backend-revision MESSAGE="…"` and review the diff.
 
