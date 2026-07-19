@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import EmailStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,8 +25,15 @@ class Settings(BaseSettings):
     # Document-AI provider selection. Only the selected provider's API key is
     # required; the lifespan validates it at startup.
     AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC
-    AI_MODEL: str = "claude-opus-4-8"
     AI_MAX_TOKENS: int = 16000
+
+    # Model per provider, resolved for the selected provider by AI_MODEL below.
+    # The model is not env-configurable — edit a value here to change it.
+    AI_MODELS: ClassVar[Mapping[AIProvider, str]] = {
+        AIProvider.ANTHROPIC: "claude-sonnet-4-6",
+        AIProvider.OPENAI: "gpt-5.6-terra",
+        AIProvider.GEMINI: "gemini-3.5-flash",
+    }
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
@@ -35,6 +43,11 @@ class Settings(BaseSettings):
     @property
     def DEBUG(self) -> bool:
         return self.ENVIRONMENT == "dev"
+
+    @computed_field
+    @property
+    def AI_MODEL(self) -> str:
+        return self.AI_MODELS[self.AI_PROVIDER]
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
