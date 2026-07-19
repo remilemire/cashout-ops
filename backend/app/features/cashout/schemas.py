@@ -11,7 +11,11 @@ from app.features.users.schemas import UserOut
 from app.integrations.ai import AIProvider
 from app.lib.documents import DocumentContentType
 
-from .types import CashoutDocumentType, CashoutSubmissionStatus, DocumentAnalysisStatus
+from .types import (
+    CashoutDocumentClassification,
+    CashoutSubmissionStatus,
+    DocumentAnalysisStatus,
+)
 
 
 class CashoutSubmissionOut(EntityOut):
@@ -28,7 +32,7 @@ class CashoutDocumentAnalysisOut(EntityOut):
     provider: AIProvider
     model: str
     status: DocumentAnalysisStatus
-    classification: CashoutDocumentType | None = None
+    classification: CashoutDocumentClassification | None = None
     classification_confidence: float | None = None
     schema_name: str | None = None
     extracted_data_json: dict[str, Any] | None = None
@@ -44,7 +48,6 @@ class CashoutDocumentAnalysisOut(EntityOut):
 
 
 class CashoutDocumentOut(EntityOut):
-    document_type: CashoutDocumentType
     content_type: DocumentContentType
     original_filename: str
     checksum_sha256: str

@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from app.documents import DocumentAnalysis, DocumentClassification, FieldIssue
 from app.features.cashout.extraction.schemas import ManualNoteData
 from app.features.cashout.types import (
-    CashoutDocumentType,
+    CashoutDocumentClassification,
     CashoutSubmissionStatus,
     DocumentAnalysisStatus,
 )
@@ -21,8 +21,8 @@ PDF = ("receipt.pdf", b"%PDF-1.4 fake bytes", "application/pdf")
 
 
 def _configure_manual_note(ai_client: FakeAIClient, note: str = "cash $100") -> None:
-    ai_client.classification = DocumentClassification[CashoutDocumentType](
-        value=CashoutDocumentType.MANUAL_NOTE, confidence=0.95
+    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
+        value=CashoutDocumentClassification.MANUAL_NOTE, confidence=0.95
     )
     ai_client.extraction = DocumentAnalysis[ManualNoteData](
         data=ManualNoteData(note=note),
@@ -91,7 +91,7 @@ async def test_full_cashout_flow(
     # Polling picks up the background extraction's outcome.
     analysis = await _poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert analysis["classification"] == CashoutDocumentType.MANUAL_NOTE.value
+    assert analysis["classification"] == CashoutDocumentClassification.MANUAL_NOTE.value
     assert analysis["classificationConfidence"] == 0.95
     assert analysis["extractedDataJson"] == {"note": "cash $100"}
     assert analysis["extractionConfidence"] == 0.9
@@ -103,8 +103,11 @@ async def test_full_cashout_flow(
     ).json()
     assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
     document = detail["documents"][0]
-    assert document["documentType"] == CashoutDocumentType.MANUAL_NOTE.value
     assert document["analysis"]["id"] == analysis["id"]
+    assert (
+        document["analysis"]["classification"]
+        == CashoutDocumentClassification.MANUAL_NOTE.value
+    )
 
     # The cashier verifies with a correction.
     verified = await _verify(

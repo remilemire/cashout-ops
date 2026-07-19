@@ -19,7 +19,7 @@ from app.documents import (
 )
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.extraction.schemas import ManualNoteData
-from app.features.cashout.types import CashoutDocumentType
+from app.features.cashout.types import CashoutDocumentClassification
 from app.integrations.ai import (
     AIAnalysisError,
     AIErrorCode,
@@ -40,9 +40,9 @@ from .fakes import FakeAIClient, FakeDocumentStorage
 
 
 def _classification(
-    value: CashoutDocumentType, confidence: float = 0.9
-) -> DocumentClassification[CashoutDocumentType]:
-    return DocumentClassification[CashoutDocumentType](
+    value: CashoutDocumentClassification | None, confidence: float = 0.9
+) -> DocumentClassification[CashoutDocumentClassification]:
+    return DocumentClassification[CashoutDocumentClassification](
         value=value, confidence=confidence
     )
 
@@ -63,7 +63,7 @@ async def _build_processor(
 
 async def test_processor_classifies_and_extracts() -> None:
     processor, ref = await _build_processor(
-        classification=_classification(CashoutDocumentType.MANUAL_NOTE),
+        classification=_classification(CashoutDocumentClassification.MANUAL_NOTE),
         extraction=DocumentAnalysis[ManualNoteData](
             data=ManualNoteData(note="cash short $5"),
             confidence=0.8,
@@ -73,7 +73,7 @@ async def test_processor_classifies_and_extracts() -> None:
 
     result = await processor.process(ref)
 
-    assert result.classification.value is CashoutDocumentType.MANUAL_NOTE
+    assert result.classification.value is CashoutDocumentClassification.MANUAL_NOTE
     assert result.classification.confidence == 0.9
     assert isinstance(result.data, ManualNoteData)
     assert result.data.note == "cash short $5"
@@ -82,14 +82,14 @@ async def test_processor_classifies_and_extracts() -> None:
     assert result.schema_name == "ManualNoteData"
 
 
-async def test_processor_unknown_classification_returns_no_data() -> None:
+async def test_processor_unclassified_returns_no_data() -> None:
     processor, ref = await _build_processor(
-        classification=_classification(CashoutDocumentType.UNKNOWN, confidence=0.2),
+        classification=_classification(None, confidence=0.2),
     )
 
     result = await processor.process(ref)
 
-    assert result.classification.value is CashoutDocumentType.UNKNOWN
+    assert result.classification.value is None
     assert result.data is None
     assert result.confidence is None
     assert result.issues == []

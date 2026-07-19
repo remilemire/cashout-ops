@@ -26,7 +26,7 @@ depends_on: Union[str, Sequence[str], None] = None
 ENUM_TYPES = (
     "user_role",
     "cashout_submission_status",
-    "cashout_document_type",
+    "cashout_document_classification",
     "document_content_type",
     "ai_provider",
     "document_analysis_status",
@@ -137,21 +137,6 @@ def upgrade() -> None:
     op.create_table(
         "cashout_documents",
         sa.Column(
-            "document_type",
-            sa.Enum(
-                "TOUCHBISTRO_SERVER_SHIFT_REPORT",
-                "PAYSTONE_TERMINAL_REPORT",
-                "PAYMENT_RECEIPT",
-                "DAILY_TIP_OUT_SHEET",
-                "DAILY_CASH_SUMMARY",
-                "MANUAL_NOTE",
-                "UNKNOWN",
-                name="cashout_document_type",
-            ),
-            server_default="UNKNOWN",
-            nullable=False,
-        ),
-        sa.Column(
             "content_type",
             sa.Enum(
                 "image/jpeg",
@@ -226,8 +211,7 @@ def upgrade() -> None:
                 "DAILY_TIP_OUT_SHEET",
                 "DAILY_CASH_SUMMARY",
                 "MANUAL_NOTE",
-                "UNKNOWN",
-                name="cashout_document_type",
+                name="cashout_document_classification",
             ),
             nullable=True,
         ),

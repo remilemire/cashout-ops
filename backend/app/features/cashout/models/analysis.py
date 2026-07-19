@@ -11,7 +11,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity, enum_column
-from app.features.cashout.types import CashoutDocumentType, DocumentAnalysisStatus
+from app.features.cashout.types import (
+    CashoutDocumentClassification,
+    DocumentAnalysisStatus,
+)
 from app.integrations.ai import AIProvider
 
 if TYPE_CHECKING:
@@ -37,8 +40,11 @@ class CashoutDocumentAnalysis(Entity):
         server_default=DocumentAnalysisStatus.EXTRACTING.value,
     )
 
-    classification: Mapped[CashoutDocumentType | None] = mapped_column(
-        enum_column(CashoutDocumentType, "cashout_document_type"), nullable=True
+    # Null when the AI could not classify the document (status is then FAILED
+    # with the UNCLASSIFIED error code).
+    classification: Mapped[CashoutDocumentClassification | None] = mapped_column(
+        enum_column(CashoutDocumentClassification, "cashout_document_classification"),
+        nullable=True,
     )
     # How confident the model was in the classification (0-1).
     classification_confidence: Mapped[float | None] = mapped_column(

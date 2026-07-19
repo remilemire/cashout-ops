@@ -94,9 +94,9 @@ export function DocumentCard({
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{document.originalFilename}</p>
           <p className="text-ink-muted text-xs">
-            {document.documentType === "UNKNOWN"
-              ? "Not classified yet"
-              : enumLabel(document.documentType)}
+            {analysis?.classification
+              ? enumLabel(analysis.classification)
+              : "Not classified yet"}
           </p>
           <a
             href={contentUrl}

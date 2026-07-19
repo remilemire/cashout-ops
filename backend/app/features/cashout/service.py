@@ -439,7 +439,6 @@ async def _apply_extraction(
         analysis.extracted_data_json = result.data.model_dump(mode="json")
         analysis.extraction_confidence = result.confidence
         analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
-        document.document_type = result.classification.value
 
 
 async def _reset_analysis(

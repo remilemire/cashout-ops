@@ -13,7 +13,8 @@ ClassificationT = TypeVar("ClassificationT", bound=StrEnum)
 class DocumentClassification(BaseModel, Generic[ClassificationT]):
     model_config = ConfigDict(extra="forbid")
 
-    value: ClassificationT
+    # Null when none of the allowed values apply (the document is unclassifiable).
+    value: ClassificationT | None = None
     confidence: float = Field(ge=0, le=1)
 
 

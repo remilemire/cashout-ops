@@ -91,14 +91,13 @@ export type DocumentAnalysisStatus =
   | "VERIFIED"
   | "FAILED";
 
-export type CashoutDocumentType =
+export type CashoutDocumentClassification =
   | "TOUCHBISTRO_SERVER_SHIFT_REPORT"
   | "PAYSTONE_TERMINAL_REPORT"
   | "PAYMENT_RECEIPT"
   | "DAILY_TIP_OUT_SHEET"
   | "DAILY_CASH_SUMMARY"
-  | "MANUAL_NOTE"
-  | "UNKNOWN";
+  | "MANUAL_NOTE";
 
 export type DocumentContentType =
   | "image/jpeg"
@@ -129,7 +128,7 @@ export interface CashoutDocumentAnalysis {
   provider: string;
   model: string;
   status: DocumentAnalysisStatus;
-  classification: CashoutDocumentType | null;
+  classification: CashoutDocumentClassification | null;
   classificationConfidence: number | null;
   schemaName: string | null;
   extractedDataJson: Record<string, unknown> | null;
@@ -147,7 +146,6 @@ export interface CashoutDocumentAnalysis {
 export interface CashoutDocument {
   id: string;
   createdAt: string;
-  documentType: CashoutDocumentType;
   contentType: DocumentContentType;
   originalFilename: string;
   checksumSha256: string;

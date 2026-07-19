@@ -118,7 +118,7 @@ Always raise `AppError` from `app.errors` — never `HTTPException`. `AppError(c
 The AI reads the uploaded file directly (vision), classifies it, and returns structured data — there is **no OCR**. Layered so the domain never touches a provider SDK:
 
 ```
-CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps DocumentClassification[CashoutDocumentType] → its schema
+CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps DocumentClassification[CashoutDocumentClassification] → its schema
   → DocumentAIClient (app/documents)                    ← generic: classify() + process(), reads bytes from storage
       → AIClient protocol (app/integrations/ai)         ← AnthropicAIClient | OpenAIAIClient | GeminiAIClient (structured output)
       → DocumentStorageClient (app/integrations/storage) ← LocalDocumentStorageClient
@@ -129,7 +129,7 @@ CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps Documen
 - **Instructions layer, they don't replace.** Each AI abstraction keeps its own always-present base instructions and appends the caller's `instructions` on top via `compose_instructions(base, extra)` (`integrations/ai/instructions.py`) — the `AnthropicAIClient` has a base persona, `DocumentAIClient` has base classify/extract instructions, and the processor passes domain-specific instructions as the extra. Don't reintroduce a "default OR override" pattern.
 - **`classify` vs `process`.** `DocumentAIClient.classify` returns `DocumentClassification[EnumT]` (`value` + `confidence`). `DocumentAIClient.process` returns `DocumentAnalysis[ResponseModelT]` — the typed `data` plus an extraction `confidence` and a list of `FieldIssue` (`path`, `message`) the model flagged. The cashout service persists both confidences separately: `classification_confidence` and `extraction_confidence`, plus `issues` (JSONB) on `CashoutDocumentAnalysis`.
 - `AnthropicAIClient.analyze` raises `AIAnalysisError` (code in `AIErrorCode`) on provider errors, refusals, or invalid/unparseable output. The extraction job catches it and marks the `CashoutDocumentAnalysis` `FAILED` with `error_code`/`error_message` (retryable via the extract endpoint); unexpected job crashes are marked `FAILED`/`INTERNAL` so an analysis never sits in `EXTRACTING` forever.
-- `CashoutDocumentType.UNKNOWN` (or any type with no registered schema) is **not** an error: the processor returns it with `data=None` and the job marks the analysis `FAILED` with the `UNCLASSIFIED` error code.
+- An **unclassifiable** document (the model returns a null `classification`, so `DocumentClassification.value is None`) or any type with no registered schema is **not** an error at the AI layer: the processor returns it with `data=None`, and the job leaves `classification` NULL and marks the analysis `FAILED` with the `UNCLASSIFIED` error code. `CashoutDocumentClassification` has **no** `UNKNOWN` member — "couldn't classify" is expressed as NULL. The classified type lives only on `CashoutDocumentAnalysis.classification`; `CashoutDocument` has no `document_type`.
 - **Extraction schemas are placeholders.** `features/cashout/extraction/schemas.py` defines dummy fields (marked with `TODO(document-ai)`) so the pipeline runs end to end. Define the real per-document fields before trusting extracted data. Deterministic post-extraction validation and real reconciliation in `service._reconcile` are also still TODO.
 
 ### Models

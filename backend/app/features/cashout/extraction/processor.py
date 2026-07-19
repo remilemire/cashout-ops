@@ -12,14 +12,14 @@ from app.documents import (
 )
 from app.integrations.ai import AIProvider
 
-from ..types import CashoutDocumentType
+from ..types import CashoutDocumentClassification
 from .registry import CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
 
 _CLASSIFY_INSTRUCTIONS = (
     "You are classifying a document from a restaurant's end-of-shift cashout. "
-    "Choose the single best matching document type; use UNKNOWN when no type "
-    "clearly applies. Report your confidence between 0 and 1."
+    "Choose the single best matching document type; leave the value null when no "
+    "type clearly applies. Report your confidence between 0 and 1."
 )
 
 _EXTRACT_INSTRUCTIONS = (
@@ -31,7 +31,7 @@ _EXTRACT_INSTRUCTIONS = (
 
 @dataclass(frozen=True)
 class CashoutDocumentProcessingResult:
-    classification: DocumentClassification[CashoutDocumentType]
+    classification: DocumentClassification[CashoutDocumentClassification]
     # data/confidence/issues are None/empty when the document is unclassified.
     data: CashoutDocumentSchema | None
     confidence: float | None
@@ -58,10 +58,16 @@ class CashoutDocumentProcessor:
         document: DocumentRef,
     ) -> CashoutDocumentProcessingResult:
         classification = await self._documents.classify(
-            document, CashoutDocumentType, instructions=_CLASSIFY_INSTRUCTIONS
+            document, CashoutDocumentClassification, instructions=_CLASSIFY_INSTRUCTIONS
         )
 
-        schema = CASHOUT_DOCUMENT_SCHEMAS.get(classification.value)
+        # A null value (unclassifiable) has no schema, same as any type with no
+        # registered schema.
+        schema = (
+            CASHOUT_DOCUMENT_SCHEMAS.get(classification.value)
+            if classification.value is not None
+            else None
+        )
         if schema is None:
             return CashoutDocumentProcessingResult(
                 classification=classification,

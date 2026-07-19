@@ -12,9 +12,10 @@ from .types import DocumentRef
 # Base instructions are always present; a caller's `instructions` are appended
 # on top (see compose_instructions), never used as a replacement.
 _CLASSIFY_INSTRUCTIONS = (
-    "Classify the document as exactly one of the allowed values and report your "
+    "Classify the document as one of the allowed values and report your "
     "confidence between 0 and 1. Choose the value that best matches the "
-    "document, and reflect any uncertainty in a lower confidence."
+    "document, and reflect any uncertainty in a lower confidence. If none of "
+    "the allowed values apply, leave the value null."
 )
 
 _EXTRACT_INSTRUCTIONS = (

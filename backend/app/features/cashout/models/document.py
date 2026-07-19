@@ -10,7 +10,6 @@ from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity, enum_column
-from app.features.cashout.types import CashoutDocumentType
 from app.lib.documents import DocumentContentType
 
 if TYPE_CHECKING:
@@ -23,16 +22,8 @@ if TYPE_CHECKING:
 class CashoutDocument(Entity):
     __tablename__ = "cashout_documents"
 
-    # Non-nullable with an UNKNOWN default rather than nullable: UNKNOWN is also
-    # a legitimate classification outcome (the AI may fail to classify), so a
-    # NULL state would force consumers to handle two "no type" cases. "Not yet
-    # analyzed" is distinguished by the absence/status of the analysis.
-    document_type: Mapped[CashoutDocumentType] = mapped_column(
-        enum_column(CashoutDocumentType, "cashout_document_type"),
-        nullable=False,
-        default=CashoutDocumentType.UNKNOWN,
-        server_default=CashoutDocumentType.UNKNOWN.value,
-    )
+    # The classified document type lives on the analysis
+    # (CashoutDocumentAnalysis.classification), not here.
     content_type: Mapped[DocumentContentType] = mapped_column(
         enum_column(DocumentContentType, "document_content_type"), nullable=False
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ..types import CashoutDocumentType
+from ..types import CashoutDocumentClassification
 from .schemas import (
     CashoutDocumentSchema,
     DailyCashSummaryData,
@@ -15,19 +15,22 @@ from .schemas import (
     TouchBistroServerShiftReportData,
 )
 
-CASHOUT_DOCUMENT_SCHEMAS: Mapping[CashoutDocumentType, type[CashoutDocumentSchema]] = {
-    CashoutDocumentType.TOUCHBISTRO_SERVER_SHIFT_REPORT: (
+CASHOUT_DOCUMENT_SCHEMAS: Mapping[
+    CashoutDocumentClassification, type[CashoutDocumentSchema]
+] = {
+    CashoutDocumentClassification.TOUCHBISTRO_SERVER_SHIFT_REPORT: (
         TouchBistroServerShiftReportData
     ),
-    CashoutDocumentType.PAYSTONE_TERMINAL_REPORT: PaystoneTerminalReportData,
-    CashoutDocumentType.PAYMENT_RECEIPT: PaymentReceiptData,
-    CashoutDocumentType.DAILY_TIP_OUT_SHEET: DailyTipOutSheetData,
-    CashoutDocumentType.DAILY_CASH_SUMMARY: DailyCashSummaryData,
-    CashoutDocumentType.MANUAL_NOTE: ManualNoteData,
+    CashoutDocumentClassification.PAYSTONE_TERMINAL_REPORT: PaystoneTerminalReportData,
+    CashoutDocumentClassification.PAYMENT_RECEIPT: PaymentReceiptData,
+    CashoutDocumentClassification.DAILY_TIP_OUT_SHEET: DailyTipOutSheetData,
+    CashoutDocumentClassification.DAILY_CASH_SUMMARY: DailyCashSummaryData,
+    CashoutDocumentClassification.MANUAL_NOTE: ManualNoteData,
 }
 
-# Classifications without a schema (UNKNOWN) are not domain errors: the
-# processor returns them with no data and the extraction job marks the
-# analysis FAILED with the UNCLASSIFIED error code for the cashier to retry.
+# A null classification (unclassifiable) or any type without a registered schema
+# is not a domain error: the processor returns it with no data and the
+# extraction job marks the analysis FAILED with the UNCLASSIFIED error code for
+# the cashier to retry.
 
 __all__ = ["CASHOUT_DOCUMENT_SCHEMAS"]
