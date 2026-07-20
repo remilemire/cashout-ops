@@ -299,6 +299,87 @@ async def test_delete_submission_requires_owner(
     ).status_code == 200
 
 
+async def test_delete_document_from_processing_submission(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    analysis = await _upload_pdf(cashier_client, submission_id)
+    assert storage.objects
+
+    response = await cashier_client.delete(
+        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert storage.objects == {}
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["documents"] == []
+    missing_analysis = await cashier_client.get(
+        f"/api/cashout/analyses/{analysis['id']}"
+    )
+    assert missing_analysis.status_code == 404
+
+
+async def test_delete_document_after_completion_conflicts(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    analysis = await _upload_pdf(cashier_client, submission_id)
+    await _verify(cashier_client, analysis["id"])
+    completed = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(cashier_client),
+    )
+    assert completed.status_code == 200, completed.text
+
+    response = await cashier_client.delete(
+        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_COMPLETED"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert len(detail["documents"]) == 1
+    assert storage.objects
+
+
+async def test_delete_document_requires_owner(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+) -> None:
+    _configure_manual_note(ai_client)
+    submission_id = await _create_submission(cashier_client)
+    analysis = await _upload_pdf(cashier_client, submission_id)
+
+    response = await admin_client.delete(
+        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert len(detail["documents"]) == 1
+    assert storage.objects
+
+
 # ================================
 # ------- Guard conditions -------
 # ================================
@@ -355,11 +436,32 @@ async def test_upload_rejects_duplicate_document(
     await _upload_pdf(cashier_client, other_submission_id)
 
 
+async def test_unknown_document_completes_without_data(
+    cashier_client: AsyncClient, ai_client: FakeAIClient
+) -> None:
+    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
+        value=None, confidence=0.3
+    )
+
+    submission_id = await _create_submission(cashier_client)
+    created = await _upload_pdf(cashier_client, submission_id)
+
+    # A document the AI can't place is not a failure: the analysis completes
+    # as UNKNOWN with nothing to extract, awaiting the cashier.
+    analysis = await _poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert analysis["classification"] == CashoutDocumentClassification.UNKNOWN.value
+    assert analysis["classificationConfidence"] == 0.3
+    assert analysis["extractedDataJson"] is None
+    assert analysis["errorCode"] is None
+    assert analysis["errorMessage"] is None
+
+
 async def test_failed_extraction_and_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
-    from app.features.cashout.types import analysis_error_message
+    from app.features.cashout.analysis_errors import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
     ai_client.error = AIAnalysisError(

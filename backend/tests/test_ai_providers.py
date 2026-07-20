@@ -17,7 +17,8 @@ import pytest
 from anthropic import APIError as AnthropicAPIError
 from google.genai import types
 from google.genai.errors import APIError
-from openai import OpenAIError
+from openai import LengthFinishReasonError, OpenAIError
+from openai.types.chat import ChatCompletion
 from pydantic import BaseModel
 
 from app.features.cashout.extraction.schemas import ManualNoteData
@@ -82,6 +83,7 @@ async def test_anthropic_returns_parsed_output() -> None:
     result = await client.analyze(
         DocumentContent(data=b"pdf", content_type=DocumentContentType.PDF),
         ManualNoteData,
+        max_tokens=512,
     )
 
     assert result is note
@@ -94,15 +96,24 @@ async def test_anthropic_raises_on_refusal() -> None:
         await client.analyze(
             DocumentContent(data=b"pdf", content_type=DocumentContentType.PDF),
             ManualNoteData,
+            max_tokens=512,
         )
     assert exc_info.value.code is AIErrorCode.REFUSED
+
+
+async def test_anthropic_raises_on_truncated_output() -> None:
+    client = _anthropic_client(response=_FakeParsed("max_tokens", None))
+
+    with pytest.raises(AIAnalysisError) as exc_info:
+        await client.analyze("text", ManualNoteData, max_tokens=512)
+    assert exc_info.value.code is AIErrorCode.TRUNCATED
 
 
 async def test_anthropic_raises_when_no_parsed_output() -> None:
     client = _anthropic_client(response=_FakeParsed("end_turn", None))
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("some text", ManualNoteData)
+        await client.analyze("some text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
@@ -113,7 +124,7 @@ async def test_anthropic_wraps_provider_errors() -> None:
     client = _anthropic_client(exc=api_error)
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
 
 
@@ -121,7 +132,9 @@ async def test_anthropic_sends_base_instructions() -> None:
     fake = _FakeAnthropic(response=_FakeParsed("end_turn", ManualNoteData(note="ok")))
     client = AnthropicAIClient(fake, model="claude-test")  # type: ignore[arg-type]
 
-    await client.analyze("text", ManualNoteData, instructions="EXTRA CONTEXT")
+    await client.analyze(
+        "text", ManualNoteData, instructions="EXTRA CONTEXT", max_tokens=512
+    )
 
     system = fake.messages.calls[0]["system"]
     assert isinstance(system, str)
@@ -129,6 +142,7 @@ async def test_anthropic_sends_base_instructions() -> None:
         "application-controlled AI component" in system
     )  # base persona always present
     assert "EXTRA CONTEXT" in system  # caller instructions appended
+    assert fake.messages.calls[0]["max_tokens"] == 512  # per-call budget
 
 
 def test_anthropic_document_block_maps_pdf() -> None:
@@ -207,7 +221,9 @@ async def test_openai_returns_parsed_output() -> None:
     note = ManualNoteData(note="ok")
     client = _openai_client(parsed=note)
 
-    result = await client.analyze("text", ManualNoteData, instructions="EXTRA")
+    result = await client.analyze(
+        "text", ManualNoteData, instructions="EXTRA", max_tokens=512
+    )
 
     assert result is note
 
@@ -216,7 +232,7 @@ async def test_openai_raises_on_refusal() -> None:
     client = _openai_client(refusal="cannot help with that")
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.REFUSED
 
 
@@ -224,15 +240,28 @@ async def test_openai_raises_when_no_parsed_output() -> None:
     client = _openai_client(parsed=None)
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
+
+
+async def test_openai_raises_on_truncated_output() -> None:
+    # The SDK raises LengthFinishReasonError from parse() itself when
+    # finish_reason is "length"; its __init__ only reads completion.usage.
+    truncated = LengthFinishReasonError(
+        completion=cast(ChatCompletion, SimpleNamespace(usage=None))
+    )
+    client = _openai_client(exc=truncated)
+
+    with pytest.raises(AIAnalysisError) as exc_info:
+        await client.analyze("text", ManualNoteData, max_tokens=512)
+    assert exc_info.value.code is AIErrorCode.TRUNCATED
 
 
 async def test_openai_wraps_provider_errors() -> None:
     client = _openai_client(exc=OpenAIError("boom"))
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
 
 
@@ -240,13 +269,16 @@ async def test_openai_sends_base_instructions() -> None:
     fake = _FakeOpenAI(parsed=ManualNoteData(note="ok"))
     client = OpenAIAIClient(fake, model="gpt-test")  # type: ignore[arg-type]
 
-    await client.analyze("text", ManualNoteData, instructions="EXTRA CONTEXT")
+    await client.analyze(
+        "text", ManualNoteData, instructions="EXTRA CONTEXT", max_tokens=512
+    )
 
     messages = fake.chat.completions.calls[0]["messages"]
     assert isinstance(messages, list)
     system = str(cast(dict[str, object], messages[0])["content"])
     assert "application-controlled AI component" in system
     assert "EXTRA CONTEXT" in system
+    assert fake.chat.completions.calls[0]["max_completion_tokens"] == 512
 
 
 def test_openai_content_part_maps_pdf() -> None:
@@ -303,13 +335,31 @@ def _gemini_client(**kwargs: object) -> GeminiAIClient:
     return GeminiAIClient(_FakeGemini(**kwargs), model="gemini-test")  # type: ignore[arg-type]
 
 
-async def test_gemini_returns_parsed_output() -> None:
-    note = ManualNoteData(note="ok")
-    client = _gemini_client(response=_GResponse(parsed=note))
+async def test_gemini_validates_parsed_dict_into_model() -> None:
+    # With response_json_schema the SDK returns the decoded dict, not a model
+    # instance; the client does the validation itself.
+    fake = _FakeGemini(response=_GResponse(parsed={"note": "ok"}))
+    client = GeminiAIClient(fake, model="gemini-test")  # type: ignore[arg-type]
 
-    result = await client.analyze("text", ManualNoteData)
+    result = await client.analyze("text", ManualNoteData, max_tokens=512)
 
-    assert result is note
+    assert result == ManualNoteData(note="ok")
+
+    # response_json_schema (not response_schema): the models' extra="forbid"
+    # emits additionalProperties, which response_schema rejects.
+    config = fake.aio.models.calls[0]["config"]
+    assert isinstance(config, types.GenerateContentConfig)
+    assert config.response_json_schema == ManualNoteData.model_json_schema()
+    assert config.response_schema is None
+    assert config.max_output_tokens == 512  # per-call budget
+
+
+async def test_gemini_raises_when_parsed_dict_fails_validation() -> None:
+    client = _gemini_client(response=_GResponse(parsed={"unexpected": "field"}))
+
+    with pytest.raises(AIAnalysisError) as exc_info:
+        await client.analyze("text", ManualNoteData, max_tokens=512)
+    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
 async def test_gemini_raises_on_safety_finish_reason() -> None:
@@ -320,8 +370,20 @@ async def test_gemini_raises_on_safety_finish_reason() -> None:
     client = _gemini_client(response=response)
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.REFUSED
+
+
+async def test_gemini_raises_on_truncated_output() -> None:
+    response = _GResponse(
+        parsed=None,
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.MAX_TOKENS)],
+    )
+    client = _gemini_client(response=response)
+
+    with pytest.raises(AIAnalysisError) as exc_info:
+        await client.analyze("text", ManualNoteData, max_tokens=512)
+    assert exc_info.value.code is AIErrorCode.TRUNCATED
 
 
 async def test_gemini_raises_on_blocked_prompt() -> None:
@@ -331,7 +393,7 @@ async def test_gemini_raises_on_blocked_prompt() -> None:
     client = _gemini_client(response=response)
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.REFUSED
 
 
@@ -339,7 +401,7 @@ async def test_gemini_raises_when_no_parsed_output() -> None:
     client = _gemini_client(response=_GResponse(parsed=None))
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
@@ -349,7 +411,7 @@ async def test_gemini_wraps_provider_errors() -> None:
     )
 
     with pytest.raises(AIAnalysisError) as exc_info:
-        await client.analyze("text", ManualNoteData)
+        await client.analyze("text", ManualNoteData, max_tokens=512)
     assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
 
 

@@ -7,6 +7,8 @@ class AIErrorCode(StrEnum):
     PROVIDER_ERROR = "PROVIDER_ERROR"
     REFUSED = "REFUSED"
     INVALID_RESPONSE = "INVALID_RESPONSE"
+    # The model hit the max-tokens limit before completing its output.
+    TRUNCATED = "TRUNCATED"
     UNSUPPORTED_CONTENT = "UNSUPPORTED_CONTENT"
 
 

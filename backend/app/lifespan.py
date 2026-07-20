@@ -38,7 +38,12 @@ async def lifespan(app: FastAPI):
 
     app.state.document_storage = storage
     app.state.cashout_document_processor = CashoutDocumentProcessor(
-        DocumentAIClient(ai_client, storage)
+        DocumentAIClient(
+            ai_client,
+            storage,
+            classification_max_tokens=settings.AI_CLASSIFICATION_MAX_TOKENS,
+            extraction_max_tokens=settings.AI_EXTRACTION_MAX_TOKENS,
+        )
     )
 
     try:
@@ -50,14 +55,11 @@ async def lifespan(app: FastAPI):
 
 def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
     """Construct the configured provider's client + an async close callback."""
-    model, max_tokens = settings.AI_MODEL, settings.AI_MAX_TOKENS
+    model = settings.AI_MODEL
 
     if settings.AI_PROVIDER is AIProvider.OPENAI:
         client = AsyncOpenAI(api_key=_require_key(settings.OPENAI_API_KEY, "OPENAI"))
-        return (
-            OpenAIAIClient(client, model=model, max_tokens=max_tokens),
-            client.close,
-        )
+        return OpenAIAIClient(client, model=model), client.close
 
     if settings.AI_PROVIDER is AIProvider.GEMINI:
         gemini = genai.Client(api_key=_require_key(settings.GEMINI_API_KEY, "GEMINI"))
@@ -65,18 +67,12 @@ def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
         async def close_gemini() -> None:
             gemini.close()
 
-        return (
-            GeminiAIClient(gemini, model=model, max_tokens=max_tokens),
-            close_gemini,
-        )
+        return GeminiAIClient(gemini, model=model), close_gemini
 
     anthropic = AsyncAnthropic(
         api_key=_require_key(settings.ANTHROPIC_API_KEY, "ANTHROPIC")
     )
-    return (
-        AnthropicAIClient(anthropic, model=model, max_tokens=max_tokens),
-        anthropic.close,
-    )
+    return AnthropicAIClient(anthropic, model=model), anthropic.close
 
 
 def _require_key(value: str | None, provider: str) -> str:

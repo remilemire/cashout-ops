@@ -19,6 +19,7 @@ from app.features.users.types import UserRole
 from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
 
+from .analysis_errors import analysis_error_message
 from .extraction import CashoutDocumentProcessor
 from .models import (
     CashoutData,
@@ -29,10 +30,8 @@ from .models import (
 from .schemas import CashoutAnalysisVerify
 from .types import (
     CashoutSubmissionStatus,
-    DocumentAnalysisErrorCode,
     DocumentAnalysisStatus,
     DocumentUpload,
-    analysis_error_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -213,6 +212,29 @@ async def upload_document(
     return await _reset_analysis(db, document=document, processor=processor)
 
 
+async def delete_document(
+    db: AsyncSession,
+    *,
+    document_id: UUID,
+    user_id: UUID,
+    storage: DocumentStorageClient,
+) -> None:
+    """Remove a document (and its analysis) from an incomplete submission."""
+    document = await _get_document(db, document_id)
+    submission = await _get_owned_submission(
+        db, submission_id=document.cashout_submission_id, user_id=user_id
+    )
+    if submission.status is not CashoutSubmissionStatus.PROCESSING:
+        raise AppError(
+            "SUBMISSION_COMPLETED", "Documents cannot be removed after completion."
+        )
+
+    await db.delete(document)
+    # Flush so a database failure surfaces before the stored bytes are gone.
+    await db.flush()
+    await storage.delete(document.storage_key)
+
+
 async def get_document_content(
     db: AsyncSession,
     *,
@@ -290,11 +312,10 @@ async def run_extraction(
             analysis is not None
             and analysis.status is DocumentAnalysisStatus.EXTRACTING
         ):
+            # No AI error code for an unexpected crash: error_code stays null
+            # and the message is the generic default.
             analysis.status = DocumentAnalysisStatus.FAILED
-            analysis.error_code = DocumentAnalysisErrorCode.INTERNAL.value
-            analysis.error_message = analysis_error_message(
-                DocumentAnalysisErrorCode.INTERNAL.value
-            )
+            analysis.error_message = analysis_error_message()
             analysis.completed_at = datetime.now(UTC)
             await db.commit()
 
@@ -417,8 +438,9 @@ async def _apply_extraction(
 ) -> None:
     """Run classification + extraction and persist the outcome on the analysis.
 
-    Success lands the analysis in NEEDS_VERIFICATION; a provider failure or an
-    unclassifiable document lands it in FAILED with error_code/error_message.
+    Success lands the analysis in NEEDS_VERIFICATION — an UNKNOWN
+    classification is not a failure, it simply has no extracted data. A
+    provider failure lands it in FAILED with error_code/error_message.
     """
     stmt = select(CashoutDocumentAnalysis).where(
         CashoutDocumentAnalysis.cashout_document_id == document.id
@@ -446,18 +468,13 @@ async def _apply_extraction(
         analysis.completed_at = datetime.now(UTC)
         return
 
-    analysis.classification = result.classification.value
-    analysis.classification_confidence = result.classification.confidence
+    analysis.status = DocumentAnalysisStatus.NEEDS_VERIFICATION
+    analysis.classification = result.classification
+    analysis.classification_confidence = result.classification_confidence
     analysis.completed_at = datetime.now(UTC)
 
-    if result.data is None:
-        analysis.status = DocumentAnalysisStatus.FAILED
-        analysis.error_code = DocumentAnalysisErrorCode.UNCLASSIFIED.value
-        analysis.error_message = analysis_error_message(
-            DocumentAnalysisErrorCode.UNCLASSIFIED.value
-        )
-    else:
-        analysis.status = DocumentAnalysisStatus.NEEDS_VERIFICATION
+    # An UNKNOWN classification has no schema: the extraction fields stay null.
+    if result.data is not None:
         analysis.schema_name = result.schema_name
         analysis.extracted_data_json = result.data.model_dump(mode="json")
         analysis.extraction_confidence = result.confidence

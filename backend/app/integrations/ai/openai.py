@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 
-from openai import AsyncOpenAI, OpenAIError
+from openai import AsyncOpenAI, LengthFinishReasonError, OpenAIError
 from openai.types.chat import ChatCompletionContentPartParam, ChatCompletionMessageParam
 from pydantic import ValidationError
 
@@ -23,12 +23,9 @@ class OpenAIAIClient:
 
     provider: AIProvider = AIProvider.OPENAI
 
-    def __init__(
-        self, client: AsyncOpenAI, *, model: str, max_tokens: int = 16000
-    ) -> None:
+    def __init__(self, client: AsyncOpenAI, *, model: str) -> None:
         self._client = client
         self.model = model
-        self._max_tokens = max_tokens
 
     async def analyze(
         self,
@@ -36,6 +33,7 @@ class OpenAIAIClient:
         response_model: type[ResponseModelT],
         *,
         instructions: str | None = None,
+        max_tokens: int,
     ) -> ResponseModelT:
         messages: list[ChatCompletionMessageParam] = [
             {
@@ -48,10 +46,18 @@ class OpenAIAIClient:
         try:
             completion = await self._client.chat.completions.parse(
                 model=self.model,
-                max_completion_tokens=self._max_tokens,
+                max_completion_tokens=max_tokens,
                 messages=messages,
                 response_format=response_model,
             )
+        # The SDK raises this itself when finish_reason is "length"; it
+        # subclasses OpenAIError, so it must be caught first or truncation
+        # would be misreported as a provider error.
+        except LengthFinishReasonError as exc:
+            raise AIAnalysisError(
+                AIErrorCode.TRUNCATED,
+                "The response hit the token limit before completing.",
+            ) from exc
         except OpenAIError as exc:
             raise AIAnalysisError(AIErrorCode.PROVIDER_ERROR, str(exc)) from exc
         except ValidationError as exc:

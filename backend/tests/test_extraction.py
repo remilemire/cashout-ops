@@ -47,7 +47,11 @@ async def _build_processor(
     storage = FakeDocumentStorage()
     await storage.write("doc-key", b"file-bytes")
     ai = FakeAIClient(classification=classification, extraction=extraction, error=error)
-    processor = CashoutDocumentProcessor(DocumentAIClient(ai, storage))
+    processor = CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
+        )
+    )
     ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
     return processor, ref
 
@@ -64,8 +68,8 @@ async def test_processor_classifies_and_extracts() -> None:
 
     result = await processor.process(ref)
 
-    assert result.classification.value is CashoutDocumentClassification.MANUAL_NOTE
-    assert result.classification.confidence == 0.9
+    assert result.classification is CashoutDocumentClassification.MANUAL_NOTE
+    assert result.classification_confidence == 0.9
     assert isinstance(result.data, ManualNoteData)
     assert result.data.note == "cash short $5"
     assert result.confidence == 0.8
@@ -73,14 +77,22 @@ async def test_processor_classifies_and_extracts() -> None:
     assert result.schema_name == "ManualNoteData"
 
 
-async def test_processor_unclassified_returns_no_data() -> None:
+@pytest.mark.parametrize(
+    "value",
+    [None, CashoutDocumentClassification.UNKNOWN],
+    ids=["null-folded-to-unknown", "unknown-picked-directly"],
+)
+async def test_processor_unknown_returns_no_data(
+    value: CashoutDocumentClassification | None,
+) -> None:
     processor, ref = await _build_processor(
-        classification=_classification(None, confidence=0.2),
+        classification=_classification(value, confidence=0.2),
     )
 
     result = await processor.process(ref)
 
-    assert result.classification.value is None
+    assert result.classification is CashoutDocumentClassification.UNKNOWN
+    assert result.classification_confidence == 0.2
     assert result.data is None
     assert result.confidence is None
     assert result.issues == []
@@ -97,9 +109,51 @@ async def test_processor_propagates_ai_error() -> None:
     assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
 
 
+async def test_processor_layers_domain_instructions_on_both_calls() -> None:
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", b"file-bytes")
+    ai = FakeAIClient(
+        classification=_classification(CashoutDocumentClassification.MANUAL_NOTE),
+        extraction=DocumentAnalysis[ManualNoteData](
+            data=ManualNoteData(note="cash short $5"), confidence=0.8
+        ),
+    )
+    processor = CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai, storage, classification_max_tokens=111, extraction_max_tokens=222
+        )
+    )
+
+    await processor.process(
+        DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
+    )
+
+    # compose_instructions appends the caller's extra under this header, so its
+    # presence proves the domain instructions were layered onto the base ones.
+    classify_call, extract_call = ai.calls
+    (_, _, classify_instructions, classify_max_tokens) = classify_call
+    (_, _, extract_instructions, extract_max_tokens) = extract_call
+    assert classify_instructions is not None
+    assert "# Additional instructions" in classify_instructions
+    assert "TOUCHBISTRO_SERVER_SHIFT_REPORT" in classify_instructions
+    assert extract_instructions is not None
+    assert "# Additional instructions" in extract_instructions
+
+    # Each operation runs under its own output-token budget.
+    assert classify_max_tokens == 111
+    assert extract_max_tokens == 222
+
+
 def test_processor_exposes_provider_and_model() -> None:
     ai = FakeAIClient(model="fake-model")
-    processor = CashoutDocumentProcessor(DocumentAIClient(ai, FakeDocumentStorage()))
+    processor = CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai,
+            FakeDocumentStorage(),
+            classification_max_tokens=512,
+            extraction_max_tokens=2048,
+        )
+    )
 
     assert processor.provider is AIProvider.ANTHROPIC
     assert processor.model == "fake-model"

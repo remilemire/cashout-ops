@@ -34,12 +34,9 @@ class AnthropicAIClient:
 
     provider: AIProvider = AIProvider.ANTHROPIC
 
-    def __init__(
-        self, client: AsyncAnthropic, *, model: str, max_tokens: int = 16000
-    ) -> None:
+    def __init__(self, client: AsyncAnthropic, *, model: str) -> None:
         self._client = client
         self.model = model
-        self._max_tokens = max_tokens
 
     async def analyze(
         self,
@@ -47,11 +44,12 @@ class AnthropicAIClient:
         response_model: type[ResponseModelT],
         *,
         instructions: str | None = None,
+        max_tokens: int,
     ) -> ResponseModelT:
         try:
             response = await self._client.messages.parse(
                 model=self.model,
-                max_tokens=self._max_tokens,
+                max_tokens=max_tokens,
                 thinking={"type": "adaptive"},
                 system=compose_instructions(BASE_INSTRUCTIONS, instructions),
                 messages=[{"role": "user", "content": _to_message_content(content)}],
@@ -65,6 +63,13 @@ class AnthropicAIClient:
         if response.stop_reason == "refusal":
             raise AIAnalysisError(
                 AIErrorCode.REFUSED, "The provider declined to analyze this content."
+            )
+        # Checked before parsed_output: truncated output also fails to parse,
+        # and the max_tokens stop reason is the more actionable signal.
+        if response.stop_reason == "max_tokens":
+            raise AIAnalysisError(
+                AIErrorCode.TRUNCATED,
+                "The response hit the max_tokens limit before completing.",
             )
 
         parsed = response.parsed_output

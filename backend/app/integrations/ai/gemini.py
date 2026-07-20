@@ -34,12 +34,9 @@ class GeminiAIClient:
 
     provider: AIProvider = AIProvider.GEMINI
 
-    def __init__(
-        self, client: genai.Client, *, model: str, max_tokens: int = 16000
-    ) -> None:
+    def __init__(self, client: genai.Client, *, model: str) -> None:
         self._client = client
         self.model = model
-        self._max_tokens = max_tokens
 
     async def analyze(
         self,
@@ -47,12 +44,18 @@ class GeminiAIClient:
         response_model: type[ResponseModelT],
         *,
         instructions: str | None = None,
+        max_tokens: int,
     ) -> ResponseModelT:
         config = types.GenerateContentConfig(
             system_instruction=compose_instructions(BASE_INSTRUCTIONS, instructions),
-            max_output_tokens=self._max_tokens,
+            max_output_tokens=max_tokens,
             response_mime_type="application/json",
-            response_schema=response_model,
+            # Must be response_json_schema, not response_schema: the response
+            # models set extra="forbid", so their JSON schema carries
+            # additionalProperties, which the typed response_schema path
+            # rejects. The trade-off: the SDK no longer instantiates the model
+            # — response.parsed holds the decoded JSON dict, validated below.
+            response_json_schema=response_model.model_json_schema(),
         )
 
         try:
@@ -67,18 +70,19 @@ class GeminiAIClient:
             )
         except APIError as exc:
             raise AIAnalysisError(AIErrorCode.PROVIDER_ERROR, str(exc)) from exc
-        except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
-        _raise_if_refused(response)
+        _raise_if_unusable(response)
 
         parsed = response.parsed
-        if not isinstance(parsed, response_model):
+        if not isinstance(parsed, dict):
             raise AIAnalysisError(
                 AIErrorCode.INVALID_RESPONSE,
                 "The response did not contain valid structured output.",
             )
-        return parsed
+        try:
+            return response_model.model_validate(parsed)
+        except ValidationError as exc:
+            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
 
 def _to_contents(content: AIContent) -> list[str | types.Part]:
@@ -93,7 +97,8 @@ def _to_part(content: DocumentContent) -> types.Part:
     )
 
 
-def _raise_if_refused(response: types.GenerateContentResponse) -> None:
+def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
+    """Blocked prompts, refusal finish reasons, and truncation all abort."""
     feedback = response.prompt_feedback
     if feedback is not None and feedback.block_reason is not None:
         raise AIAnalysisError(
@@ -102,7 +107,14 @@ def _raise_if_refused(response: types.GenerateContentResponse) -> None:
 
     for candidate in response.candidates or []:
         finish_reason = candidate.finish_reason
-        if finish_reason is not None and finish_reason in _REFUSAL_FINISH_REASONS:
+        if finish_reason is None:
+            continue
+        if finish_reason == types.FinishReason.MAX_TOKENS:
+            raise AIAnalysisError(
+                AIErrorCode.TRUNCATED,
+                "The response hit the max output tokens limit before completing.",
+            )
+        if finish_reason in _REFUSAL_FINISH_REASONS:
             raise AIAnalysisError(
                 AIErrorCode.REFUSED,
                 f"The provider declined to analyze this content "

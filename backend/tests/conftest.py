@@ -118,7 +118,14 @@ def processor(
     ai_client: FakeAIClient, storage: FakeDocumentStorage
 ) -> CashoutDocumentProcessor:
     # Real processor + DocumentAIClient over the fake provider and storage.
-    return CashoutDocumentProcessor(DocumentAIClient(ai_client, storage))
+    return CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai_client,
+            storage,
+            classification_max_tokens=512,
+            extraction_max_tokens=2048,
+        )
+    )
 
 
 # ================================

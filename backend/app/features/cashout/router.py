@@ -230,6 +230,32 @@ async def upload_document(
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 
 
+@router.delete(
+    "/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(
+        "DOCUMENT_NOT_FOUND", "SUBMISSION_COMPLETED", "VALIDATION_FAILED"
+    ),
+)
+async def delete_document(
+    document_id: DocumentId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
+) -> None:
+    """Remove a document (and its analysis) from an incomplete submission.
+
+    Only the submission's owner may remove documents, and only while the
+    submission is still `PROCESSING`.
+    """
+    await cashout_service.delete_document(
+        db,
+        document_id=document_id,
+        user_id=current_user.id,
+        storage=storage,
+    )
+
+
 @router.post(
     "/documents/{document_id}/extract",
     response_model=CashoutDocumentAnalysisOut,

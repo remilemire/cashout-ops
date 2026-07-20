@@ -16,7 +16,9 @@ class AIClient(Protocol):
     """Provider-neutral primitives for structured AI analysis.
 
     `analyze` raises `AIAnalysisError` on provider failures, refusals, or
-    responses that do not validate against `response_model`.
+    responses that do not validate against `response_model`. `max_tokens` is
+    per-call so callers can budget each operation separately (classification
+    needs far fewer output tokens than extraction).
     """
 
     provider: AIProvider
@@ -28,6 +30,7 @@ class AIClient(Protocol):
         response_model: type[ResponseModelT],
         *,
         instructions: str | None = None,
+        max_tokens: int,
     ) -> ResponseModelT: ...
 
 

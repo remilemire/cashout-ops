@@ -40,8 +40,8 @@ class CashoutDocumentAnalysis(Entity):
         server_default=DocumentAnalysisStatus.EXTRACTING.value,
     )
 
-    # Null when the AI could not classify the document (status is then FAILED
-    # with the UNCLASSIFIED error code).
+    # Null only until extraction completes (or fails). A document the AI could
+    # not place lands as UNKNOWN, never null.
     classification: Mapped[CashoutDocumentClassification | None] = mapped_column(
         enum_column(CashoutDocumentClassification, "cashout_document_classification"),
         nullable=True,
@@ -60,6 +60,8 @@ class CashoutDocumentAnalysis(Entity):
     extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     issues: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
+    # Set when status is FAILED: the AIErrorCode value for AI-layer failures;
+    # error_code stays null for unexpected job crashes (only the message is set).
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 

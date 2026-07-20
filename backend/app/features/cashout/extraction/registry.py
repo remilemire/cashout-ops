@@ -28,9 +28,8 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[
     CashoutDocumentClassification.MANUAL_NOTE: ManualNoteData,
 }
 
-# A null classification (unclassifiable) or any type without a registered schema
-# is not a domain error: the processor returns it with no data and the
-# extraction job marks the analysis FAILED with the UNCLASSIFIED error code for
-# the cashier to retry.
+# UNKNOWN deliberately has no entry: a document the model can't place has
+# nothing to extract, so the processor returns it with no data and the analysis
+# completes as NEEDS_VERIFICATION with an UNKNOWN classification.
 
 __all__ = ["CASHOUT_DOCUMENT_SCHEMAS"]

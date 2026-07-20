@@ -44,7 +44,7 @@ class FakeAIClient:
         self.classification = classification
         self.extraction = extraction
         self.error = error
-        self.calls: list[tuple[AIContent, type[BaseModel], str | None]] = []
+        self.calls: list[tuple[AIContent, type[BaseModel], str | None, int]] = []
 
     async def analyze(
         self,
@@ -52,8 +52,9 @@ class FakeAIClient:
         response_model: type[ResponseModelT],
         *,
         instructions: str | None = None,
+        max_tokens: int,
     ) -> ResponseModelT:
-        self.calls.append((content, response_model, instructions))
+        self.calls.append((content, response_model, instructions, max_tokens))
 
         if self.error is not None:
             raise self.error

@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     # Document-AI provider selection. Only the selected provider's API key is
     # required; the lifespan validates it at startup.
     AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC
-    AI_MAX_TOKENS: int = 16000
+    # Per-operation output-token budgets, deliberately conservative: a
+    # classification is a tiny fixed-shape JSON object; an extraction scales
+    # with the schema. Raise via env if analyses start failing TRUNCATED.
+    AI_CLASSIFICATION_MAX_TOKENS: int = 512
+    AI_EXTRACTION_MAX_TOKENS: int = 2048
 
     # Model per provider, resolved for the selected provider by AI_MODEL below.
     # The model is not env-configurable — edit a value here to change it.
