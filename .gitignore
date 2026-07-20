@@ -15,4 +15,5 @@ instance
 *.egg-info
 static
 .ruff_cache
+.claude
 */**/storage/documents
