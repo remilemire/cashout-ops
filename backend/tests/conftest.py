@@ -33,11 +33,12 @@ from app.dependencies import (  # noqa: E402
     get_db,
     get_db_sessionmaker,
     get_document_storage,
+    get_email_client,
 )
 from app.documents import DocumentAIClient  # noqa: E402
 from app.features.cashout.extraction import CashoutDocumentProcessor  # noqa: E402
 
-from .fakes import FakeAIClient, FakeDocumentStorage  # noqa: E402
+from .fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient  # noqa: E402
 
 # ================================
 # ----------- Database -----------
@@ -114,6 +115,11 @@ def ai_client() -> FakeAIClient:
 
 
 @pytest.fixture
+def email_client() -> FakeEmailClient:
+    return FakeEmailClient()
+
+
+@pytest.fixture
 def processor(
     ai_client: FakeAIClient, storage: FakeDocumentStorage
 ) -> CashoutDocumentProcessor:
@@ -138,6 +144,7 @@ async def app(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     processor: CashoutDocumentProcessor,
     storage: FakeDocumentStorage,
+    email_client: FakeEmailClient,
 ) -> AsyncIterator[FastAPI]:
     from app.main import app as fastapi_app
 
@@ -155,6 +162,7 @@ async def app(
     fastapi_app.dependency_overrides[get_db_sessionmaker] = lambda: db_sessionmaker
     fastapi_app.dependency_overrides[get_cashout_document_processor] = lambda: processor
     fastapi_app.dependency_overrides[get_document_storage] = lambda: storage
+    fastapi_app.dependency_overrides[get_email_client] = lambda: email_client
     try:
         yield fastapi_app
     finally:
@@ -169,8 +177,14 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 
 @pytest_asyncio.fixture
-async def cashier_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
-    from .factories import register
+async def unverified_client(
+    app: FastAPI, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> AsyncIterator[AsyncClient]:
+    """A registered cashier that has NOT verified its email (for the gate flow)."""
+    from .factories import create_invitation, register
+
+    async with db_sessionmaker() as db:
+        await create_invitation(db, email="cashier@test.com")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:
@@ -179,12 +193,33 @@ async def cashier_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 
 @pytest_asyncio.fixture
-async def admin_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
-    from .factories import ADMIN_EMAIL, register
+async def cashier_client(
+    app: FastAPI, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> AsyncIterator[AsyncClient]:
+    from .factories import create_invitation, register, verify_user
+
+    async with db_sessionmaker() as db:
+        await create_invitation(db, email="cashier@test.com")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+        await register(http_client, email="cashier@test.com")
+        async with db_sessionmaker() as db:
+            await verify_user(db, email="cashier@test.com")
+        yield http_client
+
+
+@pytest_asyncio.fixture
+async def admin_client(
+    app: FastAPI, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> AsyncIterator[AsyncClient]:
+    from .factories import ADMIN_EMAIL, register, verify_user
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:
         await register(
             http_client, email=ADMIN_EMAIL, first_name="Admin", last_name="User"
         )
+        async with db_sessionmaker() as db:
+            await verify_user(db, email=ADMIN_EMAIL)
         yield http_client

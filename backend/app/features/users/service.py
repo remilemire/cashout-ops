@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -14,6 +15,12 @@ from .schemas import UserCreate
 from .types import UserRole
 
 
+async def list_users(db: AsyncSession) -> Sequence[User]:
+    """Every user, newest first (admin table)."""
+    stmt = select(User).order_by(User.created_at.desc())
+    return (await db.execute(stmt)).scalars().all()
+
+
 async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
     stmt = select(User).where(User.email == email)
 
@@ -22,18 +29,27 @@ async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
     return user
 
 
-def create(
-    db: AsyncSession,
-    *,
-    payload: UserCreate,
-    password_hash: str,
-    role: UserRole | None = None,
-) -> User:
+def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
     user = User(
         email=payload.email,
         first_name=payload.first_name,
         last_name=payload.last_name,
-        role=role,
+        password_hash=password_hash,
+    )
+    db.add(user)
+
+    return user
+
+
+def bootstrap_admin(
+    db: AsyncSession, *, payload: UserCreate, password_hash: str
+) -> User:
+    """Create the bootstrapped ADMIN_EMAIL account with the ADMIN role."""
+    user = User(
+        email=payload.email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        role=UserRole.ADMIN,
         password_hash=password_hash,
     )
     db.add(user)
@@ -48,4 +64,4 @@ async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     await db.delete(user)
 
 
-__all__ = ["find_by_email", "create", "delete_by_id"]
+__all__ = ["list_users", "find_by_email", "create", "bootstrap_admin", "delete_by_id"]

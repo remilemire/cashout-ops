@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.errors import AppError
+from app.features.invitations import service as invitations_service
 from app.features.sessions import service as sessions_service
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
-from app.features.users.types import UserRole
 
 from .passwords import hash_password, verify_password
 from .schemas import AuthLogin, AuthRegister
@@ -33,20 +33,34 @@ async def register(db: AsyncSession, *, payload: AuthRegister) -> UserWithSessio
     if await users_service.find_by_email(db, email=payload.email) is not None:
         raise AppError("EMAIL_TAKEN")
 
-    role = UserRole.ADMIN if payload.email == settings.ADMIN_EMAIL else None
-    user = users_service.create(
-        db,
-        payload=UserCreate(
-            email=payload.email,
-            first_name=payload.first_name,
-            last_name=payload.last_name,
-        ),
-        password_hash=hash_password(payload.password),
-        role=role,
+    user_payload = UserCreate(
+        email=payload.email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
     )
+    password_hash = hash_password(payload.password)
+
+    # The bootstrapped admin registers without an invitation; everyone else
+    # needs a pending (unaccepted, unexpired) one.
+    is_bootstrap_admin = payload.email == settings.ADMIN_EMAIL
+    if is_bootstrap_admin:
+        user = users_service.bootstrap_admin(
+            db, payload=user_payload, password_hash=password_hash
+        )
+    else:
+        if not await invitations_service.is_invited(db, email=payload.email):
+            raise AppError("INVITATION_REQUIRED")
+        user = users_service.create(
+            db, payload=user_payload, password_hash=password_hash
+        )
 
     # Flush so the new user's PK is available for the session FK.
     await db.flush()
+
+    if not is_bootstrap_admin:
+        await invitations_service.mark_accepted(
+            db, email=payload.email, accepted_by_id=user.id
+        )
 
     result = sessions_service.create(db, user_id=user.id)
     return UserWithSessionToken(user, result.session_token)

@@ -9,6 +9,7 @@ import { RegisterPage } from "@/auth/RegisterPage";
 import { EmptyState } from "@/components/ui";
 import { AdminDataPage } from "@/features/admin/AdminDataPage";
 import { AdminSubmissionsPage } from "@/features/admin/AdminSubmissionsPage";
+import { AdminUsersPage } from "@/features/admin/AdminUsersPage";
 import { CashoutsPage } from "@/features/cashout/CashoutsPage";
 import { NewCashoutPage } from "@/features/cashout/NewCashoutPage";
 import { SubmissionPage } from "@/features/cashout/SubmissionPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
                 element: <SubmissionPage />,
               },
               { path: "/admin/data", element: <AdminDataPage /> },
+              { path: "/admin/users", element: <AdminUsersPage /> },
             ],
           },
           {

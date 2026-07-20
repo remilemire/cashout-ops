@@ -1,7 +1,7 @@
 // frontend/src/auth/LoginPage.tsx
 
 import { GlassWater } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ReactNode, type SyntheticEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { Button, Card, ErrorBanner, TextField } from "@/components/ui";
@@ -38,8 +38,7 @@ export function LoginPage() {
 
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    // AGENT: FormEvent is deprecated
+  const onSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setPending(true);

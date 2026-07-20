@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.documents import DocumentAnalysis, DocumentClassification, FieldIssue
 from app.features.cashout.extraction.schemas import ManualNoteData
@@ -561,6 +562,7 @@ async def test_cannot_access_another_users_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     app: object,
+    db_session: AsyncSession,
 ) -> None:
     from httpx import ASGITransport
 
@@ -572,9 +574,11 @@ async def test_cannot_access_another_users_submission(
     # its analyses.
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as other:
-        from .factories import register
+        from .factories import create_invitation, register, verify_user
 
+        await create_invitation(db_session, email="other@test.com")
         await register(other, email="other@test.com")
+        await verify_user(db_session, email="other@test.com")
         submission_response = await other.get(
             f"/api/cashout/submissions/{submission_id}"
         )

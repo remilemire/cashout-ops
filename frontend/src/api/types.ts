@@ -31,6 +31,15 @@ export type ErrorCode =
   | "INVALID_CREDENTIALS"
   | "INVALID_SESSION"
   | "INVALID_CSRF_TOKEN"
+  // invitations
+  | "INVITATION_NOT_FOUND"
+  | "INVITATION_EXISTS"
+  | "INVITATION_REQUIRED"
+  // email verification
+  | "VERIFICATION_CODE_INVALID"
+  | "VERIFICATION_CODE_EXPIRED"
+  | "VERIFICATION_ALREADY_VERIFIED"
+  | "EMAIL_NOT_VERIFIED"
   // cashout
   | "SUBMISSION_NOT_FOUND"
   | "DOCUMENT_NOT_FOUND"
@@ -72,6 +81,8 @@ export interface User {
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  /** Null until the account confirms its emailed verification code. */
+  emailVerifiedAt: string | null;
 }
 
 export interface LoginInput {
@@ -82,6 +93,28 @@ export interface LoginInput {
 export interface RegisterInput extends LoginInput {
   firstName: string;
   lastName: string;
+}
+
+// ---------- Invitations ----------
+
+export interface Invitation {
+  id: string;
+  createdAt: string;
+  email: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  invitedByUserId: string;
+  acceptedByUserId: string | null;
+}
+
+export interface InvitationCreateInput {
+  email: string;
+}
+
+// ---------- Email verification ----------
+
+export interface VerifyEmailInput {
+  code: string;
 }
 
 // ---------- Cashout ----------

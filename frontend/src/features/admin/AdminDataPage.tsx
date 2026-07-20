@@ -43,7 +43,7 @@ export function AdminDataPage() {
         />
       ) : (
         <Card padded={false} className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-160 text-sm">
             <thead>
               <tr className="border-line text-ink-muted border-b text-left text-xs">
                 <th className="px-4 py-2.5 font-medium">Created</th>

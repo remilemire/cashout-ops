@@ -6,12 +6,16 @@ from fastapi import APIRouter
 
 from app.features.auth.router import router as auth_router
 from app.features.cashout.router import router as cashout_router
+from app.features.email_verification.router import router as email_verification_router
+from app.features.invitations.router import router as invitations_router
 from app.features.users.router import router as users_router
 
 api_router = APIRouter(prefix="/api")
 
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
+api_router.include_router(invitations_router)
+api_router.include_router(email_verification_router)
 api_router.include_router(cashout_router)
 
 __all__ = ["api_router"]

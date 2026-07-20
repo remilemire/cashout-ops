@@ -5,10 +5,18 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, require_csrf
+from app.dependencies import (
+    get_current_user,
+    get_db,
+    require_admin,
+    require_csrf,
+    require_verified_user,
+)
 from app.errors.openapi import error_responses
 
+from . import service as users_service
 from .model import User
 from .schemas import UserOut
 
@@ -26,3 +34,17 @@ def get_me(
 ) -> UserOut:
     """Return the authenticated user."""
     return UserOut.model_validate(current_user)
+
+
+@router.get(
+    "",
+    response_model=list[UserOut],
+    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    responses=error_responses("FORBIDDEN", "EMAIL_NOT_VERIFIED"),
+)
+async def list_users(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[UserOut]:
+    """List every user, newest first (admin only)."""
+    users = await users_service.list_users(db)
+    return [UserOut.model_validate(user) for user in users]

@@ -9,10 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.sessions.model import Session
 from app.features.users.types import UserRole
 
-from .factories import ADMIN_EMAIL, register
+from .factories import ADMIN_EMAIL, create_invitation, register
 
 
-async def test_register_creates_user_and_sets_cookies(client: AsyncClient) -> None:
+async def test_register_creates_user_and_sets_cookies(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await create_invitation(db_session, email="new@test.com")
+
     response = await client.post(
         "/api/auth/register",
         json={
@@ -40,7 +44,10 @@ async def test_register_promotes_admin_email(client: AsyncClient) -> None:
     assert response.json()["role"] == UserRole.ADMIN.value
 
 
-async def test_register_duplicate_email_conflicts(client: AsyncClient) -> None:
+async def test_register_duplicate_email_conflicts(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await create_invitation(db_session, email="dupe@test.com")
     await register(client, email="dupe@test.com")
 
     response = await client.post(
@@ -75,7 +82,10 @@ async def test_register_rejects_short_password(client: AsyncClient) -> None:
     assert body["issues"][0]["path"] == ["password"]
 
 
-async def test_login_succeeds_with_correct_password(client: AsyncClient) -> None:
+async def test_login_succeeds_with_correct_password(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await create_invitation(db_session, email="login@test.com")
     await register(client, email="login@test.com", password="password123")
     client.cookies.clear()
 
@@ -88,7 +98,10 @@ async def test_login_succeeds_with_correct_password(client: AsyncClient) -> None
     assert "session_token" in client.cookies
 
 
-async def test_login_wrong_password_unauthorized(client: AsyncClient) -> None:
+async def test_login_wrong_password_unauthorized(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await create_invitation(db_session, email="wrong@test.com")
     await register(client, email="wrong@test.com", password="password123")
 
     response = await client.post(
@@ -112,6 +125,7 @@ async def test_login_unknown_email_unauthorized(client: AsyncClient) -> None:
 async def test_logout_clears_session_and_cookies(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    await create_invitation(db_session, email="out@test.com")
     await register(client, email="out@test.com")
     assert (await db_session.execute(select(Session))).scalars().all()
 

@@ -31,6 +31,7 @@ const cashier: User = {
   lastName: "User",
   role: "CASHIER",
   isActive: true,
+  emailVerifiedAt: "2026-07-17T00:00:00Z",
 };
 
 function renderGuarded() {
@@ -81,5 +82,13 @@ describe("RequireAuth", () => {
     renderGuarded();
 
     expect(await screen.findByText("Private home")).toBeDefined();
+  });
+
+  it("gates an unverified user behind the verification dialog", async () => {
+    meMock.mockResolvedValue({ ...cashier, emailVerifiedAt: null });
+
+    renderGuarded();
+
+    expect(await screen.findByText("Verify your email")).toBeDefined();
   });
 });

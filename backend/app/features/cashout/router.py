@@ -19,6 +19,7 @@ from app.dependencies import (
     get_post_commit_tasks,
     require_admin,
     require_csrf,
+    require_verified_user,
 )
 from app.errors import AppError
 from app.errors.openapi import error_responses
@@ -48,9 +49,14 @@ router = APIRouter(
         Depends(get_post_commit_tasks),
         Depends(require_csrf),
         Depends(get_current_user),
+        Depends(require_verified_user),
     ],
     responses=error_responses(
-        "UNAUTHENTICATED", "INVALID_SESSION", "INVALID_CSRF_TOKEN", "FORBIDDEN"
+        "UNAUTHENTICATED",
+        "INVALID_SESSION",
+        "INVALID_CSRF_TOKEN",
+        "FORBIDDEN",
+        "EMAIL_NOT_VERIFIED",
     ),
 )
 

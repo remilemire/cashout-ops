@@ -21,12 +21,18 @@ from app.integrations.ai import (
     GeminiAIClient,
     OpenAIAIClient,
 )
+from app.integrations.email import (
+    ConsoleEmailClient,
+    EmailClient,
+    EmailProvider,
+    ResendEmailClient,
+)
 from app.integrations.storage import LocalDocumentStorageClient
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Composition root: builds the DB engine and the document-AI clients."""
+    """Composition root: builds the DB engine and the integration clients."""
 
     app.state.db_engine = create_async_engine(settings.DATABASE_URL)
     app.state.db_sessionmaker = async_sessionmaker(
@@ -36,6 +42,7 @@ async def lifespan(app: FastAPI):
     ai_client, close_ai = _build_ai_client()
     storage = LocalDocumentStorageClient(settings.DOCUMENT_STORAGE_DIR)
 
+    app.state.email_client = _build_email_client()
     app.state.document_storage = storage
     app.state.cashout_document_processor = CashoutDocumentProcessor(
         DocumentAIClient(
@@ -51,6 +58,19 @@ async def lifespan(app: FastAPI):
     finally:
         await close_ai()
         await app.state.db_engine.dispose()
+
+
+def _build_email_client() -> EmailClient:
+    """Select the configured email client; Resend requires its API key."""
+    if settings.EMAIL_PROVIDER is EmailProvider.RESEND:
+        if not settings.RESEND_API_KEY:
+            raise RuntimeError(
+                "RESEND_API_KEY is required when EMAIL_PROVIDER is RESEND."
+            )
+        return ResendEmailClient(
+            api_key=settings.RESEND_API_KEY, sender=settings.EMAIL_FROM
+        )
+    return ConsoleEmailClient(sender=settings.EMAIL_FROM)
 
 
 def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:

@@ -10,6 +10,7 @@ from pydantic import EmailStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.integrations.ai import AIProvider
+from app.integrations.email import EmailProvider
 
 
 class Settings(BaseSettings):
@@ -20,7 +21,19 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["prod", "dev"] = "prod"
     DATABASE_URL: str
     SESSION_TTL_DAYS: int = 7
+    INVITATION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"
+
+    # Email delivery. EMAIL_PROVIDER selects the client: CONSOLE logs the
+    # message (dev default; boots without a key), RESEND sends for real and
+    # requires RESEND_API_KEY (validated at startup). EMAIL_FROM is the sender.
+    EMAIL_PROVIDER: EmailProvider = EmailProvider.CONSOLE
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM: str = "Whiskey District <onboarding@resend.dev>"
+
+    # Email verification. A short-lived numeric code is emailed on registration;
+    # the account stays unverified until the code is entered before it expires.
+    EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 15
 
     # Document-AI provider selection. Only the selected provider's API key is
     # required; the lifespan validates it at startup.

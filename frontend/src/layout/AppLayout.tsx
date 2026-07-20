@@ -8,6 +8,7 @@ import {
   Moon,
   ReceiptText,
   Sun,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -54,6 +55,7 @@ export function AppLayout() {
             icon: ClipboardList,
           },
           { to: "/admin/data", label: "Data", icon: Database },
+          { to: "/admin/users", label: "Users", icon: UsersRound },
         ]
       : []),
   ];

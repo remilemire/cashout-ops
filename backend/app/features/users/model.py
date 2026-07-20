@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Index, String, text
+from sqlalchemy import Boolean, DateTime, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.models import Entity, enum_column
@@ -35,6 +36,11 @@ class User(Entity):
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    # Null until the emailed verification code is entered; the frontend gates
+    # unverified accounts. The bootstrapped admin is created already verified.
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     sessions: Mapped[list[Session]] = relationship(

@@ -1,22 +1,21 @@
 // frontend/src/auth/EmailVerificationGate.tsx
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MailCheck } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type SyntheticEvent } from "react";
 
+import { emailVerificationApi } from "@/api/emailVerification";
 import type { User } from "@/api/types";
 import { Dialog } from "@/components/dialog";
-import { Button, TextField } from "@/components/ui";
+import { Button, ErrorBanner, TextField } from "@/components/ui";
 
 import { useAuth } from "./useAuth";
 
-/**
- * TODO(email-verification): the backend will add email verification. Once
- * `User` gains a verified flag, flip this predicate to it — the blocking
- * dialog below is already built and wired to this gate.
- */
-function needsVerification(_user: User): boolean {
-  void _user;
-  return false;
+const ME_KEY = ["me"] as const;
+
+/** Accounts are gated until they confirm the code emailed at registration. */
+function needsVerification(user: User): boolean {
+  return user.emailVerifiedAt === null;
 }
 
 export function EmailVerificationGate({
@@ -38,20 +37,40 @@ export function EmailVerificationGate({
 /** Blocking modal shown to unverified accounts; not dismissible. */
 function VerifyEmailDialog({ user }: { user: User }) {
   const { logout } = useAuth();
+  const queryClient = useQueryClient();
   const [code, setCode] = useState("");
 
-  // TODO(email-verification): wire to the backend verify/resend endpoints
-  // when they exist; on success invalidate the ["me"] query so the gate lifts.
-  const submit = () => undefined;
-  const resend = () => undefined;
+  const verify = useMutation({
+    mutationFn: emailVerificationApi.verify,
+    onSuccess: async (verified) => {
+      // Seed ["me"] so the gate lifts, then refetch everything else: the
+      // guarded queries rendered behind the dialog failed with
+      // EMAIL_NOT_VERIFIED and need to reload now that we're verified.
+      queryClient.setQueryData(ME_KEY, verified);
+      await queryClient.invalidateQueries();
+    },
+  });
+
+  const resend = useMutation({
+    mutationFn: emailVerificationApi.resend,
+    onSuccess: () => verify.reset(),
+  });
+
+  const onSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = code.trim();
+    if (trimmed) verify.mutate({ code: trimmed });
+  };
 
   return (
     <Dialog open dismissible={false} title="Verify your email">
-      <div className="space-y-3">
+      <form onSubmit={onSubmit} className="space-y-3">
         <p className="text-ink-muted flex items-start gap-2 text-sm">
           <MailCheck className="text-accent-strong mt-0.5 size-4 shrink-0" />
-          We sent a verification code to <strong>{user.email}</strong>. Enter it
-          below to continue.
+          <span>
+            We sent a verification code to <strong>{user.email}</strong>. Enter
+            it below to continue.
+          </span>
         </p>
         <TextField
           label="Verification code"
@@ -60,22 +79,41 @@ function VerifyEmailDialog({ user }: { user: User }) {
           value={code}
           onChange={(event) => setCode(event.target.value)}
         />
+
+        <ErrorBanner error={verify.error} />
+        <ErrorBanner error={resend.error} />
+        {resend.isSuccess && (
+          <p className="text-success text-sm">A new code is on its way.</p>
+        )}
+
         <Button
+          type="submit"
           className="w-full"
-          onClick={submit}
-          disabled={code.length === 0}
+          loading={verify.isPending}
+          disabled={code.trim().length === 0}
         >
           Verify
         </Button>
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={resend}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            loading={resend.isPending}
+            onClick={() => resend.mutate()}
+          >
             Resend code
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => void logout()}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void logout()}
+          >
             Log out
           </Button>
         </div>
-      </div>
+      </form>
     </Dialog>
   );
 }

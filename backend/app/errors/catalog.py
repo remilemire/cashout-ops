@@ -8,6 +8,8 @@ from fastapi import status
 
 from app.features.auth.errors import auth_error_catalog
 from app.features.cashout.errors import cashout_error_catalog
+from app.features.email_verification.errors import email_verification_error_catalog
+from app.features.invitations.errors import invitation_error_catalog
 from app.features.users.errors import user_error_catalog
 
 from .codes import BaseErrorCode, ErrorCode
@@ -46,6 +48,8 @@ error_catalog: ErrorCatalog[ErrorCode] = {
     **base_error_catalog,
     **user_error_catalog,
     **auth_error_catalog,
+    **invitation_error_catalog,
+    **email_verification_error_catalog,
     **cashout_error_catalog,
 }
 

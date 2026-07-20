@@ -15,6 +15,8 @@ from app.features.cashout.models import (
     CashoutDocumentAnalysis,
     CashoutSubmission,
 )
+from app.features.email_verification.model import EmailVerification
+from app.features.invitations.model import Invitation
 from app.features.sessions.model import Session
 from app.features.users.model import User
 
@@ -25,6 +27,8 @@ __all__ = [
     "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
+    "EmailVerification",
+    "Invitation",
     "Session",
     "User",
     "metadata",

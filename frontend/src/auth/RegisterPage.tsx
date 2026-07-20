@@ -1,6 +1,6 @@
 // frontend/src/auth/RegisterPage.tsx
 
-import { useState, type FormEvent } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
@@ -20,7 +20,7 @@ export function RegisterPage() {
   const fieldError = (field: string) =>
     error instanceof ApiError ? error.messageFor(field) : undefined;
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setPending(true);

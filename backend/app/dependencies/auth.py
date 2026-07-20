@@ -28,10 +28,23 @@ async def get_current_user(
     return context.user
 
 
+def require_verified_user(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Guard for routes that require a confirmed email address.
+
+    Not applied to any route yet; email verification currently only gates the
+    UI (the frontend `EmailVerificationGate`).
+    """
+    if user.email_verified_at is None:
+        raise AppError("EMAIL_NOT_VERIFIED")
+    return user
+
+
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
     if user.role != UserRole.ADMIN:
         raise AppError("FORBIDDEN", "Admin access required.")
     return user
 
 
-__all__ = ["get_current_user", "require_admin"]
+__all__ = ["get_current_user", "require_admin", "require_verified_user"]

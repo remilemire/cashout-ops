@@ -37,7 +37,7 @@ export function AdminSubmissionsPage() {
         />
       ) : (
         <Card padded={false} className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-140 text-sm">
             <thead>
               <tr className="border-line text-ink-muted border-b text-left text-xs">
                 <th className="px-4 py-2.5 font-medium">Submitted</th>

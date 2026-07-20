@@ -54,6 +54,7 @@ const user: User = {
   lastName: "User",
   role: "CASHIER",
   isActive: true,
+  emailVerifiedAt: "2026-07-17T00:00:00Z",
 };
 
 const submissions: CashoutSubmissionListItem[] = [
