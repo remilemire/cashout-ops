@@ -75,7 +75,10 @@ export function Card({
   return (
     <div
       className={cx(
-        "border-line bg-surface rounded-xl border shadow-xs",
+        // Floor for tiny viewports: below this the page scrolls horizontally
+        // instead of crushing the card layouts (matches min-w-80 + px-4 on
+        // the AppLayout shell).
+        "border-line bg-surface min-w-72 rounded-xl border shadow-xs",
         padded && "p-4",
         className,
       )}

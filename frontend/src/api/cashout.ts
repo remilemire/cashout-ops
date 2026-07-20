@@ -37,6 +37,9 @@ export const cashoutApi = {
     api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/extract`, {
       method: "POST",
     }),
+  /** Remove a document (and its analysis) from an incomplete submission. */
+  deleteDocument: (documentId: string) =>
+    api<void>(`/cashout/documents/${documentId}`, { method: "DELETE" }),
   /** Plain URL for viewing the original file (img src / link href). */
   documentContentUrl: (documentId: string) =>
     `/api/cashout/documents/${documentId}/content`,

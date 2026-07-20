@@ -100,7 +100,8 @@ export type CashoutDocumentClassification =
   | "PAYMENT_RECEIPT"
   | "DAILY_TIP_OUT_SHEET"
   | "DAILY_CASH_SUMMARY"
-  | "MANUAL_NOTE";
+  | "MANUAL_NOTE"
+  | "UNKNOWN";
 
 export type DocumentContentType =
   | "image/jpeg"

@@ -75,8 +75,10 @@ export function AppLayout() {
     ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
     : "";
 
+  // min-w-80 (320px) − px-4 gutters = the cards' 288px min-width: smaller
+  // viewports scroll horizontally as one unit instead of crushing.
   return (
-    <div className="min-h-dvh pb-24 md:pb-0">
+    <div className="min-h-dvh min-w-80 pb-24 md:pb-0">
       <header className="border-line bg-surface/90 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
           <span className="truncate font-semibold tracking-tight">

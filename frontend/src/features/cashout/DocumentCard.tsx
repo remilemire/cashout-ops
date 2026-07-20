@@ -1,11 +1,18 @@
 // frontend/src/features/cashout/DocumentCard.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, FileText, RefreshCw, ScanLine } from "lucide-react";
-import { useEffect } from "react";
+import {
+  ExternalLink,
+  FileText,
+  RefreshCw,
+  ScanLine,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import type { CashoutDocument } from "@/api/types";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button, Card, ErrorBanner, Spinner } from "@/components/ui";
 import { enumLabel, formatDateTime } from "@/lib/format";
 
@@ -28,6 +35,7 @@ export function DocumentCard({
   editable: boolean;
 }) {
   const queryClient = useQueryClient();
+  const [removeOpen, setRemoveOpen] = useState(false);
   const initial = document.analysis;
 
   // Poll the analysis while the AI extraction runs in the background.
@@ -58,6 +66,22 @@ export function DocumentCard({
     mutationFn: () => cashoutApi.extractDocument(document.id),
     onSuccess: (updated) => {
       queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => cashoutApi.deleteDocument(document.id),
+    onSuccess: () => {
+      // The analysis is gone with the document — drop its cache entry so
+      // nothing keeps polling a 404.
+      if (initial) {
+        queryClient.removeQueries({
+          queryKey: cashoutKeys.analysis(initial.id),
+        });
+      }
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
       });
@@ -108,8 +132,27 @@ export function DocumentCard({
           </a>
         </div>
 
-        {analysis && <AnalysisStatusBadge status={analysis.status} />}
+        {(analysis || editable) && (
+          <div className="flex items-center gap-1">
+            {analysis && <AnalysisStatusBadge status={analysis.status} />}
+            {editable && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Remove document"
+                title="Remove document"
+                className="text-ink-muted hover:text-danger -my-2 -mr-1 px-2"
+                loading={remove.isPending}
+                onClick={() => setRemoveOpen(true)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
+
+      <ErrorBanner error={remove.error} />
 
       {!analysis && (
         <p className="text-ink-muted text-sm">No analysis for this document.</p>
@@ -174,6 +217,22 @@ export function DocumentCard({
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={removeOpen}
+        onClose={() => setRemoveOpen(false)}
+        title="Remove document?"
+        confirmLabel="Remove document"
+        cancelLabel="Keep document"
+        confirmTone="danger"
+        onConfirm={() => {
+          remove.mutate();
+          setRemoveOpen(false);
+        }}
+      >
+        This permanently deletes {document.originalFilename} and its extracted
+        data from this cashout. This can&rsquo;t be undone.
+      </ConfirmDialog>
     </Card>
   );
 }

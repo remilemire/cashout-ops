@@ -130,4 +130,40 @@ describe("CashoutsPage", () => {
       "processing-submission",
     );
   });
+
+  it("keeps submissions distinct when the truncated ids collide", async () => {
+    // The visible "#xxxxxxxx" label truncates the UUID to 8 chars; rows and
+    // actions must still key off the full id.
+    const twin = (suffix: string): CashoutSubmissionListItem => ({
+      id: `aaaaaaaa-0000-4000-8000-00000000000${suffix}`,
+      createdAt: "2026-07-17T01:00:00Z",
+      status: "PROCESSING",
+      submittedByUserId: user.id,
+      submittedAt: "2026-07-17T01:00:00Z",
+      submittedBy: user,
+    });
+    listSubmissionsMock.mockResolvedValue([twin("1"), twin("2")]);
+    renderPage();
+
+    // Both rows render despite sharing the same truncated label.
+    expect(await screen.findAllByText("#aaaaaaaa")).toHaveLength(2);
+    const rowLinks = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(rowLinks).toContain(
+      "/cashouts/aaaaaaaa-0000-4000-8000-000000000001",
+    );
+    expect(rowLinks).toContain(
+      "/cashouts/aaaaaaaa-0000-4000-8000-000000000002",
+    );
+
+    // Cancelling the second row targets its full UUID, not its twin's.
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel cashout" }));
+
+    await waitFor(() => expect(cancelSubmissionMock).toHaveBeenCalledOnce());
+    expect(cancelSubmissionMock.mock.calls[0]?.[0]).toBe(
+      "aaaaaaaa-0000-4000-8000-000000000002",
+    );
+  });
 });
