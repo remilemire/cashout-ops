@@ -61,8 +61,13 @@ async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     await db.delete(user)
 
 
-async def promote_admin(db: AsyncSession, *, user_id: UUID) -> User:
-    """Grant a user admin access (idempotent if already an admin)."""
+async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
+    """Grant a user admin access (idempotent if already an admin).
+
+    An admin cannot change their own admin access.
+    """
+    if actor.id == user_id:
+        raise AppError("CANNOT_MODIFY_OWN_ADMIN")
     user = await User.find_by_id(db, user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
@@ -70,8 +75,13 @@ async def promote_admin(db: AsyncSession, *, user_id: UUID) -> User:
     return user
 
 
-async def demote_admin(db: AsyncSession, *, user_id: UUID) -> User:
-    """Revoke a user's admin access (idempotent if already staff)."""
+async def demote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
+    """Revoke a user's admin access (idempotent if already staff).
+
+    An admin cannot change their own admin access.
+    """
+    if actor.id == user_id:
+        raise AppError("CANNOT_MODIFY_OWN_ADMIN")
     user = await User.find_by_id(db, user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")

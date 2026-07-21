@@ -6,11 +6,15 @@ from typing import Literal
 
 from app.errors.contracts import ConstraintToCode, ErrorCatalog
 
-type UserErrorCode = Literal["USER_NOT_FOUND", "EMAIL_TAKEN"]
+type UserErrorCode = Literal["USER_NOT_FOUND", "EMAIL_TAKEN", "CANNOT_MODIFY_OWN_ADMIN"]
 
 user_error_catalog: ErrorCatalog[UserErrorCode] = {
     "USER_NOT_FOUND": {"kind": "NOT_FOUND", "message": "User not found."},
     "EMAIL_TAKEN": {"kind": "CONFLICT", "message": "This email is already in use."},
+    "CANNOT_MODIFY_OWN_ADMIN": {
+        "kind": "FORBIDDEN",
+        "message": "You cannot change your own admin access.",
+    },
 }
 
 # Postgres reports unique-index violations under the index name.

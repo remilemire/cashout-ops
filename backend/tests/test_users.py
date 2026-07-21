@@ -99,6 +99,29 @@ async def test_demote_requires_admin(
     assert response.json()["code"] == "FORBIDDEN"
 
 
+async def test_admin_cannot_promote_self(admin_client: AsyncClient) -> None:
+    me = (await admin_client.get("/api/users/me")).json()
+
+    response = await admin_client.post(
+        f"/api/users/{me['id']}/promote", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CANNOT_MODIFY_OWN_ADMIN"
+
+
+async def test_admin_cannot_demote_self(admin_client: AsyncClient) -> None:
+    me = (await admin_client.get("/api/users/me")).json()
+    assert me["isAdmin"] is True  # self-demotion is the realistic lockout risk
+
+    response = await admin_client.post(
+        f"/api/users/{me['id']}/demote", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CANNOT_MODIFY_OWN_ADMIN"
+
+
 async def test_promote_unknown_user_not_found(admin_client: AsyncClient) -> None:
     response = await admin_client.post(
         f"/api/users/{uuid4()}/promote", headers=csrf_headers(admin_client)

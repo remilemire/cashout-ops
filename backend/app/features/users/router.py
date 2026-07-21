@@ -57,32 +57,42 @@ UserId = Annotated[UUID, Path(description="User ID.")]
 @router.post(
     "/{user_id}/promote",
     response_model=UserOut,
-    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    dependencies=[Depends(require_verified_user)],
     responses=error_responses(
-        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "USER_NOT_FOUND", "VALIDATION_FAILED"
+        "FORBIDDEN",
+        "EMAIL_NOT_VERIFIED",
+        "USER_NOT_FOUND",
+        "VALIDATION_FAILED",
+        "CANNOT_MODIFY_OWN_ADMIN",
     ),
 )
 async def promote_user(
     user_id: UserId,
+    actor: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserOut:
     """Grant a user admin access (admin only; idempotent)."""
-    user = await users_service.promote_admin(db, user_id=user_id)
+    user = await users_service.promote_admin(db, user_id=user_id, actor=actor)
     return UserOut.model_validate(user)
 
 
 @router.post(
     "/{user_id}/demote",
     response_model=UserOut,
-    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    dependencies=[Depends(require_verified_user)],
     responses=error_responses(
-        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "USER_NOT_FOUND", "VALIDATION_FAILED"
+        "FORBIDDEN",
+        "EMAIL_NOT_VERIFIED",
+        "USER_NOT_FOUND",
+        "VALIDATION_FAILED",
+        "CANNOT_MODIFY_OWN_ADMIN",
     ),
 )
 async def demote_user(
     user_id: UserId,
+    actor: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserOut:
     """Revoke a user's admin access (admin only; idempotent)."""
-    user = await users_service.demote_admin(db, user_id=user_id)
+    user = await users_service.demote_admin(db, user_id=user_id, actor=actor)
     return UserOut.model_validate(user)
