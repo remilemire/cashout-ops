@@ -71,7 +71,14 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
 
-    app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+    # check_dir=False so importing the app doesn't require a built frontend:
+    # static/assets is gitignored build output, absent until `frontend-build`,
+    # so the backend test suite can import app.main without a prior SPA build.
+    app.mount(
+        "/assets",
+        StaticFiles(directory="static/assets", check_dir=False),
+        name="assets",
+    )
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):  # type: ignore[reportUnusedFunction]
