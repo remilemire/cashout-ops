@@ -9,6 +9,8 @@ the adapter surface it mirrors. They are not application coverage.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from app.documents import DocumentClassification
@@ -30,7 +32,10 @@ Classification = DocumentClassification[CashoutDocumentClassification]
 
 
 def test_unit_marker_auto_applied(request: pytest.FixtureRequest) -> None:
-    assert request.node.get_closest_marker("unit") is not None
+    # FixtureRequest.node is an un-annotated abstract property; cast to the
+    # concrete item type and ignore the one unavoidably-untyped access.
+    node = cast(pytest.Item, request.node)  # pyright: ignore[reportUnknownMemberType]
+    assert node.get_closest_marker("unit") is not None
 
 
 async def test_fake_ai_client_returns_canned_output_and_records_calls() -> None:

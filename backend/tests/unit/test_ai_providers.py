@@ -255,7 +255,9 @@ async def test_gemini_validates_parsed_dict_into_model() -> None:
     config = fake.aio.models.calls[0]["config"]
     assert isinstance(config, types.GenerateContentConfig)
     assert config.response_json_schema == ManualNoteData.model_json_schema()
-    assert config.response_schema is None
+    # google-genai types response_schema with a partially-unknown union; the
+    # access is safe (we only compare to None). Same SDK gap as gemini.py.
+    assert config.response_schema is None  # pyright: ignore[reportUnknownMemberType]
     assert config.max_output_tokens == 512  # per-call budget
 
 
