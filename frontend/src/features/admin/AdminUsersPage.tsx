@@ -202,10 +202,8 @@ export function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge
-                        tone={user.role === "ADMIN" ? "accent" : "neutral"}
-                      >
-                        {user.role === "ADMIN" ? "Admin" : "Cashier"}
+                      <Badge tone={user.isAdmin ? "accent" : "neutral"}>
+                        {user.isAdmin ? "Admin" : "Staff"}
                       </Badge>
                     </td>
                     <td className="text-ink-muted px-4 py-3">

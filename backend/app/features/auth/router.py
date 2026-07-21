@@ -59,7 +59,7 @@ async def register(
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable) cookies.
     Registration requires a pending invitation for the email; the invitation is
     marked accepted. The email matching `ADMIN_EMAIL` is exempt and is created
-    with the ADMIN role. A verification code is emailed after the request
+    as an admin. A verification code is emailed after the request
     commits (via a post-commit job); the account stays unverified until it's
     confirmed.
     """

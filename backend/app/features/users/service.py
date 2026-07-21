@@ -12,7 +12,6 @@ from app.errors import AppError
 
 from .model import User
 from .schemas import UserCreate
-from .types import UserRole
 
 
 async def list_users(db: AsyncSession) -> Sequence[User]:
@@ -43,11 +42,11 @@ def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User
 def bootstrap_admin(
     db: AsyncSession, *, payload: UserCreate, password_hash: str
 ) -> User:
-    """Create the bootstrapped ADMIN_EMAIL account with the ADMIN role."""
+    """Create the bootstrapped ADMIN_EMAIL account as an admin."""
     user = User(
         email=payload.email,
         full_name=payload.full_name,
-        role=UserRole.ADMIN,
+        is_admin=True,
         password_hash=password_hash,
     )
     db.add(user)

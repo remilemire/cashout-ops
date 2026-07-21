@@ -17,7 +17,6 @@ from app.dependencies.background import PostCommitTasks
 from app.documents import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
-from app.features.users.types import UserRole
 from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
 
@@ -127,7 +126,7 @@ async def list_submissions(
         .options(joinedload(CashoutSubmission.submitted_by))
         .order_by(CashoutSubmission.submitted_at.desc())
     )
-    if user.role != UserRole.ADMIN:
+    if not user.is_admin:
         stmt = stmt.where(CashoutSubmission.submitted_by_user_id == user.id)
 
     return (await db.execute(stmt)).scalars().all()
@@ -450,7 +449,7 @@ async def _get_owned_submission(
 
 
 def _ensure_can_view(submission: CashoutSubmission, user: User) -> None:
-    if user.role != UserRole.ADMIN and submission.submitted_by_user_id != user.id:
+    if not user.is_admin and submission.submitted_by_user_id != user.id:
         raise AppError(
             "FORBIDDEN", "You do not have access to this cashout submission."
         )

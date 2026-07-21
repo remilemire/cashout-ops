@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db.models import Entity, enum_column
-
-from .types import UserRole
+from app.core.db.models import Entity
 
 if TYPE_CHECKING:
     from app.features.sessions.model import Session
@@ -27,11 +25,8 @@ class User(Entity):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    role: Mapped[UserRole] = mapped_column(
-        enum_column(UserRole, "user_role"),
-        nullable=False,
-        default=UserRole.CASHIER,
-        server_default=UserRole.CASHIER.value,
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")

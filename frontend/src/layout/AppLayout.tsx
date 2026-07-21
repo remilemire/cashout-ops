@@ -48,7 +48,7 @@ export function AppLayout() {
 
   const links: NavItem[] = [
     { to: "/cashouts", label: "My cashouts", icon: ReceiptText },
-    ...(user?.role === "ADMIN"
+    ...(user?.isAdmin
       ? [
           {
             to: "/admin/submissions",

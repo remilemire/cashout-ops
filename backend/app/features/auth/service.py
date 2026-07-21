@@ -46,7 +46,7 @@ async def register(
 
     Registration requires a pending invitation for the email; the invitation
     is marked accepted. The email matching `ADMIN_EMAIL` is exempt and is
-    created with the ADMIN role. Unless the new account is already verified, a
+    created as an admin. Unless the new account is already verified, a
     verification code is queued to be emailed after the request commits.
     """
     if await users_service.find_by_email(db, email=payload.email) is not None:

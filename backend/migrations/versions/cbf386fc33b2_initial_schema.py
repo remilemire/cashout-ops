@@ -24,7 +24,6 @@ depends_on: Union[str, Sequence[str], None] = None
 # them explicitly on downgrade — otherwise a re-upgrade fails with "type already
 # exists".
 ENUM_TYPES = (
-    "user_role",
     "cashout_submission_status",
     "cashout_document_classification",
     "document_content_type",
@@ -42,10 +41,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
         sa.Column(
-            "role",
-            sa.Enum("CASHIER", "ADMIN", name="user_role"),
-            server_default="CASHIER",
-            nullable=False,
+            "is_admin", sa.Boolean(), server_default=sa.text("false"), nullable=False
         ),
         sa.Column(
             "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False

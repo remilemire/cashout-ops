@@ -51,7 +51,7 @@ const user: User = {
   createdAt: "2026-07-17T00:00:00Z",
   email: "cashier@test.com",
   fullName: "Test User",
-  role: "CASHIER",
+  isAdmin: false,
   isActive: true,
   emailVerifiedAt: "2026-07-17T00:00:00Z",
 };

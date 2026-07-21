@@ -6,9 +6,6 @@ import { useAuth } from "./useAuth";
 export function HomeRedirect() {
   const { user } = useAuth();
   return (
-    <Navigate
-      to={user?.role === "ADMIN" ? "/admin/submissions" : "/cashouts"}
-      replace
-    />
+    <Navigate to={user?.isAdmin ? "/admin/submissions" : "/cashouts"} replace />
   );
 }

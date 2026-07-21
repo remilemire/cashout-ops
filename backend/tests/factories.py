@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.auth.passwords import hash_password
 from app.features.invitations.model import Invitation
 from app.features.users.model import User
-from app.features.users.types import UserRole
 
 # Matches ADMIN_EMAIL set in conftest; register() promotes this email to ADMIN.
 ADMIN_EMAIL = "admin@test.com"
@@ -26,14 +25,14 @@ async def create_user(
     *,
     email: str = "cashier@test.com",
     password: str = DEFAULT_PASSWORD,
-    role: UserRole = UserRole.CASHIER,
+    is_admin: bool = False,
     full_name: str = "Test User",
 ) -> User:
     user = User(
         email=email,
         full_name=full_name,
         password_hash=hash_password(password),
-        role=role,
+        is_admin=is_admin,
     )
     db.add(user)
     await db.commit()
@@ -52,7 +51,7 @@ async def create_invitation(
         email=f"inviter-{uuid.uuid4().hex[:8]}@test.com",
         full_name="Inviting Admin",
         password_hash="!",  # never logs in; skip the slow bcrypt hash
-        role=UserRole.ADMIN,
+        is_admin=True,
     )
     db.add(inviter)
     await db.flush()

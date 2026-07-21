@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.sessions.model import Session
-from app.features.users.types import UserRole
 
 from .factories import ADMIN_EMAIL, create_invitation, register
 
@@ -29,7 +28,7 @@ async def test_register_creates_user_and_sets_cookies(
     assert response.status_code == 201
     body = response.json()
     assert body["email"] == "new@test.com"
-    assert body["role"] == UserRole.CASHIER.value
+    assert body["isAdmin"] is False
     # Inbound/outbound JSON is camelCase.
     assert body["fullName"] == "New User"
     assert "session_token" in client.cookies
@@ -40,7 +39,7 @@ async def test_register_promotes_admin_email(client: AsyncClient) -> None:
     await register(client, email=ADMIN_EMAIL)
 
     response = await client.get("/api/users/me")
-    assert response.json()["role"] == UserRole.ADMIN.value
+    assert response.json()["isAdmin"] is True
 
 
 async def test_register_duplicate_email_conflicts(

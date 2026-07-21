@@ -11,7 +11,6 @@ from app.errors import AppError
 from app.features.auth import service as auth_service
 from app.features.sessions.cookies import get_session_cookie
 from app.features.users.model import User
-from app.features.users.types import UserRole
 
 from .db import get_db
 
@@ -42,7 +41,7 @@ def require_verified_user(
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
-    if user.role != UserRole.ADMIN:
+    if not user.is_admin:
         raise AppError("FORBIDDEN", "Admin access required.")
     return user
 

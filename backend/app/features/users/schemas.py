@@ -6,13 +6,11 @@ from pydantic import EmailStr, Field
 
 from app.core.schemas import BaseIn, EntityOut, UtcDateTime
 
-from .types import UserRole
-
 
 class UserOut(EntityOut):
     email: EmailStr
     full_name: str
-    role: UserRole
+    is_admin: bool
     is_active: bool
     email_verified_at: UtcDateTime | None = None
 

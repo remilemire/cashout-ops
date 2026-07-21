@@ -71,14 +71,12 @@ export interface ErrorResponse {
 
 // ---------- Users / auth ----------
 
-export type UserRole = "CASHIER" | "ADMIN";
-
 export interface User {
   id: string;
   createdAt: string;
   email: string;
   fullName: string;
-  role: UserRole;
+  isAdmin: boolean;
   isActive: boolean;
   /** Null until the account confirms its emailed verification code. */
   emailVerifiedAt: string | null;
