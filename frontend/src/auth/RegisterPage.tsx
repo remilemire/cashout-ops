@@ -14,7 +14,9 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [confirmError, setConfirmError] = useState<string | undefined>(undefined);
+  const [confirmError, setConfirmError] = useState<string | undefined>(
+    undefined,
+  );
 
   if (!isLoading && user) return <Navigate to="/" replace />;
 
