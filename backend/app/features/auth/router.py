@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -16,7 +15,6 @@ from app.dependencies import (
     get_post_commit_tasks,
 )
 from app.errors.openapi import error_responses
-from app.features.email_verification import service as email_verification_service
 from app.features.sessions.cookies import (
     clear_csrf_cookie,
     clear_session_cookie,
@@ -65,18 +63,13 @@ async def register(
     commits (via a post-commit job); the account stays unverified until it's
     confirmed.
     """
-    result = await auth_service.register(db, payload=payload)
-
-    if result.user.email_verified_at is None:
-        post_commit.add(
-            partial(
-                email_verification_service.send_new_code,
-                sessionmaker,
-                email_client=email_client,
-                user_id=result.user.id,
-            )
-        )
-
+    result = await auth_service.register(
+        db,
+        payload=payload,
+        post_commit=post_commit,
+        sessionmaker=sessionmaker,
+        email_client=email_client,
+    )
     return _authenticated_response(response, result)
 
 

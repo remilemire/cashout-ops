@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from importlib.resources import files
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
 from app.features.users.model import User
 from app.integrations.email import EmailClient
@@ -86,6 +88,27 @@ async def send_new_code(
         logger.exception("Failed to send verification email to %s", recipient)
 
 
+async def resend(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    *,
+    post_commit: PostCommitTasks,
+    email_client: EmailClient,
+    user: User,
+) -> None:
+    """Queue a fresh verification code for the current user.
+
+    Rejects an already-verified user. Otherwise queues the same post-commit
+    job `register` uses, so the code is issued and the email sent only once
+    the request transaction commits.
+    """
+    if user.email_verified_at is not None:
+        raise AppError("VERIFICATION_ALREADY_VERIFIED")
+
+    post_commit.add(
+        partial(send_new_code, sessionmaker, email_client=email_client, user_id=user.id)
+    )
+
+
 async def verify_email(db: AsyncSession, *, user: User, code: str) -> User:
     """Confirm a submitted code, marking the user verified on success."""
     if user.email_verified_at is not None:
@@ -115,4 +138,4 @@ async def verify_email(db: AsyncSession, *, user: User, code: str) -> User:
     return user
 
 
-__all__ = ["send_new_code", "verify_email"]
+__all__ = ["resend", "send_new_code", "verify_email"]

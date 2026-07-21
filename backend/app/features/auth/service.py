@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from functools import partial
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
+from app.features.email_verification import service as email_verification_service
 from app.features.invitations import service as invitations_service
 from app.features.sessions import service as sessions_service
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
+from app.integrations.email import EmailClient
 
 from .passwords import hash_password, verify_password
 from .schemas import AuthLogin, AuthRegister
@@ -29,7 +34,21 @@ async def login(db: AsyncSession, *, payload: AuthLogin) -> UserWithSessionToken
     return UserWithSessionToken(user=user, session_token=result.session_token)
 
 
-async def register(db: AsyncSession, *, payload: AuthRegister) -> UserWithSessionToken:
+async def register(
+    db: AsyncSession,
+    *,
+    payload: AuthRegister,
+    post_commit: PostCommitTasks,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    email_client: EmailClient,
+) -> UserWithSessionToken:
+    """Create an account, start a session, and queue a verification email.
+
+    Registration requires a pending invitation for the email; the invitation
+    is marked accepted. The email matching `ADMIN_EMAIL` is exempt and is
+    created with the ADMIN role. Unless the new account is already verified, a
+    verification code is queued to be emailed after the request commits.
+    """
     if await users_service.find_by_email(db, email=payload.email) is not None:
         raise AppError("EMAIL_TAKEN")
 
@@ -62,6 +81,19 @@ async def register(db: AsyncSession, *, payload: AuthRegister) -> UserWithSessio
         )
 
     result = sessions_service.create(db, user_id=user.id)
+
+    # Queued so the verification code is issued + emailed only once the new
+    # user is persisted (the job runs after the request transaction commits).
+    if user.email_verified_at is None:
+        post_commit.add(
+            partial(
+                email_verification_service.send_new_code,
+                sessionmaker,
+                email_client=email_client,
+                user_id=user.id,
+            )
+        )
+
     return UserWithSessionToken(user, result.session_token)
 
 

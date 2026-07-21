@@ -6,12 +6,14 @@ import hashlib
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from functools import partial
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.dependencies.background import PostCommitTasks
 from app.documents import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
@@ -176,11 +178,14 @@ async def upload_document(
     user_id: UUID,
     storage: DocumentStorageClient,
     processor: CashoutDocumentProcessor,
+    post_commit: PostCommitTasks,
+    sessionmaker: async_sessionmaker[AsyncSession],
 ) -> CashoutDocumentAnalysis:
-    """Store the document and create its EXTRACTING analysis.
+    """Store the document, create its EXTRACTING analysis, and queue extraction.
 
-    The AI extraction itself runs in a background task (`run_extraction`)
-    scheduled by the router; clients poll the returned analysis.
+    The AI extraction itself runs in a post-commit background job
+    (`run_extraction`), queued here to run once the request transaction
+    commits; clients poll the returned analysis.
     """
     submission = await _get_owned_submission(
         db, submission_id=submission_id, user_id=user_id
@@ -209,7 +214,16 @@ async def upload_document(
     await db.flush()
     await storage.write(document.storage_key, payload.data)
 
-    return await _reset_analysis(db, document=document, processor=processor)
+    analysis = await _reset_analysis(db, document=document, processor=processor)
+    post_commit.add(
+        partial(
+            run_extraction,
+            sessionmaker,
+            document_id=document.id,
+            processor=processor,
+        )
+    )
+    return analysis
 
 
 async def delete_document(
@@ -256,12 +270,15 @@ async def extract_document(
     document_id: UUID,
     user_id: UUID,
     processor: CashoutDocumentProcessor,
+    post_commit: PostCommitTasks,
+    sessionmaker: async_sessionmaker[AsyncSession],
 ) -> CashoutDocumentAnalysis:
-    """Reset a document's analysis for a fresh extraction attempt.
+    """Reset a document's analysis and queue a fresh extraction attempt.
 
-    As with upload, the extraction itself runs in the router-scheduled
-    background task. Verified analyses cannot be re-run, and an extraction
-    already in flight cannot be restarted.
+    As with upload, the extraction itself runs in a post-commit background
+    job, queued here to run once the request transaction commits. Verified
+    analyses cannot be re-run, and an extraction already in flight cannot be
+    restarted.
     """
     document = await _get_document(db, document_id)
     submission = await _get_owned_submission(
@@ -272,7 +289,16 @@ async def extract_document(
             "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
         )
 
-    return await _reset_analysis(db, document=document, processor=processor)
+    analysis = await _reset_analysis(db, document=document, processor=processor)
+    post_commit.add(
+        partial(
+            run_extraction,
+            sessionmaker,
+            document_id=document_id,
+            processor=processor,
+        )
+    )
+    return analysis
 
 
 async def run_extraction(

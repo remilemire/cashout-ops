@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -224,14 +223,8 @@ async def upload_document(
         user_id=current_user.id,
         storage=storage,
         processor=processor,
-    )
-    post_commit.add(
-        partial(
-            cashout_service.run_extraction,
-            sessionmaker,
-            document_id=analysis.cashout_document_id,
-            processor=processor,
-        )
+        post_commit=post_commit,
+        sessionmaker=sessionmaker,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 
@@ -290,15 +283,12 @@ async def extract_document(
     cannot be re-run, nor one whose extraction is still in progress.
     """
     analysis = await cashout_service.extract_document(
-        db, document_id=document_id, user_id=current_user.id, processor=processor
-    )
-    post_commit.add(
-        partial(
-            cashout_service.run_extraction,
-            sessionmaker,
-            document_id=document_id,
-            processor=processor,
-        )
+        db,
+        document_id=document_id,
+        user_id=current_user.id,
+        processor=processor,
+        post_commit=post_commit,
+        sessionmaker=sessionmaker,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

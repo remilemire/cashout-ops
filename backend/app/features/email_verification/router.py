@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -17,7 +16,6 @@ from app.dependencies import (
     get_post_commit_tasks,
     require_csrf,
 )
-from app.errors import AppError
 from app.errors.openapi import error_responses
 from app.features.users.model import User
 from app.features.users.schemas import UserOut
@@ -87,14 +85,9 @@ async def resend(
     The previous code is invalidated. The email is sent after the request
     commits, via the same post-commit job registration uses.
     """
-    if current_user.email_verified_at is not None:
-        raise AppError("VERIFICATION_ALREADY_VERIFIED")
-
-    post_commit.add(
-        partial(
-            email_verification_service.send_new_code,
-            sessionmaker,
-            email_client=email_client,
-            user_id=current_user.id,
-        )
+    await email_verification_service.resend(
+        sessionmaker,
+        post_commit=post_commit,
+        email_client=email_client,
+        user=current_user,
     )
