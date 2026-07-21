@@ -35,8 +35,7 @@ export function RegisterPage() {
     try {
       await register({
         email: String(form.get("email")),
-        firstName: String(form.get("firstName")),
-        lastName: String(form.get("lastName")),
+        fullName: String(form.get("fullName")),
         password,
       });
       navigate("/", { replace: true });
@@ -52,22 +51,13 @@ export function RegisterPage() {
       <Card>
         <h1 className="mb-4 text-lg font-semibold">Create your account</h1>
         <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <TextField
-              label="First name"
-              name="firstName"
-              autoComplete="given-name"
-              required
-              error={fieldError("firstName")}
-            />
-            <TextField
-              label="Last name"
-              name="lastName"
-              autoComplete="family-name"
-              required
-              error={fieldError("lastName")}
-            />
-          </div>
+          <TextField
+            label="Full name"
+            name="fullName"
+            autoComplete="name"
+            required
+            error={fieldError("fullName")}
+          />
           <TextField
             label="Email"
             name="email"

@@ -11,8 +11,7 @@ from .types import UserRole
 
 class UserOut(EntityOut):
     email: EmailStr
-    first_name: str
-    last_name: str
+    full_name: str
     role: UserRole
     is_active: bool
     email_verified_at: UtcDateTime | None = None
@@ -20,5 +19,4 @@ class UserOut(EntityOut):
 
 class UserCreate(BaseIn):
     email: EmailStr
-    first_name: str = Field(min_length=1, max_length=100)
-    last_name: str = Field(min_length=1, max_length=100)
+    full_name: str = Field(min_length=1, max_length=200)

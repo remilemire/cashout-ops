@@ -23,8 +23,7 @@ async def test_register_without_invitation_forbidden(client: AsyncClient) -> Non
         "/api/auth/register",
         json={
             "email": "uninvited@test.com",
-            "firstName": "No",
-            "lastName": "Invite",
+            "fullName": "No Invite",
             "password": "password123",
         },
     )
@@ -46,8 +45,7 @@ async def test_register_with_expired_invitation_forbidden(
         "/api/auth/register",
         json={
             "email": "late@test.com",
-            "firstName": "Too",
-            "lastName": "Late",
+            "fullName": "Too Late",
             "password": "password123",
         },
     )

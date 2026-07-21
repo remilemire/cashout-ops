@@ -21,8 +21,7 @@ async def test_register_creates_user_and_sets_cookies(
         "/api/auth/register",
         json={
             "email": "new@test.com",
-            "firstName": "New",
-            "lastName": "User",
+            "fullName": "New User",
             "password": "password123",
         },
     )
@@ -32,7 +31,7 @@ async def test_register_creates_user_and_sets_cookies(
     assert body["email"] == "new@test.com"
     assert body["role"] == UserRole.CASHIER.value
     # Inbound/outbound JSON is camelCase.
-    assert body["firstName"] == "New"
+    assert body["fullName"] == "New User"
     assert "session_token" in client.cookies
     assert "csrf_token" in client.cookies
 
@@ -54,8 +53,7 @@ async def test_register_duplicate_email_conflicts(
         "/api/auth/register",
         json={
             "email": "dupe@test.com",
-            "firstName": "Other",
-            "lastName": "Person",
+            "fullName": "Other Person",
             "password": "password123",
         },
     )
@@ -69,8 +67,7 @@ async def test_register_rejects_short_password(client: AsyncClient) -> None:
         "/api/auth/register",
         json={
             "email": "short@test.com",
-            "firstName": "Short",
-            "lastName": "Pass",
+            "fullName": "Short Pass",
             "password": "x",
         },
     )

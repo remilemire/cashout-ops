@@ -217,9 +217,7 @@ async def admin_client(
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        await register(
-            http_client, email=ADMIN_EMAIL, first_name="Admin", last_name="User"
-        )
+        await register(http_client, email=ADMIN_EMAIL, full_name="Admin User")
         async with db_sessionmaker() as db:
             await verify_user(db, email=ADMIN_EMAIL)
         yield http_client

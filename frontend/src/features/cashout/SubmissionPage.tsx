@@ -107,7 +107,7 @@ export function SubmissionPage() {
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
         subtitle={
           isAdminView
-            ? `Submitted by ${submission.submittedBy.firstName} ${submission.submittedBy.lastName} (${submission.submittedBy.email})`
+            ? `Submitted by ${submission.submittedBy.fullName} (${submission.submittedBy.email})`
             : undefined
         }
         action={

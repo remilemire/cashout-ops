@@ -32,8 +32,7 @@ async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
 def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
     user = User(
         email=payload.email,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        full_name=payload.full_name,
         password_hash=password_hash,
     )
     db.add(user)
@@ -47,8 +46,7 @@ def bootstrap_admin(
     """Create the bootstrapped ADMIN_EMAIL account with the ADMIN role."""
     user = User(
         email=payload.email,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        full_name=payload.full_name,
         role=UserRole.ADMIN,
         password_hash=password_hash,
     )

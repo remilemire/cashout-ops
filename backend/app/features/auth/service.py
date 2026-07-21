@@ -35,8 +35,7 @@ async def register(db: AsyncSession, *, payload: AuthRegister) -> UserWithSessio
 
     user_payload = UserCreate(
         email=payload.email,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        full_name=payload.full_name,
     )
     password_hash = hash_password(payload.password)
 

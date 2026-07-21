@@ -22,8 +22,7 @@ class User(Entity):
     # and a unique-index violation reports the index name.
     __table_args__ = (Index("ix_users_email", "email", unique=True),)
 
-    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

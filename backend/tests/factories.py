@@ -27,13 +27,11 @@ async def create_user(
     email: str = "cashier@test.com",
     password: str = DEFAULT_PASSWORD,
     role: UserRole = UserRole.CASHIER,
-    first_name: str = "Test",
-    last_name: str = "User",
+    full_name: str = "Test User",
 ) -> User:
     user = User(
         email=email,
-        first_name=first_name,
-        last_name=last_name,
+        full_name=full_name,
         password_hash=hash_password(password),
         role=role,
     )
@@ -52,8 +50,7 @@ async def create_invitation(
     """Seed an invitation (and its inviter) so register() succeeds for email."""
     inviter = User(
         email=f"inviter-{uuid.uuid4().hex[:8]}@test.com",
-        first_name="Inviting",
-        last_name="Admin",
+        full_name="Inviting Admin",
         password_hash="!",  # never logs in; skip the slow bcrypt hash
         role=UserRole.ADMIN,
     )
@@ -94,8 +91,7 @@ async def register(
     *,
     email: str = "cashier@test.com",
     password: str = DEFAULT_PASSWORD,
-    first_name: str = "Test",
-    last_name: str = "User",
+    full_name: str = "Test User",
 ) -> None:
     """Register through the API; the client then carries session + csrf cookies.
 
@@ -106,8 +102,7 @@ async def register(
         "/api/auth/register",
         json={
             "email": email,
-            "firstName": first_name,
-            "lastName": last_name,
+            "fullName": full_name,
             "password": password,
         },
     )

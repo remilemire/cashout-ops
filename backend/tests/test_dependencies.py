@@ -14,8 +14,7 @@ from app.features.users.model import User
 def _user(*, verified: bool) -> User:
     return User(
         email="user@test.com",
-        first_name="Test",
-        last_name="User",
+        full_name="Test User",
         password_hash="!",
         email_verified_at=datetime.now(UTC) if verified else None,
     )

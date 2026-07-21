@@ -13,7 +13,7 @@ import {
   SkeletonList,
 } from "@/components/ui";
 import { SubmissionStatusBadge } from "@/features/cashout/status";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, initials } from "@/lib/format";
 
 export function AdminSubmissionsPage() {
   const navigate = useNavigate();
@@ -66,13 +66,11 @@ export function AdminSubmissionsPage() {
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-2.5">
                       <span className="bg-accent/15 text-accent-strong grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold">
-                        {submission.submittedBy.firstName.charAt(0)}
-                        {submission.submittedBy.lastName.charAt(0)}
+                        {initials(submission.submittedBy.fullName)}
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate font-medium">
-                          {submission.submittedBy.firstName}{" "}
-                          {submission.submittedBy.lastName}
+                          {submission.submittedBy.fullName}
                         </span>
                         <span className="text-ink-muted block truncate text-xs">
                           {submission.submittedBy.email}

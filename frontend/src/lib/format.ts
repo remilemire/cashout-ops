@@ -14,6 +14,15 @@ export function formatConfidence(value: number | null): string {
   return value == null ? "—" : `${Math.round(value * 100)}%`;
 }
 
+/** "Ada Lovelace" → "AL"; a single word → its first two letters. */
+export function initials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const first = parts.at(0) ?? "";
+  const last = parts.at(-1) ?? "";
+  if (parts.length <= 1) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
+}
+
 /** "NEEDS_VERIFICATION" → "Needs verification" */
 export function enumLabel(value: string): string {
   const lower = value.replaceAll("_", " ").toLowerCase();

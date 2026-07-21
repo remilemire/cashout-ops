@@ -15,6 +15,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/auth/useAuth";
 import { cx } from "@/lib/cx";
+import { initials } from "@/lib/format";
 import { useTheme, type Theme } from "@/lib/useTheme";
 
 const THEME_ORDER: Theme[] = ["system", "light", "dark"];
@@ -73,9 +74,7 @@ export function AppLayout() {
     navigate("/login");
   };
 
-  const initials = user
-    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
-    : "";
+  const userInitials = user ? initials(user.fullName) : "";
 
   // min-w-80 (320px) − px-4 gutters = the cards' 288px min-width: smaller
   // viewports scroll horizontally as one unit instead of crushing.
@@ -109,10 +108,10 @@ export function AppLayout() {
             </button>
 
             <span
-              title={user ? `${user.firstName} ${user.lastName}` : undefined}
+              title={user?.fullName}
               className="bg-accent/15 text-accent-strong grid size-8 place-items-center rounded-full text-xs font-semibold"
             >
-              {initials}
+              {userInitials}
             </span>
 
             <button

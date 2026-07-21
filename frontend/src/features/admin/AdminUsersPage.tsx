@@ -18,7 +18,7 @@ import {
   SkeletonList,
   TextField,
 } from "@/components/ui";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, initials } from "@/lib/format";
 
 type InvitationStatus = "pending" | "accepted" | "expired";
 
@@ -189,12 +189,11 @@ export function AdminUsersPage() {
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-2.5">
                         <span className="bg-accent/15 text-accent-strong grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold">
-                          {user.firstName.charAt(0)}
-                          {user.lastName.charAt(0)}
+                          {initials(user.fullName)}
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate font-medium">
-                            {user.firstName} {user.lastName}
+                            {user.fullName}
                           </span>
                           <span className="text-ink-muted block truncate text-xs">
                             {user.email}

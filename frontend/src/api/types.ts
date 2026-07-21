@@ -77,8 +77,7 @@ export interface User {
   id: string;
   createdAt: string;
   email: string;
-  firstName: string;
-  lastName: string;
+  fullName: string;
   role: UserRole;
   isActive: boolean;
   /** Null until the account confirms its emailed verification code. */
@@ -91,8 +90,7 @@ export interface LoginInput {
 }
 
 export interface RegisterInput extends LoginInput {
-  firstName: string;
-  lastName: string;
+  fullName: string;
 }
 
 // ---------- Invitations ----------
