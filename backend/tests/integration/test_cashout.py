@@ -402,7 +402,7 @@ async def test_failed_extraction_and_retry(
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
     ai_client.error = AIAnalysisError(
-        AIErrorCode.REFUSED, "declined: raw provider text"
+        AIErrorCode.DOCUMENT_REJECTED, "declined: raw provider text"
     )
 
     submission_id = await create_submission(cashier_client)
@@ -411,9 +411,9 @@ async def test_failed_extraction_and_retry(
     # The provider failure is recorded on the analysis as FAILED.
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
-    assert analysis["errorCode"] == AIErrorCode.REFUSED.value
+    assert analysis["errorCode"] == AIErrorCode.DOCUMENT_REJECTED.value
     # The raw provider text must not leak; a safe mapped message is surfaced.
-    assert analysis["errorMessage"] == analysis_error_message(AIErrorCode.REFUSED.value)
+    assert analysis["errorMessage"] == analysis_error_message(AIErrorCode.DOCUMENT_REJECTED.value)
     assert "raw provider text" not in analysis["errorMessage"]
 
     # A FAILED analysis cannot be verified.

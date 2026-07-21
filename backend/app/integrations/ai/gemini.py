@@ -71,20 +71,20 @@ class GeminiAIClient(AIClient):
                 config=config,
             )
         except APIError as exc:
-            raise AIAnalysisError(AIErrorCode.PROVIDER_ERROR, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, str(exc)) from exc
 
         _raise_if_unusable(response)
 
         parsed = response.parsed
         if not isinstance(parsed, dict):
             raise AIAnalysisError(
-                AIErrorCode.INVALID_RESPONSE,
+                AIErrorCode.UNREADABLE_DOCUMENT,
                 "The response did not contain valid structured output.",
             )
         try:
             return response_model.model_validate(parsed)
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
 
 
 def _to_contents(content: AIContent) -> list[str | types.Part]:
@@ -104,7 +104,7 @@ def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
     feedback = response.prompt_feedback
     if feedback is not None and feedback.block_reason is not None:
         raise AIAnalysisError(
-            AIErrorCode.REFUSED, f"Prompt blocked: {feedback.block_reason.name}"
+            AIErrorCode.DOCUMENT_REJECTED, f"Prompt blocked: {feedback.block_reason.name}"
         )
 
     for candidate in response.candidates or []:
@@ -113,12 +113,12 @@ def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
             continue
         if finish_reason == types.FinishReason.MAX_TOKENS:
             raise AIAnalysisError(
-                AIErrorCode.TRUNCATED,
+                AIErrorCode.OUTPUT_LIMIT_REACHED,
                 "The response hit the max output tokens limit before completing.",
             )
         if finish_reason in _REFUSAL_FINISH_REASONS:
             raise AIAnalysisError(
-                AIErrorCode.REFUSED,
+                AIErrorCode.DOCUMENT_REJECTED,
                 f"The provider declined to analyze this content "
                 f"({finish_reason.name}).",
             )

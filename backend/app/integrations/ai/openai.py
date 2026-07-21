@@ -57,21 +57,21 @@ class OpenAIAIClient(AIClient):
         # would be misreported as a provider error.
         except LengthFinishReasonError as exc:
             raise AIAnalysisError(
-                AIErrorCode.TRUNCATED,
+                AIErrorCode.OUTPUT_LIMIT_REACHED,
                 "The response hit the token limit before completing.",
             ) from exc
         except OpenAIError as exc:
-            raise AIAnalysisError(AIErrorCode.PROVIDER_ERROR, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, str(exc)) from exc
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
 
         message = completion.choices[0].message
         if message.refusal:
-            raise AIAnalysisError(AIErrorCode.REFUSED, message.refusal)
+            raise AIAnalysisError(AIErrorCode.DOCUMENT_REJECTED, message.refusal)
 
         if message.parsed is None:
             raise AIAnalysisError(
-                AIErrorCode.INVALID_RESPONSE,
+                AIErrorCode.UNREADABLE_DOCUMENT,
                 "The response did not contain valid structured output.",
             )
         return message.parsed

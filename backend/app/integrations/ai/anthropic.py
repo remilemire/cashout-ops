@@ -58,26 +58,26 @@ class AnthropicAIClient(AIClient):
                 output_format=response_model,
             )
         except APIError as exc:
-            raise AIAnalysisError(AIErrorCode.PROVIDER_ERROR, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, str(exc)) from exc
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
 
         if response.stop_reason == "refusal":
             raise AIAnalysisError(
-                AIErrorCode.REFUSED, "The provider declined to analyze this content."
+                AIErrorCode.DOCUMENT_REJECTED, "The provider declined to analyze this content."
             )
         # Checked before parsed_output: truncated output also fails to parse,
         # and the max_tokens stop reason is the more actionable signal.
         if response.stop_reason == "max_tokens":
             raise AIAnalysisError(
-                AIErrorCode.TRUNCATED,
+                AIErrorCode.OUTPUT_LIMIT_REACHED,
                 "The response hit the max_tokens limit before completing.",
             )
 
         parsed = response.parsed_output
         if parsed is None:
             raise AIAnalysisError(
-                AIErrorCode.INVALID_RESPONSE,
+                AIErrorCode.UNREADABLE_DOCUMENT,
                 "The response did not contain valid structured output.",
             )
         return parsed
@@ -107,7 +107,7 @@ def _to_document_block(
     media_type = _IMAGE_MEDIA_TYPES.get(content.content_type)
     if media_type is None:
         raise AIAnalysisError(
-            AIErrorCode.UNSUPPORTED_CONTENT,
+            AIErrorCode.UNSUPPORTED_FILE_TYPE,
             f"Content type {content.content_type.value} is not supported for AI analysis.",
         )
     return ImageBlockParam(

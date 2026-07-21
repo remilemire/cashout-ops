@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC
     # Per-operation output-token budgets, deliberately conservative: a
     # classification is a tiny fixed-shape JSON object; an extraction scales
-    # with the schema. Raise via env if analyses start failing TRUNCATED.
+    # with the schema. Raise via env if analyses start failing OUTPUT_LIMIT_REACHED.
     AI_CLASSIFICATION_MAX_TOKENS: int = 512
     AI_EXTRACTION_MAX_TOKENS: int = 2048
 

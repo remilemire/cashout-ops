@@ -13,20 +13,20 @@ from __future__ import annotations
 from app.integrations.ai import AIErrorCode
 
 _ANALYSIS_ERROR_MESSAGES: dict[str, str] = {
-    AIErrorCode.PROVIDER_ERROR.value: (
+    AIErrorCode.SERVICE_UNAVAILABLE.value: (
         "The document service is temporarily unavailable. Please try again."
     ),
-    AIErrorCode.REFUSED.value: (
+    AIErrorCode.DOCUMENT_REJECTED.value: (
         "This document could not be processed. Please check it and try again."
     ),
-    AIErrorCode.INVALID_RESPONSE.value: (
+    AIErrorCode.UNREADABLE_DOCUMENT.value: (
         "The document could not be read. Please retry or re-upload a clearer copy."
     ),
-    AIErrorCode.TRUNCATED.value: (
+    AIErrorCode.OUTPUT_LIMIT_REACHED.value: (
         "This document was too large for the AI to read in full. Try splitting "
         "it up and uploading it in smaller parts."
     ),
-    AIErrorCode.UNSUPPORTED_CONTENT.value: ("This file type isn't supported."),
+    AIErrorCode.UNSUPPORTED_FILE_TYPE.value: ("This file type isn't supported."),
 }
 
 _DEFAULT_ANALYSIS_ERROR_MESSAGE = "Analysis failed unexpectedly. Please try again."

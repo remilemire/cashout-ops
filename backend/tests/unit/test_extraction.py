@@ -100,12 +100,12 @@ async def test_processor_unknown_returns_no_data(
 
 async def test_processor_propagates_ai_error() -> None:
     processor, ref = await _build_processor(
-        error=AIAnalysisError(AIErrorCode.PROVIDER_ERROR, "provider down"),
+        error=AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, "provider down"),
     )
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await processor.process(ref)
-    assert exc_info.value.code is AIErrorCode.PROVIDER_ERROR
+    assert exc_info.value.code is AIErrorCode.SERVICE_UNAVAILABLE
 
 
 async def test_processor_layers_domain_instructions_on_both_calls() -> None:
