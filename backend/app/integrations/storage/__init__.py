@@ -1,3 +1,5 @@
+# backend/app/integrations/storage/__init__.py
+
 from __future__ import annotations
 
 from .client import DocumentStorageClient

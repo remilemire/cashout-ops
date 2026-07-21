@@ -1,3 +1,5 @@
+# backend/app/integrations/ai/gemini.py
+
 from __future__ import annotations
 
 from google import genai
@@ -7,7 +9,7 @@ from pydantic import ValidationError
 
 from app.lib.documents import DocumentContent
 
-from .client import AIContent, ResponseModelT
+from .client import AIClient, AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
 from .types import AIProvider
@@ -25,7 +27,7 @@ _REFUSAL_FINISH_REASONS = frozenset(
 )
 
 
-class GeminiAIClient:
+class GeminiAIClient(AIClient):
     """`AIClient` backed by the Google Gemini API (structured output).
 
     Note: exercised only against fakes in the test suite — not yet verified

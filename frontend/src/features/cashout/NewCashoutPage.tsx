@@ -1,3 +1,5 @@
+// frontend/src/features/cashout/NewCashoutPage.tsx
+
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useState } from "react";

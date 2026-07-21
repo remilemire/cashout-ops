@@ -1,3 +1,5 @@
+# backend/app/integrations/ai/openai.py
+
 from __future__ import annotations
 
 import base64
@@ -8,13 +10,13 @@ from pydantic import ValidationError
 
 from app.lib.documents import DocumentContent, DocumentContentType
 
-from .client import AIContent, ResponseModelT
+from .client import AIClient, AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
 from .types import AIProvider
 
 
-class OpenAIAIClient:
+class OpenAIAIClient(AIClient):
     """`AIClient` backed by the OpenAI Chat Completions API (structured output).
 
     Note: exercised only against fakes in the test suite — not yet verified

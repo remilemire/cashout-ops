@@ -1,3 +1,5 @@
+# backend/app/integrations/ai/client.py
+
 from __future__ import annotations
 
 from typing import Protocol, TypeAlias, TypeVar

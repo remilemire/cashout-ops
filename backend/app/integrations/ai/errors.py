@@ -1,3 +1,5 @@
+# backend/app/integrations/ai/errors.py
+
 from __future__ import annotations
 
 from enum import StrEnum

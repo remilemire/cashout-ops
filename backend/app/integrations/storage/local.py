@@ -1,10 +1,14 @@
+# backend/app/integrations/storage/local.py
+
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
 
+from .client import DocumentStorageClient
 
-class LocalDocumentStorageClient:
+
+class LocalDocumentStorageClient(DocumentStorageClient):
     """`DocumentStorageClient` backed by a local directory.
 
     Suitable for development and single-instance deployments; the directory is

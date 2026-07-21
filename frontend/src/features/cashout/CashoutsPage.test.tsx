@@ -1,3 +1,5 @@
+// frontend/src/features/cashout/CashoutsPage.test.tsx
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";

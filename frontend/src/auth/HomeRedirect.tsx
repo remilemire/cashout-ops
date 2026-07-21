@@ -1,3 +1,5 @@
+// frontend/src/auth/HomeRedirect.tsx
+
 import { Navigate } from "react-router-dom";
 
 import { useAuth } from "./useAuth";
