@@ -1,12 +1,19 @@
 // frontend/src/features/admin/AdminUsersPage.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MailPlus, Trash2, UsersRound } from "lucide-react";
+import {
+  MailPlus,
+  ShieldMinus,
+  ShieldPlus,
+  Trash2,
+  UsersRound,
+} from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 
 import { invitationKeys, invitationsApi } from "@/api/invitations";
-import type { Invitation } from "@/api/types";
+import type { Invitation, User } from "@/api/types";
 import { userKeys, usersApi } from "@/api/users";
+import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Badge,
@@ -46,10 +53,14 @@ const INVITATION_BADGES: Record<
   expired: { tone: "neutral", label: "Expired" },
 };
 
+type RoleChange = { user: User; action: "promote" | "demote" };
+
 export function AdminUsersPage() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [email, setEmail] = useState("");
   const [revoking, setRevoking] = useState<Invitation | null>(null);
+  const [roleChange, setRoleChange] = useState<RoleChange | null>(null);
 
   const usersQuery = useQuery({
     queryKey: userKeys.list,
@@ -72,6 +83,20 @@ export function AdminUsersPage() {
     onSuccess: async () => {
       setRevoking(null);
       await queryClient.invalidateQueries({ queryKey: invitationKeys.list });
+    },
+  });
+  const promoteUser = useMutation({
+    mutationFn: usersApi.promote,
+    onSuccess: async () => {
+      setRoleChange(null);
+      await queryClient.invalidateQueries({ queryKey: userKeys.list });
+    },
+  });
+  const demoteUser = useMutation({
+    mutationFn: usersApi.demote,
+    onSuccess: async () => {
+      setRoleChange(null);
+      await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
   });
 
@@ -162,6 +187,8 @@ export function AdminUsersPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Accounts</h2>
         <ErrorBanner error={usersQuery.error} />
+        <ErrorBanner error={promoteUser.error} />
+        <ErrorBanner error={demoteUser.error} />
 
         {usersQuery.isLoading ? (
           <SkeletonList count={3} />
@@ -178,6 +205,9 @@ export function AdminUsersPage() {
                   <th className="px-4 py-2.5 font-medium">User</th>
                   <th className="px-4 py-2.5 font-medium">Role</th>
                   <th className="px-4 py-2.5 font-medium">Joined</th>
+                  <th className="px-4 py-2.5 font-medium">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -209,6 +239,33 @@ export function AdminUsersPage() {
                     <td className="text-ink-muted px-4 py-3">
                       {formatDateTime(user.createdAt)}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      {user.isAdmin ? (
+                        user.id === currentUser?.id ? null : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Demote ${user.fullName} to staff`}
+                            onClick={() =>
+                              setRoleChange({ user, action: "demote" })
+                            }
+                          >
+                            <ShieldMinus className="size-4" />
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Promote ${user.fullName} to admin`}
+                          onClick={() =>
+                            setRoleChange({ user, action: "promote" })
+                          }
+                        >
+                          <ShieldPlus className="text-accent-strong size-4" />
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -229,6 +286,29 @@ export function AdminUsersPage() {
       >
         {revoking?.email} will no longer be able to register with this
         invitation.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={roleChange !== null}
+        onClose={() => setRoleChange(null)}
+        title={
+          roleChange?.action === "demote"
+            ? "Demote to staff"
+            : "Promote to admin"
+        }
+        confirmLabel={roleChange?.action === "demote" ? "Demote" : "Promote"}
+        onConfirm={() => {
+          if (!roleChange) return;
+          if (roleChange.action === "demote") {
+            demoteUser.mutate(roleChange.user.id);
+          } else {
+            promoteUser.mutate(roleChange.user.id);
+          }
+        }}
+      >
+        {roleChange?.action === "demote"
+          ? `${roleChange.user.fullName} will lose admin access and become staff.`
+          : `${roleChange?.user.fullName} will gain full admin access.`}
       </ConfirmDialog>
     </div>
   );

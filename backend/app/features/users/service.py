@@ -61,4 +61,30 @@ async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     await db.delete(user)
 
 
-__all__ = ["list_users", "find_by_email", "create", "bootstrap_admin", "delete_by_id"]
+async def promote_admin(db: AsyncSession, *, user_id: UUID) -> User:
+    """Grant a user admin access (idempotent if already an admin)."""
+    user = await User.find_by_id(db, user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND")
+    user.is_admin = True
+    return user
+
+
+async def demote_admin(db: AsyncSession, *, user_id: UUID) -> User:
+    """Revoke a user's admin access (idempotent if already staff)."""
+    user = await User.find_by_id(db, user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND")
+    user.is_admin = False
+    return user
+
+
+__all__ = [
+    "list_users",
+    "find_by_email",
+    "create",
+    "bootstrap_admin",
+    "delete_by_id",
+    "promote_admin",
+    "demote_admin",
+]

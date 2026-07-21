@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import (
@@ -48,3 +49,40 @@ async def list_users(
     """List every user, newest first (admin only)."""
     users = await users_service.list_users(db)
     return [UserOut.model_validate(user) for user in users]
+
+
+UserId = Annotated[UUID, Path(description="User ID.")]
+
+
+@router.post(
+    "/{user_id}/promote",
+    response_model=UserOut,
+    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    responses=error_responses(
+        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "USER_NOT_FOUND", "VALIDATION_FAILED"
+    ),
+)
+async def promote_user(
+    user_id: UserId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """Grant a user admin access (admin only; idempotent)."""
+    user = await users_service.promote_admin(db, user_id=user_id)
+    return UserOut.model_validate(user)
+
+
+@router.post(
+    "/{user_id}/demote",
+    response_model=UserOut,
+    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    responses=error_responses(
+        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "USER_NOT_FOUND", "VALIDATION_FAILED"
+    ),
+)
+async def demote_user(
+    user_id: UserId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """Revoke a user's admin access (admin only; idempotent)."""
+    user = await users_service.demote_admin(db, user_id=user_id)
+    return UserOut.model_validate(user)
