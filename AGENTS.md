@@ -1,172 +1,253 @@
 # AGENTS.md
 
-Guidance for Codex sessions working on this repository. Keep it concise and project-specific. Update it when you discover a stable, reusable convention or non-obvious constraint.
-
 ## Project
 
-**Whiskey District Cashout Automation** — internal restaurant ops tool. FastAPI backend + React 19 SPA, single origin in production (FastAPI serves the built frontend out of `backend/static/`). Deployed to Render at <https://cashout-ops.onrender.com>.
+Cashout Ops is a full-stack application for submitting restaurant cashout documents, extracting structured data with AI, verifying the extracted data, and reviewing submissions through cashier and admin workflows.
 
-The cashout flow: a cashier creates a cashout submission (any time — cashouts are **not** shift-locked) and uploads photos/PDFs of the end-of-shift documents (TouchBistro reports, terminal reports, receipts, tip-out sheets, cash summaries). Upload returns an `EXTRACTING` analysis immediately; the **AI document pipeline** classifies + extracts in a post-commit background job and the client polls `GET /cashout/analyses/{id}` until `NEEDS_VERIFICATION` (or `FAILED`, retryable via extract). The cashier **verifies** each analysis (optionally submitting corrected values → `verified_data_json`), then completes the submission, which reconciles the verified analyses into `CashoutData` (`PROCESSING` → `COMPLETED`).
+The repository is the source of truth. Inspect existing implementations and nearby conventions before making changes.
 
-The cross-cutting plumbing, auth, error contract, the AI extraction pipeline, and the full cashout domain are **implemented**. What remains stubbed with placeholder values: the **extraction schemas** (`features/cashout/extraction/schemas.py`) hold dummy fields — the real per-document observable fields are not defined yet — and the **frontend** is a first-pass frame (contracts + wiring done; visual polish pending).
+## Working Principles
 
-## Layout
+* Understand the relevant code path before editing it.
+* Follow established project patterns unless the task explicitly requires changing them.
+* Prefer the smallest coherent change that fully solves the requested task.
+* Do not perform unrelated refactors.
+* Do not invent abstractions, modules, endpoints, or configuration without first checking for an existing equivalent.
+* Preserve existing public behavior unless the task explicitly changes it.
+* Point out architectural inconsistencies rather than silently extending them.
+* Do not make commits unless explicitly authorized.
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/lib`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
+## Repository Structure
 
-```
-backend/
-  app/main.py             create_app(); `app = create_app()`; ASGI target is app.main:app; mounts StaticFiles + SPA fallback
-  app/lifespan.py         lifespan/composition root: builds async engine + sessionmaker AND the document-AI clients on app.state
-  app/core/               config (pydantic-settings), cookies (generic set/delete helpers), db/ (Base, Entity, enum_column, registry), schemas (BaseIn/BaseOut/EntityOut/UtcDateTime)
-  app/lib/                pure helpers: casing, crypto, documents (DocumentContent/DocumentContentType)
-  app/dependencies/       FastAPI deps: get_db, get_db_sessionmaker, get_post_commit_tasks, get_current_user, require_admin, require_csrf, get_cashout_document_processor, get_document_storage
-  app/errors/             domain errors, catalog, handlers, translators, schemas, types, OpenAPI shapes
-  app/integrations/       provider adapters:
-    ai/                     AIClient protocol + Anthropic/OpenAI/Gemini clients (structured output), compose_instructions, AIProvider, AIAnalysisError
-    storage/                DocumentStorageClient protocol + LocalDocumentStorageClient
-  app/documents/          DocumentAIClient (generic classify + structured extraction over AIClient + storage), DocumentRef, DocumentClassification
-  app/features/
-    auth/                   passwords (bcrypt), service (login/register/authenticate/logout), router, schemas, types
-    sessions/               model, service, cookies (session/CSRF cookie helpers), types
-    users/                  model, service, router, schemas (UserOut/UserCreate), types (UserRole)
-    cashout/                models/ (submission, document, analysis, data), service, router, schemas, types
-      extraction/           CashoutDocumentProcessor, registry (type→schema), schemas (DUMMY fields — see below)
-  app/api/__init__.py     mounts each feature router under /api
-  migrations/             alembic (env.py reads DATABASE_URL, target = app.core.db.registry.metadata); versions/
-  tests/                  pytest suite (testcontainers Postgres); conftest, fakes, factories
-frontend/                 React 19 SPA (TypeScript, Vite, Tailwind v4, TanStack Query, React Router)
-  src/api/                typed contracts (types.ts) + fetch client (CSRF header, error contract → ApiError) + per-feature endpoint modules
-  src/auth/               AuthProvider (["me"] query), RequireAuth/RequireAdmin guards, login/register, EmailVerificationGate (placeholder for planned backend email verification)
-  src/styles/global.css   ALL color tokens (light + dark, accent) — components use semantic utilities (bg-surface, text-ink, bg-accent…), never raw colors
-  src/components/ui.tsx   shared primitives; src/layout/AppLayout.tsx mobile-first shell (bottom nav < md)
-  src/features/           cashout/ (cashier flow: upload → poll analysis → verify → complete), admin/ (submissions + data tables)
-compose.yaml              Postgres 18 for local dev
-scripts/                  Render deploy hooks (build / pre-deploy / start) — at the repo root
-Makefile                  repo-root orchestration — calls uv directly against backend/pyproject.toml (no backend/Makefile)
-```
+* `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
+* `backend/app/lifespan.py` is the composition root for the database engine and external clients stored on `app.state`.
+* `backend/app/core/` contains configuration, cookies, shared schemas, and database foundations.
+* `backend/app/lib/` contains pure helpers such as casing, cryptography, and document utilities.
+* `backend/app/dependencies/` contains FastAPI dependencies for the database, authentication, CSRF, and clients.
+* `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
+* `backend/app/integrations/` contains external AI and storage clients.
+* `backend/app/documents/` contains generic document classification and extraction behavior.
+* `backend/app/features/` contains feature modules such as auth, sessions, users, and cashout.
+* `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, and processor registration.
+* `backend/app/api/__init__.py` mounts feature routers under `/api`.
+* `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
+* `frontend/src/auth/` contains authentication state, guards, login, registration, and email-verification gating.
+* `frontend/src/features/cashout/` contains the cashier submission workflow.
+* `frontend/src/features/admin/` contains admin submission and data-table workflows.
+* `frontend/src/components/ui.tsx` contains shared UI primitives.
+* `frontend/src/styles/global.css` owns centralized light and dark theme tokens.
 
 ## Commands
 
-Tooling is **uv** (see `uv.lock`), driven through the repo-root `Makefile` — there is no `backend/Makefile`; backend targets run `uv --directory backend ...` directly. Run from the repo root:
+Run repository-wide commands from the repository root.
 
-```bash
-make backend-install               # uv sync
-make backend-dev                   # uv run fastapi dev
-make backend-migrate               # alembic upgrade head
-make backend-revision MESSAGE="…"  # alembic revision --autogenerate -m "…"
-make backend-format                # ruff format .
-make backend-lint                  # ruff check . --fix
-make backend-test                  # pytest
-make backend-check                 # format + lint + test
-```
+### Setup and aggregate commands
 
-Frontend: `make frontend-dev|frontend-build|frontend-lint|frontend-format|frontend-test` (or from `frontend/`: `npm run dev|build|lint|format|test`). Database: `make db-up|db-down|db-logs` (Postgres 18 on :5432, user/pw postgres/dev, db cashout_ops). Aggregate targets `install|format|lint|test|check` run backend + frontend together.
+* Install all dependencies: `make install`
+* Format everything: `make format`
+* Lint everything: `make lint`
+* Test everything: `make test`
+* Run all checks: `make check`
+* Apply database migrations: `make migrate`
 
-## Environment
+### Backend
 
-Backend loads from `backend/.env` via `pydantic-settings`. `.env` is gitignored; copy `backend/.env.example`. Variables (see `app/core/config.py`):
+* Install dependencies: `make backend-install`
+* Start the development API: `make backend-dev`
+* Format: `make backend-format`
+* Lint with fixes: `make backend-lint`
+* Test: `make backend-test`
+* Run backend checks: `make backend-check`
+* Apply migrations: `make backend-migrate`
+* Generate a migration:
+  `make backend-revision MESSAGE="migration description"`
 
-- `ENVIRONMENT` — `prod` (default) or `dev` (`Literal["prod", "dev"]`). Drives `settings.DEBUG` (`== "dev"`), which controls FastAPI debug mode and the `Secure` cookie flag (`Secure = not DEBUG`). **Use `dev`, not `development`.**
-- `DATABASE_URL` — **required**; async SQLAlchemy URL (`postgresql+psycopg://…`). Alembic reads the same var.
-- `SESSION_TTL_DAYS` — default `7`.
-- `ADMIN_EMAIL` — default `admin@test.com`. `auth.register` promotes a matching email to `UserRole.ADMIN`.
-- `AI_PROVIDER` — `ANTHROPIC` (default), `OPENAI`, or `GEMINI`. Selects which client the lifespan builds. **Only the selected provider's API key is required** — the lifespan raises at startup if it's missing.
-- `AI_MODEL` — default `Codex-opus-4-8`. Set it to a model the selected provider serves.
-- `AI_MAX_TOKENS` — default `16000`; passed to the client constructor.
-- `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` — all optional at the settings layer; the one matching `AI_PROVIDER` is required at runtime. A placeholder lets the app boot; a real key is only needed to hit the extract endpoint.
-- `DOCUMENT_STORAGE_DIR` — default `storage/documents`; where `LocalDocumentStorageClient` writes uploads.
+The backend uses `uv` against `backend/pyproject.toml`. Do not substitute `pip`, Poetry, or another dependency manager.
 
-## Architecture rules
+### Frontend
 
-### Transactions and where to commit
+* Install dependencies: `make frontend-install`
+* Start the Vite development server: `make frontend-dev`
+* Build the SPA into `backend/static`: `make frontend-build`
+* Lint with fixes: `make frontend-lint`
+* Format: `make frontend-format`
+* Test: `make frontend-test`
 
-**`get_db` (`app/dependencies/db.py`) owns the transaction** — one `AsyncSession` per request, **commits if the handler returns successfully, rolls back if it raises**. Neither services nor routes call `db.commit()`.
+The frontend uses `npm`. Do not substitute another package manager.
 
-**Services never commit.** They build/mutate ORM objects and either return them or raise a `DomainError`. A **create-style service must `await db.flush()`** before returning if the router will serialize the new object — flush populates the generated `id`, server defaults (`created_at`), and Python-side column defaults (enum `status`). Returning an unflushed object serializes to a `422` (and the response-validation error then rolls back the insert). Use keyword-only args after `db`.
+### Database
 
-**One sanctioned exception — post-commit background jobs.** Starlette `BackgroundTasks` run *before* the `get_db` teardown commit in this stack, so they can't see the request's writes. Long work that must observe them (AI extraction) is queued on `PostCommitTasks` (`app/dependencies/background.py`) and runs in its teardown; the dependency **must be listed first** in the router's `dependencies=[...]` (teardown is LIFO) so it fires after the commit. The job builds its own session from `get_db_sessionmaker` and commits it (see `cashout_service.run_extraction`).
+* Start Postgres: `make db-up`
+* Stop Postgres: `make db-down`
+* Reset Postgres and delete its data: `make db-reset`
+* Follow Postgres logs: `make db-logs`
 
-### Errors
+Do not run `make db-reset` unless the task explicitly permits deleting local database data.
 
-Always raise the domain errors from `app.errors` (subclasses of `DomainError`) — never `HTTPException`. Handlers in `app/errors/handlers.py` funnel domain errors + translated Pydantic / `IntegrityError` / Starlette HTTP / uncaught exceptions into one body: `{ "error", "code", "message", "errors" }`. `errors` is present only for `UNPROCESSABLE`. Don't hand-craft error JSON.
+## Backend Architecture
 
-- The catalog (`catalog.py`) is the single source of truth per code: human-readable `error` name, HTTP `status` (a plain `int` — use `fastapi.status` constants), and default `message`. `DomainError` subclasses declare only `code`; `DomainError.name` reads the catalog.
-- Adding an error code: extend `ErrorCode` (types.py) + `CATALOG` entry (catalog.py) + `DomainError` subclass (domain.py) + export from `errors/__init__.py`. Conflicts (409) subclass `ConflictError`. `InvalidStateError` (409, `INVALID_STATE`) is used for wrong-lifecycle-state actions.
-- `IntegrityError` auto-maps by SQLSTATE: unique → `ALREADY_EXISTS`, FK → `IN_USE`, check/not-null → `UnprocessableError`, else `ServerError`.
-- **OpenAPI:** document each route's error statuses with `error_responses(*codes)` (`app/errors/openapi.py`) passed as `responses=` on the router (shared statuses like 401/403) or route (404/409/422/…). The app level registers only 500. Supplying a 422 this way also replaces FastAPI's default `HTTPValidationError` schema — never let that default leak into the docs.
+### Routers
 
-### API conventions
+Routers should remain thin.
 
-- Everything under `/api`. Register feature routers in `app/api/__init__.py`. CSRF/auth are **not** global — apply `require_csrf`, `get_current_user`, `require_admin` (from `app/dependencies`) per-route/router via `dependencies=[...]`.
-- Inbound/outbound JSON is **camelCase**; Python is snake_case. Automatic via `BaseIn`/`BaseOut` (`alias_generator=snake_to_camel`). `BaseOut` sets `validate_by_name=True` + `from_attributes=True` so `model_validate(orm_obj)` reads snake_case attrs; FastAPI serializes out with `by_alias`. Don't rename fields by hand.
-- `BaseIn` is `extra="forbid"` + `validate_by_name=True`. Keep `extra="forbid"`.
-- Return a `BaseOut` model and let `response_model` serialize it. Timestamps: use the `UtcDateTime` annotated type (`app/core/schemas.py`) — stored UTC, serialized ISO-8601 with trailing `Z`.
-- Status codes: resource-creating POSTs return **201** (upload returns the created **analysis** in `EXTRACTING`; the client polls it); body-less actions (logout) return **204**; RPC-style actions that return the updated resource (extract/verify/complete) return 200. Give every handler a short docstring — it becomes the OpenAPI operation description.
-- Cashout paths are explicit per resource under `/api/cashout`: `/cashout/submissions…`, `/cashout/documents/{id}/extract`, `/cashout/analyses/{id}[/verify]`.
-- The SPA catch-all in `app/main.py` is `include_in_schema=False` and returns a JSON 404 for unknown `/api/*` paths instead of the SPA shell.
+Routers may:
 
-### Auth and sessions
+* Handle FastAPI request and response concerns.
+* Declare routes, dependencies, status codes, and response schemas.
+* Read path, query, header, cookie, and body values.
+* Call one or more service functions.
+* Coordinate multiple services at a single HTTP boundary.
+* Convert service results into HTTP responses.
 
-- Session token: `crypto.generate_secret_token()` = `secrets.token_urlsafe(32)`. Only the SHA-256 hash is stored in `sessions.token_hash`; compare by hashing. Session lifetime `SESSION_TTL_DAYS`; no "remember me". Passwords: bcrypt via `passlib` (`app/features/auth/passwords.py`).
-- Cookies: generic `set_cookie`/`delete_cookie` in `app/core/cookies.py` (`Secure = not DEBUG`, `SameSite=Lax`, `Path=/`); named session/CSRF helpers in `app/features/sessions/cookies.py`. `session_token` is HttpOnly; `csrf_token` is JS-readable for the double-submit check (`x-csrf-token` header). `require_csrf` uses `secrets.compare_digest`.
+Routers should not:
 
-### Document extraction pipeline
+* Contain application workflows.
+* Contain database business logic.
+* Perform AI extraction directly.
+* Send verification emails directly.
+* Duplicate logic that belongs in a service.
 
-The AI reads the uploaded file directly (vision), classifies it, and returns structured data — there is **no OCR**. Layered so the domain never touches a provider SDK:
+### Services
 
-```
-CashoutDocumentProcessor (features/cashout/extraction)  ← domain: maps DocumentClassification[CashoutDocumentType] → its schema
-  → DocumentAIClient (app/documents)                    ← generic: classify() + process(), reads bytes from storage
-      → AIClient protocol (app/integrations/ai)         ← AnthropicAIClient | OpenAIAIClient | GeminiAIClient (structured output)
-      → DocumentStorageClient (app/integrations/storage) ← LocalDocumentStorageClient
-```
+Services own application behavior and workflows.
 
-- **Provider is swappable.** `AIClient` is a Protocol (`provider`, `model`, `analyze(content, response_model, *, instructions)`) with three implementations: `AnthropicAIClient` (Messages API `messages.parse`), `OpenAIAIClient` (Chat Completions `parse`), `GeminiAIClient` (`generate_content` + `response_schema`). `app/lifespan.py` `_build_ai_client()` picks one from `settings.AI_PROVIDER` and validates its key. All raise `AIAnalysisError` (code in `AIErrorCode`) on provider errors / refusals / invalid output; each maps text + image/PDF `DocumentContent` to its own request shape. The OpenAI/Gemini clients are tested against fakes only — not verified against live APIs.
-- The clients are built once in `app/lifespan.py` and stored on `app.state`; routes get the processor/storage via `get_cashout_document_processor` / `get_document_storage`.
-- **Instructions layer, they don't replace.** Each AI abstraction keeps its own always-present base instructions and appends the caller's `instructions` on top via `compose_instructions(base, extra)` (`integrations/ai/instructions.py`) — the `AnthropicAIClient` has a base persona, `DocumentAIClient` has base classify/extract instructions, and the processor passes domain-specific instructions as the extra. Don't reintroduce a "default OR override" pattern.
-- **`classify` vs `process`.** `DocumentAIClient.classify` returns `DocumentClassification[EnumT]` (`value` + `confidence`). `DocumentAIClient.process` returns `DocumentAnalysis[ResponseModelT]` — the typed `data` plus an extraction `confidence` and a list of `FieldIssue` (`path`, `message`) the model flagged. The cashout service persists both confidences separately: `classification_confidence` and `extraction_confidence`, plus `issues` (JSONB) on `CashoutDocumentAnalysis`.
-- `AnthropicAIClient.analyze` raises `AIAnalysisError` (code in `AIErrorCode`) on provider errors, refusals, or invalid/unparseable output. The extraction job catches it and marks the `CashoutDocumentAnalysis` `FAILED` with `error_code`/`error_message` (retryable via the extract endpoint); unexpected job crashes are marked `FAILED`/`INTERNAL` so an analysis never sits in `EXTRACTING` forever.
-- `CashoutDocumentType.UNKNOWN` (or any type with no registered schema) is **not** an error: the processor returns it with `data=None` and the job marks the analysis `FAILED` with the `UNCLASSIFIED` error code.
-- **Extraction schemas are placeholders.** `features/cashout/extraction/schemas.py` defines dummy fields (marked with `TODO(document-ai)`) so the pipeline runs end to end. Define the real per-document fields before trusting extracted data. Deterministic post-extraction validation and real reconciliation in `service._reconcile` are also still TODO.
+* Routers should delegate application operations to service functions.
+* A service may call another service when the workflow requires it.
+* Do not pass the authenticated actor into a service unless the actor is logically required by the operation itself.
+* Authentication, admin protection, and verified-user enforcement normally belong in FastAPI dependencies rather than being reproduced inside services.
+* Do not couple services to FastAPI request or response objects.
 
-### Models
+### Dependencies
 
-- All entities inherit `Entity` from `app/core/db/models.py` (`id`, `created_at`, `await Entity.get_active(db, id_)` → `NotFoundError` on miss). `enum_column(enum_cls, name)` builds a native Postgres enum persisting member **values**.
-- Models: `User`, `Session`, `CashoutSubmission`, `CashoutDocument`, `CashoutDocumentAnalysis`, `CashoutData`. (The `Shift` model and shifts feature were removed — cashouts are no longer shift-locked.)
-- **Adding a model:** create it in the feature package, then **import it in `app/core/db/registry.py`** (Alembic autogenerate and the test schema both read `registry.metadata` — a model missing from the registry is invisible to both). Then `make backend-revision MESSAGE="…"` and review the diff.
+FastAPI dependencies own request-bound concerns such as:
 
-### Authorization
+* Database session access.
+* Authentication.
+* Admin authorization.
+* Verified-user enforcement.
+* CSRF validation.
+* Access to configured external clients.
 
-Explicit FastAPI deps in `app/dependencies/` (`get_current_user`, `require_admin`, `require_csrf`). Resource/owner checks live in the cashout **service** (`_get_owned_submission`, and `get_submission` allows owner-or-admin) since they need the loaded row.
+Do not move request-bound authorization checks into services merely to make a router shorter.
 
-## Migrations
+### Composition and external clients
 
-- Single initial migration `migrations/versions/cbf386fc33b2_initial_schema.py`. `env.py` targets `app.core.db.registry.metadata`. `alembic.ini` `script_location` is `migrations/` (flat — no nested `alembic/` dir).
-- **Native-enum downgrade gotcha:** autogenerate creates enum types but never drops them, so a re-upgrade fails with "type already exists". The initial migration's `downgrade()` drops each enum explicitly (`ENUM_TYPES` list) — do the same in any migration that adds an enum column.
+* Construct database and external client resources through the application lifespan.
+* Store application-wide resources on `app.state`.
+* Access those resources through dependencies.
+* Keep provider-specific implementation details inside `integrations/`.
+* Keep generic document classification and extraction behavior inside `documents/`.
+* Keep cashout-specific extraction behavior inside the cashout feature.
+
+## Transactions and Deferred Work
+
+Post-commit tasks are currently used for:
+
+* AI extraction.
+* Verification email delivery.
+
+The planned replacement is a transactional outbox.
+
+* Do not introduce a second deferred-work mechanism without explicit instruction.
+* Do not send emails or start AI extraction before the required database transaction has committed.
+* When implementing the transactional outbox task, replace the applicable post-commit behavior rather than layering an unrelated mechanism beside it.
+* Keep HTTP routers unaware of the low-level delivery mechanism.
+
+## Errors
+
+Error translation is centralized in `backend/app/errors/translators.py`.
+
+Use the existing translators:
+
+* `translate_integrity_errors`
+* `translate_validation_errors`
+
+Do not scatter equivalent integrity-error or validation-error translation across routers and services.
+
+* Feature code may define or raise meaningful application and domain errors.
+* Preserve the shared API error contract.
+* Do not expose raw database, validation-library, or provider exceptions directly through HTTP responses.
+* Add translation behavior to the centralized error system when a new known exception requires normalization.
+
+## Database Changes
+
+Migration history is currently managed pragmatically rather than as a permanently immutable production history.
+
+* For small schema changes, update the initial migration.
+* For significant changes, such as introducing a new feature, create a new migration.
+* Keep ORM models and migrations consistent.
+* Inspect existing migrations before deciding whether a change belongs in the initial migration or a new revision.
+* Do not generate a migration automatically when no persisted schema changed.
+
+## Frontend
+
+* Follow the structure and conventions of adjacent frontend code.
+* Reuse the existing fetch client and shared API error handling in `frontend/src/api/`.
+* Keep authentication and route protection within the existing auth provider, guards, and verification gate.
+* Keep cashier functionality in `frontend/src/features/cashout/`.
+* Keep admin functionality in `frontend/src/features/admin/`.
+* Reuse shared primitives from `frontend/src/components/ui.tsx` before creating duplicate components.
+* Use centralized theme tokens rather than hard-coded component colors.
+* Preserve loading, empty, error, and authorization states when changing a user-facing workflow.
+* Do not introduce a new state-management, routing, styling, or API-client approach without an explicit architectural reason.
 
 ## Testing
 
-- `make backend-test` / `pytest`. Async tests via `pytest-asyncio` (`asyncio_mode = "auto"`). Config in `pyproject.toml` (`[tool.pytest.ini_options]`, `pythonpath = ["."]`).
-- **Real Postgres, not SQLite** (native enums/JSONB/FKs). `tests/conftest.py` uses `TEST_DATABASE_URL` if set, else spins up a throwaway Postgres via **testcontainers** (Ryuk disabled; requires a running Docker). Schema via `registry.metadata.create_all`; tables truncated between tests.
-- The extraction stack is **real** in tests; only the AI provider and object store are faked (`tests/fakes.py`: `FakeAIClient`, `FakeDocumentStorage`). API tests override `get_db`/`get_cashout_document_processor`/`get_document_storage` and drive the app over `httpx.ASGITransport`.
-- Fixtures: `client` (unauthed), `cashier_client`, `admin_client`, `db_session`, `ai_client`, `storage`, `processor`. Helpers in `tests/factories.py` (`register`, `login`, `csrf_headers`). Configure `ai_client.classification` / `.extraction` / `.error` to steer the pipeline.
+Tests required before considering a task complete:
 
-## Deployment
+* Backend-only task: `make backend-test`
+* Frontend-only task: `make frontend-test`
+* Cross-cutting backend and frontend task: `make test`
 
-Render uses three repo-root scripts: `build.bash` (`uv sync` in `backend/`, then `npm ci && npm run build`), `pre-deploy.bash` (`uv run alembic upgrade head` in `backend/`), `start.bash` (`gunicorn -k uvicorn.workers.UvicornWorker app.main:app`). These call `uv` directly rather than going through the root `Makefile`. If you change the dependency surface, install path, or migration assumptions, update the matching script.
+Also:
 
-## Rules for editing
+* Add or update tests when observable behavior changes.
+* Prefer testing behavior over implementation details.
+* Reuse existing fixtures and helpers where appropriate.
+* Cover the main success path and meaningful failure paths.
+* Do not delete or weaken a test merely to make a change pass.
+* Report failing tests clearly when the failure is unrelated to the requested change.
 
-- Repo runs **Pylance/pyright strict** (`.vscode/settings.json`). Don't add `# type: ignore` to silence real errors in `app/`. Sanctioned ignores: `reportUnusedFunction` on decorated FastAPI handlers, `reportCallIssue` on `Settings()`, `reportUnknownMemberType` on `genai...generate_content` in `integrations/ai/gemini.py` (google-genai rebinds its `PartUnion` type alias inside a runtime `if`, so pyright can't resolve it). Test files use a few targeted ignores for untyped test libs (testcontainers). Pyright is an IDE aid — the gate is `make check` (ruff + pytest).
-- Dependencies live in `pyproject.toml`, managed by **uv** (`uv.lock`) — no `requirements.txt`. Don't switch off `psycopg` 3 / `postgresql+psycopg://`.
-- Don't bypass `BaseIn`/`BaseOut` (skips validation + casing). Don't catch `Exception` in services to "convert" it — handlers already have a catch-all + `IntegrityError` handler. Don't add CORS (single-origin by design; use a Vite proxy for dev).
-- Files to read before editing related code: routes → `app/api/__init__.py`, `app/dependencies/`; services → `app/features/*/service.py` templates + `app/dependencies/db.py` (commit semantics); models → `app/core/db/models.py`, `app/core/db/registry.py`; schemas → `app/core/schemas.py`, `app/lib/casing.py`; extraction → `app/documents/`, `app/integrations/`, `app/features/cashout/extraction/`; errors → `app/errors/`; migrations → `app/core/db/registry.py`, `migrations/env.py`.
+## API and Data Contract Changes
 
-## Known bugs / gotchas
+When changing an API contract:
 
-The previously-tracked scaffold bugs (broken first migration, `start.bash` ASGI target, `.env.example` `ENVIRONMENT=production`, `vite-end.d.ts` typo, missing `bcrypt` dependency) are **fixed**. Remaining known-incomplete work:
+* Update backend request and response schemas.
+* Update frontend typed contracts.
+* Update affected API calls and consumers.
+* Update relevant tests.
+* Preserve the shared error response format.
+* Do not silently remove or rename fields unless the task explicitly requires a breaking change.
 
-1. **Extraction schemas are dummy fields** — see the Document extraction pipeline section. Real fields, deterministic validation, and `service._reconcile` are TODO.
-2. **`LocalDocumentStorageClient` is not durable on Render** (ephemeral disk) — swap in an object-store client before relying on uploaded files surviving a deploy.
-3. **Frontend is a first-pass frame** — flows work end to end (mobile-first), but visual polish, drag-and-drop uploads, and schema-specific correction editors are pending. Design rules: mobile first; all colors via the tokens in `src/styles/global.css`; API calls only through `src/api/*` (never raw `fetch`).
+## Security
+
+* Never commit secrets, credentials, tokens, private keys, or production data.
+* Do not weaken authentication, admin authorization, email-verification enforcement, CSRF protection, or validation to simplify an implementation.
+* Treat all request data and uploaded documents as untrusted input.
+* Do not expose provider errors or sensitive internal details in API responses.
+* Call out security-sensitive assumptions and behavior changes.
+
+## Git
+
+* Do not commit unless the user explicitly authorizes commits.
+* Do not push, amend, rebase, reset, or discard changes unless explicitly requested.
+* Do not modify unrelated existing work.
+* Keep changes focused on the requested task.
+* Review the diff before an authorized commit.
+* Do not include generated or unrelated files in a commit.
+
+## Definition of Done
+
+A task is complete only when:
+
+* The requested behavior is implemented.
+* Routers remain limited to HTTP concerns and service orchestration.
+* Application behavior resides in services or the appropriate domain component.
+* Existing architectural boundaries are preserved.
+* Relevant tests are added or updated.
+* The required backend, frontend, or cross-cutting test command passes.
+* API contracts and frontend types are updated when applicable.
+* ORM and migration changes are consistent when applicable.
+* Existing authentication, authorization, CSRF, and error behavior remain intact.
+* No unrelated files or refactors are included.
+* Remaining limitations, failed checks, or unresolved architectural decisions are stated clearly.
