@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.integrations.email import EmailClient
+
 
 @dataclass(frozen=True)
 class SentEmail:
@@ -13,7 +15,7 @@ class SentEmail:
     html: str
 
 
-class FakeEmailClient:
+class FakeEmailClient(EmailClient):
     """`EmailClient` that records sent messages instead of delivering them."""
 
     def __init__(self) -> None:

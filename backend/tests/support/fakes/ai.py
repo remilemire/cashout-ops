@@ -7,7 +7,13 @@ from typing import cast
 from pydantic import BaseModel
 
 from app.documents import DocumentClassification
-from app.integrations.ai import AIAnalysisError, AIContent, AIProvider, ResponseModelT
+from app.integrations.ai import (
+    AIAnalysisError,
+    AIClient,
+    AIContent,
+    AIProvider,
+    ResponseModelT,
+)
 
 
 def _is_classification(response_model: type[BaseModel]) -> bool:
@@ -17,7 +23,7 @@ def _is_classification(response_model: type[BaseModel]) -> bool:
         return False
 
 
-class FakeAIClient:
+class FakeAIClient(AIClient):
     """`AIClient` that returns canned structured output (or raises)."""
 
     # Must be a real AIProvider member: the value flows through the processor

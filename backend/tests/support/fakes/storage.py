@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from app.integrations.storage.errors import DocumentNotFoundError
-from app.integrations.storage.keys import validate_storage_key
+from app.integrations.storage import (
+    DocumentNotFoundError,
+    DocumentStorageClient,
+    validate_storage_key,
+)
 
 
-class FakeDocumentStorage:
+class FakeDocumentStorage(DocumentStorageClient):
     """In-memory `DocumentStorageClient`.
 
     Enforces the same key-containment rule as the real client
