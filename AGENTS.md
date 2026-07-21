@@ -46,6 +46,7 @@ Run repository-wide commands from the repository root.
 * Install all dependencies: `make install`
 * Format everything: `make format`
 * Lint everything: `make lint`
+* Typecheck everything: `make typecheck`
 * Test everything: `make test`
 * Run all checks: `make check`
 * Apply database migrations: `make migrate`
@@ -56,7 +57,8 @@ Run repository-wide commands from the repository root.
 * Start the development API: `make backend-dev`
 * Format: `make backend-format`
 * Lint with fixes: `make backend-lint`
-* Test: `make backend-test`
+* Typecheck (Pyright strict): `make backend-typecheck`
+* Test: `make backend-test` (`make backend-test-unit` / `make backend-test-integration` for a single tier)
 * Run backend checks: `make backend-check`
 * Apply migrations: `make backend-migrate`
 * Generate a migration:
@@ -71,6 +73,7 @@ The backend uses `uv` against `backend/pyproject.toml`. Do not substitute `pip`,
 * Build the SPA into `backend/static`: `make frontend-build`
 * Lint with fixes: `make frontend-lint`
 * Format: `make frontend-format`
+* Typecheck (`tsc`): `make frontend-typecheck`
 * Test: `make frontend-test`
 
 The frontend uses `npm`. Do not substitute another package manager.
