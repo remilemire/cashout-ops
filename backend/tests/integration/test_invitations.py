@@ -1,4 +1,4 @@
-# backend/tests/test_invitations.py
+# backend/tests/integration/test_invitations.py
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.invitations.model import Invitation
-
-from .factories import create_invitation, create_user, csrf_headers, register
+from tests.support.api import csrf_headers, register
+from tests.support.factories import create_invitation, create_user
 
 # ================================
 # --------- Registration ---------

@@ -1,4 +1,4 @@
-# backend/tests/test_extraction.py
+# backend/tests/unit/test_extraction.py
 
 from __future__ import annotations
 
@@ -22,8 +22,7 @@ from app.integrations.ai import (
     compose_instructions,
 )
 from app.lib.documents import DocumentContentType
-
-from .fakes import FakeAIClient, FakeDocumentStorage
+from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 
 # ================================
 # ---------- Processor -----------

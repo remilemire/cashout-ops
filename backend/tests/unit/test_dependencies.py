@@ -1,4 +1,4 @@
-# backend/tests/test_dependencies.py
+# backend/tests/unit/test_dependencies.py
 
 from __future__ import annotations
 

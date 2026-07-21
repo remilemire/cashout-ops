@@ -1,75 +1,27 @@
-# backend/tests/test_cashout.py
+# backend/tests/integration/test_cashout.py
 
 from __future__ import annotations
 
-from typing import Any
-
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.documents import DocumentAnalysis, DocumentClassification, FieldIssue
-from app.features.cashout.extraction.schemas import ManualNoteData
+from app.documents import DocumentClassification
 from app.features.cashout.types import (
     CashoutDocumentClassification,
     CashoutSubmissionStatus,
     DocumentAnalysisStatus,
 )
-
-from .factories import csrf_headers
-from .fakes import FakeAIClient, FakeDocumentStorage
-
-PDF = ("receipt.pdf", b"%PDF-1.4 fake bytes", "application/pdf")
-
-
-def _configure_manual_note(ai_client: FakeAIClient, note: str = "cash $100") -> None:
-    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
-        value=CashoutDocumentClassification.MANUAL_NOTE, confidence=0.95
-    )
-    ai_client.extraction = DocumentAnalysis[ManualNoteData](
-        data=ManualNoteData(note=note),
-        confidence=0.9,
-        issues=[FieldIssue(path="note", message="partially legible")],
-    )
-
-
-async def _create_submission(client: AsyncClient) -> str:
-    response = await client.post(
-        "/api/cashout/submissions", headers=csrf_headers(client)
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["id"]
-
-
-async def _upload_pdf(client: AsyncClient, submission_id: str) -> dict[str, Any]:
-    """Upload a document; returns the freshly created EXTRACTING analysis."""
-    response = await client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
-        files={"file": PDF},
-        headers=csrf_headers(client),
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
-async def _poll_analysis(client: AsyncClient, analysis_id: str) -> dict[str, Any]:
-    """One poll is deterministic here: the ASGI transport awaits the whole
-    request lifecycle, including the post-commit extraction job."""
-    response = await client.get(f"/api/cashout/analyses/{analysis_id}")
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
-async def _verify(
-    client: AsyncClient, analysis_id: str, body: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    response = await client.post(
-        f"/api/cashout/analyses/{analysis_id}/verify",
-        json=body or {},
-        headers=csrf_headers(client),
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
+from tests.support.api import csrf_headers
+from tests.support.cashout import (
+    complete_submission,
+    configure_manual_note,
+    create_submission,
+    poll_analysis,
+    upload_document,
+    verify_analysis,
+)
+from tests.support.documents import SAMPLE_PDF_BYTES
+from tests.support.fakes import FakeAIClient, FakeDocumentStorage
+from tests.support.fixtures.clients import ClientFactory
 
 # ================================
 # --------- Happy path -----------
@@ -80,17 +32,17 @@ async def test_full_cashout_flow(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
-    _configure_manual_note(ai_client)
+    configure_manual_note(ai_client)
 
-    submission_id = await _create_submission(cashier_client)
+    submission_id = await create_submission(cashier_client)
 
     # Upload returns immediately with an EXTRACTING analysis.
-    created = await _upload_pdf(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id)
     assert created["status"] == DocumentAnalysisStatus.EXTRACTING.value
     assert created["extractedDataJson"] is None
 
     # Polling picks up the background extraction's outcome.
-    analysis = await _poll_analysis(cashier_client, created["id"])
+    analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["classification"] == CashoutDocumentClassification.MANUAL_NOTE.value
     assert analysis["classificationConfidence"] == 0.95
@@ -111,7 +63,7 @@ async def test_full_cashout_flow(
     )
 
     # The cashier verifies with a correction.
-    verified = await _verify(
+    verified = await verify_analysis(
         cashier_client,
         analysis["id"],
         {"verifiedData": {"note": "cash $100 confirmed"}},
@@ -122,12 +74,8 @@ async def test_full_cashout_flow(
     assert verified["verifiedAt"] is not None
 
     # Completing reconciles the verified analyses into a cashout data row.
-    complete = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/complete",
-        headers=csrf_headers(cashier_client),
-    )
-    assert complete.status_code == 200, complete.text
-    assert complete.json()["status"] == CashoutSubmissionStatus.COMPLETED.value
+    completed = await complete_submission(cashier_client, submission_id)
+    assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
 
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
@@ -139,12 +87,12 @@ async def test_full_cashout_flow(
 async def test_verify_without_corrections_confirms_extraction(
     cashier_client: AsyncClient, ai_client: FakeAIClient
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
-    analysis = await _poll_analysis(cashier_client, created["id"])
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
+    analysis = await poll_analysis(cashier_client, created["id"])
 
-    verified = await _verify(cashier_client, analysis["id"])
+    verified = await verify_analysis(cashier_client, analysis["id"])
 
     assert verified["verifiedDataJson"] == analysis["extractedDataJson"]
 
@@ -157,8 +105,8 @@ async def test_verify_without_corrections_confirms_extraction(
 async def test_list_submissions_scoped_by_role(
     cashier_client: AsyncClient, admin_client: AsyncClient
 ) -> None:
-    mine = await _create_submission(cashier_client)
-    theirs = await _create_submission(admin_client)
+    mine = await create_submission(cashier_client)
+    theirs = await create_submission(admin_client)
 
     cashier_list = (await cashier_client.get("/api/cashout/submissions")).json()
     assert [s["id"] for s in cashier_list] == [mine]
@@ -173,15 +121,15 @@ async def test_document_content_served_to_owner_and_admin(
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
     url = f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
 
     owner = await cashier_client.get(url)
     assert owner.status_code == 200
     assert owner.headers["content-type"].startswith("application/pdf")
-    assert owner.content == PDF[1]
+    assert owner.content == SAMPLE_PDF_BYTES
 
     admin = await admin_client.get(url)
     assert admin.status_code == 200
@@ -192,15 +140,11 @@ async def test_data_table_is_admin_only(
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
-    await _verify(cashier_client, created["id"])
-    complete = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/complete",
-        headers=csrf_headers(cashier_client),
-    )
-    assert complete.status_code == 200, complete.text
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
 
     forbidden = await cashier_client.get("/api/cashout/data")
     assert forbidden.status_code == 403
@@ -218,7 +162,7 @@ async def test_data_table_is_admin_only(
 async def test_delete_empty_processing_submission(
     cashier_client: AsyncClient,
 ) -> None:
-    submission_id = await _create_submission(cashier_client)
+    submission_id = await create_submission(cashier_client)
 
     response = await cashier_client.delete(
         f"/api/cashout/submissions/{submission_id}",
@@ -236,9 +180,9 @@ async def test_delete_processing_submission_removes_documents(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    analysis = await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    analysis = await upload_document(cashier_client, submission_id)
     assert storage.objects
 
     response = await cashier_client.delete(
@@ -259,15 +203,11 @@ async def test_delete_completed_submission_is_restricted(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    analysis = await _upload_pdf(cashier_client, submission_id)
-    await _verify(cashier_client, analysis["id"])
-    completed = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/complete",
-        headers=csrf_headers(cashier_client),
-    )
-    assert completed.status_code == 200, completed.text
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    analysis = await upload_document(cashier_client, submission_id)
+    await verify_analysis(cashier_client, analysis["id"])
+    await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.delete(
         f"/api/cashout/submissions/{submission_id}",
@@ -286,7 +226,7 @@ async def test_delete_submission_requires_owner(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
 ) -> None:
-    submission_id = await _create_submission(cashier_client)
+    submission_id = await create_submission(cashier_client)
 
     response = await admin_client.delete(
         f"/api/cashout/submissions/{submission_id}",
@@ -305,9 +245,9 @@ async def test_delete_document_from_processing_submission(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    analysis = await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    analysis = await upload_document(cashier_client, submission_id)
     assert storage.objects
 
     response = await cashier_client.delete(
@@ -333,15 +273,11 @@ async def test_delete_document_after_completion_conflicts(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    analysis = await _upload_pdf(cashier_client, submission_id)
-    await _verify(cashier_client, analysis["id"])
-    completed = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/complete",
-        headers=csrf_headers(cashier_client),
-    )
-    assert completed.status_code == 200, completed.text
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    analysis = await upload_document(cashier_client, submission_id)
+    await verify_analysis(cashier_client, analysis["id"])
+    await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.delete(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
@@ -363,9 +299,9 @@ async def test_delete_document_requires_owner(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    analysis = await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    analysis = await upload_document(cashier_client, submission_id)
 
     response = await admin_client.delete(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
@@ -389,8 +325,8 @@ async def test_delete_document_requires_owner(
 async def test_create_submission_anytime(cashier_client: AsyncClient) -> None:
     # Cashouts are not shift-locked: a user can open one at any time, and
     # can open more than one.
-    first = await _create_submission(cashier_client)
-    second = await _create_submission(cashier_client)
+    first = await create_submission(cashier_client)
+    second = await create_submission(cashier_client)
 
     assert first != second
 
@@ -398,7 +334,7 @@ async def test_create_submission_anytime(cashier_client: AsyncClient) -> None:
 async def test_upload_rejects_unsupported_content_type(
     cashier_client: AsyncClient,
 ) -> None:
-    submission_id = await _create_submission(cashier_client)
+    submission_id = await create_submission(cashier_client)
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/documents",
@@ -415,15 +351,15 @@ async def test_upload_rejects_duplicate_document(
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    await upload_document(cashier_client, submission_id)
     stored_before = len(storage.objects)
 
     # Same bytes again (filename doesn't matter): rejected by checksum.
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/documents",
-        files={"file": ("renamed.pdf", PDF[1], PDF[2])},
+        files={"file": ("renamed.pdf", SAMPLE_PDF_BYTES, "application/pdf")},
         headers=csrf_headers(cashier_client),
     )
 
@@ -433,8 +369,8 @@ async def test_upload_rejects_duplicate_document(
     assert len(storage.objects) == stored_before
 
     # The same file is still allowed in a *different* submission.
-    other_submission_id = await _create_submission(cashier_client)
-    await _upload_pdf(cashier_client, other_submission_id)
+    other_submission_id = await create_submission(cashier_client)
+    await upload_document(cashier_client, other_submission_id)
 
 
 async def test_unknown_document_completes_without_data(
@@ -444,12 +380,12 @@ async def test_unknown_document_completes_without_data(
         value=None, confidence=0.3
     )
 
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
 
     # A document the AI can't place is not a failure: the analysis completes
     # as UNKNOWN with nothing to extract, awaiting the cashier.
-    analysis = await _poll_analysis(cashier_client, created["id"])
+    analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["classification"] == CashoutDocumentClassification.UNKNOWN.value
     assert analysis["classificationConfidence"] == 0.3
@@ -469,11 +405,11 @@ async def test_failed_extraction_and_retry(
         AIErrorCode.REFUSED, "declined: raw provider text"
     )
 
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
 
     # The provider failure is recorded on the analysis as FAILED.
-    analysis = await _poll_analysis(cashier_client, created["id"])
+    analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
     assert analysis["errorCode"] == AIErrorCode.REFUSED.value
     # The raw provider text must not leak; a safe mapped message is surfaced.
@@ -490,7 +426,7 @@ async def test_failed_extraction_and_retry(
 
     # Retry once the provider recovers.
     ai_client.error = None
-    _configure_manual_note(ai_client)
+    configure_manual_note(ai_client)
     retry = await cashier_client.post(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}/extract",
         headers=csrf_headers(cashier_client),
@@ -498,7 +434,7 @@ async def test_failed_extraction_and_retry(
     assert retry.status_code == 200, retry.text
     assert retry.json()["status"] == DocumentAnalysisStatus.EXTRACTING.value
 
-    analysis = await _poll_analysis(cashier_client, created["id"])
+    analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["errorCode"] is None
 
@@ -506,10 +442,10 @@ async def test_failed_extraction_and_retry(
 async def test_verify_twice_conflicts(
     cashier_client: AsyncClient, ai_client: FakeAIClient
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
-    await _verify(cashier_client, created["id"])
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
+    await verify_analysis(cashier_client, created["id"])
 
     response = await cashier_client.post(
         f"/api/cashout/analyses/{created['id']}/verify",
@@ -524,9 +460,9 @@ async def test_verify_twice_conflicts(
 async def test_complete_requires_every_analysis_verified(
     cashier_client: AsyncClient, ai_client: FakeAIClient
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    await _upload_pdf(cashier_client, submission_id)  # extracted, never verified
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    await upload_document(cashier_client, submission_id)  # extracted, never verified
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
@@ -542,10 +478,10 @@ async def test_complete_requires_owner(
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
 ) -> None:
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
-    await _verify(cashier_client, created["id"])
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
+    await verify_analysis(cashier_client, created["id"])
 
     # Completion is the cashier's action; even an admin cannot close out
     # someone else's cashout.
@@ -561,28 +497,17 @@ async def test_complete_requires_owner(
 async def test_cannot_access_another_users_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
-    app: object,
-    db_session: AsyncSession,
+    make_client: ClientFactory,
 ) -> None:
-    from httpx import ASGITransport
-
-    _configure_manual_note(ai_client)
-    submission_id = await _create_submission(cashier_client)
-    created = await _upload_pdf(cashier_client, submission_id)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id)
 
     # A second, unrelated cashier can see neither the submission nor poll
     # its analyses.
-    transport = ASGITransport(app=app)  # type: ignore[arg-type]
-    async with AsyncClient(transport=transport, base_url="http://test") as other:
-        from .factories import create_invitation, register, verify_user
-
-        await create_invitation(db_session, email="other@test.com")
-        await register(other, email="other@test.com")
-        await verify_user(db_session, email="other@test.com")
-        submission_response = await other.get(
-            f"/api/cashout/submissions/{submission_id}"
-        )
-        analysis_response = await other.get(f"/api/cashout/analyses/{created['id']}")
+    other = await make_client(email="other@test.com")
+    submission_response = await other.get(f"/api/cashout/submissions/{submission_id}")
+    analysis_response = await other.get(f"/api/cashout/analyses/{created['id']}")
 
     assert submission_response.status_code == 403
     assert submission_response.json()["code"] == "FORBIDDEN"

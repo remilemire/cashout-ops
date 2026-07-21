@@ -1,4 +1,4 @@
-# backend/tests/test_email_verification.py
+# backend/tests/integration/test_email_verification.py
 
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.email_verification.model import EmailVerification
 from app.features.users.model import User
-
-from .factories import csrf_headers
-from .fakes import FakeEmailClient
+from tests.support.api import csrf_headers
+from tests.support.fakes import FakeEmailClient
 
 CASHIER_EMAIL = "cashier@test.com"
 

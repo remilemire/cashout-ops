@@ -1,4 +1,4 @@
-# backend/tests/test_auth.py
+# backend/tests/integration/test_auth.py
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.sessions.model import Session
-
-from .factories import ADMIN_EMAIL, create_invitation, register
+from tests.support.api import ADMIN_EMAIL, register
+from tests.support.factories import create_invitation
 
 
 async def test_register_creates_user_and_sets_cookies(

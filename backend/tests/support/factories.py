@@ -1,13 +1,12 @@
-# backend/tests/factories.py
+# backend/tests/support/factories.py
 
-"""Helpers for seeding data and driving the authenticated API in tests."""
+"""Helpers for seeding database rows directly (bypassing the API)."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +14,7 @@ from app.features.auth.passwords import hash_password
 from app.features.invitations.model import Invitation
 from app.features.users.model import User
 
-# Matches ADMIN_EMAIL set in conftest; register() promotes this email to ADMIN.
-ADMIN_EMAIL = "admin@test.com"
-DEFAULT_PASSWORD = "password123"
+from .api import DEFAULT_PASSWORD
 
 
 async def create_user(
@@ -76,45 +73,3 @@ async def verify_user(db: AsyncSession, *, email: str) -> None:
     user = (await db.execute(select(User).where(User.email == email))).scalar_one()
     user.email_verified_at = datetime.now(UTC)
     await db.commit()
-
-
-def csrf_headers(client: AsyncClient) -> dict[str, str]:
-    """The x-csrf-token header matching the readable csrf cookie, for unsafe methods."""
-    token = client.cookies.get("csrf_token")
-    assert token is not None, "no csrf cookie set; log in first"
-    return {"x-csrf-token": token}
-
-
-async def register(
-    client: AsyncClient,
-    *,
-    email: str = "cashier@test.com",
-    password: str = DEFAULT_PASSWORD,
-    full_name: str = "Test User",
-) -> None:
-    """Register through the API; the client then carries session + csrf cookies.
-
-    The email must hold a pending invitation (see create_invitation) unless it
-    is ADMIN_EMAIL, which registers without one.
-    """
-    response = await client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "fullName": full_name,
-            "password": password,
-        },
-    )
-    assert response.status_code == 201, response.text
-
-
-async def login(
-    client: AsyncClient,
-    *,
-    email: str = "cashier@test.com",
-    password: str = DEFAULT_PASSWORD,
-) -> None:
-    response = await client.post(
-        "/api/auth/login", json={"email": email, "password": password}
-    )
-    assert response.status_code == 200, response.text

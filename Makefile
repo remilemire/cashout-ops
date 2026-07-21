@@ -8,7 +8,7 @@ DOCKER_DATABASE_URL := postgresql+psycopg://postgres:dev@localhost:5432/cashout_
 
 .PHONY: help install-uv setup install format lint test check migrate \
 	build start \
-	backend-install backend-dev backend-format backend-lint backend-test backend-check backend-migrate backend-revision \
+	backend-install backend-dev backend-format backend-lint backend-test backend-test-unit backend-test-integration backend-check backend-migrate backend-revision \
 	frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test \
 	db-up db-down db-logs db-reset db-migrate
 
@@ -53,6 +53,12 @@ backend-lint: ## ruff check --fix
 
 backend-test: ## pytest
 	$(UV) run pytest
+
+backend-test-unit: ## pytest tests/unit (fast; no Docker/Postgres)
+	$(UV) run pytest tests/unit
+
+backend-test-integration: ## pytest tests/integration (real Postgres via testcontainers)
+	$(UV) run pytest tests/integration
 
 backend-check: backend-format backend-lint backend-test ## Backend format + lint + test
 

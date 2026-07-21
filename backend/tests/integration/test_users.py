@@ -1,4 +1,4 @@
-# backend/tests/test_users.py
+# backend/tests/integration/test_users.py
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .factories import ADMIN_EMAIL, create_user, csrf_headers
+from tests.support.api import ADMIN_EMAIL, csrf_headers
+from tests.support.factories import create_user
 
 
 async def test_me_returns_current_user(cashier_client: AsyncClient) -> None:

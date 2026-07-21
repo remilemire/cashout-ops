@@ -39,6 +39,12 @@ extend-select = ["I"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = ["--strict-markers"]
+markers = [
+    "unit: no database, no Docker container, no app instance",
+    "integration: full HTTP stack (ASGI client) against a real Postgres",
+]
 
