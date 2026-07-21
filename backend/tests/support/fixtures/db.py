@@ -34,7 +34,9 @@ class ProvisionedDB:
 
 
 @pytest.fixture(scope="session")
-def _db_state() -> ProvisionedDB:
+def _db_state() -> ProvisionedDB:  # pyright: ignore[reportUnusedFunction]
+    # Consumed by the schema and clean_tables fixtures via name injection,
+    # which pyright does not count as a reference.
     return ProvisionedDB()
 
 

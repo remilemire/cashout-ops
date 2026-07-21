@@ -6,10 +6,10 @@
 UV := uv --directory backend
 DOCKER_DATABASE_URL := postgresql+psycopg://postgres:dev@localhost:5432/cashout_ops
 
-.PHONY: help install-uv setup install format lint test check migrate \
+.PHONY: help install-uv setup install format lint typecheck test check migrate \
 	build start \
-	backend-install backend-dev backend-format backend-lint backend-test backend-test-unit backend-test-integration backend-check backend-migrate backend-revision \
-	frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test \
+	backend-install backend-dev backend-format backend-lint backend-typecheck backend-test backend-test-unit backend-test-integration backend-check backend-migrate backend-revision \
+	frontend-install frontend-dev frontend-build frontend-lint frontend-typecheck frontend-format frontend-test \
 	db-up db-down db-logs db-reset db-migrate
 
 help: ## Show this help
@@ -26,7 +26,9 @@ lint: backend-lint frontend-lint ## Lint (with fixes) backend + frontend
 
 test: backend-test frontend-test ## Test backend + frontend
 
-check: backend-check frontend-lint frontend-test ## Format + lint + test everything
+typecheck: backend-typecheck frontend-typecheck ## Typecheck backend + frontend
+
+check: backend-check frontend-lint frontend-typecheck frontend-test ## Format + lint + typecheck + test everything
 
 migrate: backend-migrate ## Apply database migrations
 
@@ -51,6 +53,9 @@ backend-format: ## ruff format
 backend-lint: ## ruff check --fix
 	$(UV) run ruff check . --fix
 
+backend-typecheck: ## pyright (strict)
+	$(UV) run pyright
+
 backend-test: ## pytest
 	$(UV) run pytest
 
@@ -60,7 +65,7 @@ backend-test-unit: ## pytest tests/unit (fast; no Docker/Postgres)
 backend-test-integration: ## pytest tests/integration (real Postgres via testcontainers)
 	$(UV) run pytest tests/integration
 
-backend-check: backend-format backend-lint backend-test ## Backend format + lint + test
+backend-check: backend-format backend-lint backend-typecheck backend-test ## Backend format + lint + typecheck + test
 
 backend-migrate: ## alembic upgrade head
 	$(UV) run alembic upgrade head
@@ -82,6 +87,9 @@ frontend-build: ## Build SPA into backend/static
 
 frontend-lint: ## eslint --fix
 	cd frontend && npm run lint
+
+frontend-typecheck: ## tsc --noEmit
+	cd frontend && npm run typecheck
 
 frontend-format: ## prettier --write
 	cd frontend && npm run format

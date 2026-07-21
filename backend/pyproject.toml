@@ -21,6 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pyright>=1.1.411",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.15",
@@ -36,6 +37,9 @@ include = ["app*"]
 
 [tool.ruff.lint]
 extend-select = ["I"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
