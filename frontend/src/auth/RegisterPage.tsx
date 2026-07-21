@@ -14,6 +14,7 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [confirmError, setConfirmError] = useState<string | undefined>(undefined);
 
   if (!isLoading && user) return <Navigate to="/" replace />;
 
@@ -23,6 +24,12 @@ export function RegisterPage() {
   const onSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const password = String(form.get("password"));
+    if (password !== String(form.get("confirmPassword"))) {
+      setConfirmError("Passwords do not match.");
+      return;
+    }
+    setConfirmError(undefined);
     setPending(true);
     setError(null);
     try {
@@ -30,7 +37,7 @@ export function RegisterPage() {
         email: String(form.get("email")),
         firstName: String(form.get("firstName")),
         lastName: String(form.get("lastName")),
-        password: String(form.get("password")),
+        password,
       });
       navigate("/", { replace: true });
     } catch (err) {
@@ -76,6 +83,14 @@ export function RegisterPage() {
             autoComplete="new-password"
             required
             error={fieldError("password")}
+          />
+          <TextField
+            label="Confirm password"
+            name="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            error={confirmError}
           />
           <ErrorBanner error={error} />
           <Button type="submit" loading={pending} className="w-full">
