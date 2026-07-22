@@ -1,4 +1,4 @@
-# backend/app/features/sessions/types.py
+# backend/app/features/auth/sessions/types.py
 
 from __future__ import annotations
 

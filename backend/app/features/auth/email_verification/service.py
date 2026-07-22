@@ -1,4 +1,4 @@
-# backend/app/features/email_verification/service.py
+# backend/app/features/auth/email_verification/service.py
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ _CODE_DIGITS = 6
 _SUBJECT = "Your Whiskey District verification code"
 # The email body template ships with this feature; render it with the code.
 _TEMPLATE = (
-    files("app.features.email_verification")
+    files("app.features.auth.email_verification")
     .joinpath("templates", "verify_email.html")
     .read_text(encoding="utf-8")
 )

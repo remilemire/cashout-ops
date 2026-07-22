@@ -6,7 +6,6 @@ from typing import Literal
 
 from app.features.auth.errors import AuthErrorCode
 from app.features.cashout.errors import CashoutErrorCode
-from app.features.email_verification.errors import EmailVerificationErrorCode
 from app.features.invitations.errors import InvitationErrorCode
 from app.features.users.errors import UserErrorCode
 
@@ -29,7 +28,6 @@ type ErrorCode = (
     | UserErrorCode
     | AuthErrorCode
     | InvitationErrorCode
-    | EmailVerificationErrorCode
     | CashoutErrorCode
 )
 

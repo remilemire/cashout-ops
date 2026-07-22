@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.email_verification.model import EmailVerification
+from app.features.auth.models import EmailVerification
 from app.features.users.model import User
 from tests.support.api import csrf_headers
 from tests.support.fakes import FakeEmailClient
@@ -70,7 +70,7 @@ async def test_verifying_unlocks_guarded_routes(
 ) -> None:
     code = email_client.latest_code(to=CASHIER_EMAIL)
     await unverified_client.post(
-        "/api/email-verification/verify",
+        "/api/auth/email-verification/verify",
         json={"code": code},
         headers=csrf_headers(unverified_client),
     )
@@ -90,7 +90,7 @@ async def test_verify_marks_user_verified(
     code = email_client.latest_code(to=CASHIER_EMAIL)
 
     response = await unverified_client.post(
-        "/api/email-verification/verify",
+        "/api/auth/email-verification/verify",
         json={"code": code},
         headers=csrf_headers(unverified_client),
     )
@@ -103,7 +103,7 @@ async def test_verify_marks_user_verified(
 
 async def test_verify_wrong_code_is_invalid(unverified_client: AsyncClient) -> None:
     response = await unverified_client.post(
-        "/api/email-verification/verify",
+        "/api/auth/email-verification/verify",
         json={"code": "000000"},
         headers=csrf_headers(unverified_client),
     )
@@ -123,7 +123,7 @@ async def test_verify_expired_code(
     await db_session.commit()
 
     response = await unverified_client.post(
-        "/api/email-verification/verify",
+        "/api/auth/email-verification/verify",
         json={"code": code},
         headers=csrf_headers(unverified_client),
     )
@@ -138,12 +138,12 @@ async def test_verify_already_verified_conflicts(
     code = email_client.latest_code(to=CASHIER_EMAIL)
     headers = csrf_headers(unverified_client)
     first = await unverified_client.post(
-        "/api/email-verification/verify", json={"code": code}, headers=headers
+        "/api/auth/email-verification/verify", json={"code": code}, headers=headers
     )
     assert first.status_code == 200
 
     response = await unverified_client.post(
-        "/api/email-verification/verify", json={"code": code}, headers=headers
+        "/api/auth/email-verification/verify", json={"code": code}, headers=headers
     )
     assert response.status_code == 409
     assert response.json()["code"] == "VERIFICATION_ALREADY_VERIFIED"
@@ -155,7 +155,7 @@ async def test_verify_requires_authentication(client: AsyncClient) -> None:
     client.cookies.set("csrf_token", "test-token")
 
     response = await client.post(
-        "/api/email-verification/verify",
+        "/api/auth/email-verification/verify",
         json={"code": "123456"},
         headers={"x-csrf-token": "test-token"},
     )
@@ -176,7 +176,7 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
     headers = csrf_headers(unverified_client)
 
     resent = await unverified_client.post(
-        "/api/email-verification/resend", headers=headers
+        "/api/auth/email-verification/resend", headers=headers
     )
     assert resent.status_code == 204
 
@@ -185,11 +185,11 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
 
     # The superseded code no longer verifies; the fresh one does.
     stale = await unverified_client.post(
-        "/api/email-verification/verify", json={"code": old_code}, headers=headers
+        "/api/auth/email-verification/verify", json={"code": old_code}, headers=headers
     )
     assert stale.status_code == 400
     ok = await unverified_client.post(
-        "/api/email-verification/verify", json={"code": new_code}, headers=headers
+        "/api/auth/email-verification/verify", json={"code": new_code}, headers=headers
     )
     assert ok.status_code == 200
 
@@ -200,11 +200,11 @@ async def test_resend_after_verification_conflicts(
     code = email_client.latest_code(to=CASHIER_EMAIL)
     headers = csrf_headers(unverified_client)
     await unverified_client.post(
-        "/api/email-verification/verify", json={"code": code}, headers=headers
+        "/api/auth/email-verification/verify", json={"code": code}, headers=headers
     )
 
     response = await unverified_client.post(
-        "/api/email-verification/resend", headers=headers
+        "/api/auth/email-verification/resend", headers=headers
     )
     assert response.status_code == 409
     assert response.json()["code"] == "VERIFICATION_ALREADY_VERIFIED"

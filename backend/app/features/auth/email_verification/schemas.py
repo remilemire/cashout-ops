@@ -1,4 +1,4 @@
-# backend/app/features/email_verification/schemas.py
+# backend/app/features/auth/email_verification/schemas.py
 
 from __future__ import annotations
 

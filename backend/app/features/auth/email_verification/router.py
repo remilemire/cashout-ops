@@ -1,4 +1,4 @@
-# backend/app/features/email_verification/router.py
+# backend/app/features/auth/email_verification/router.py
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from .schemas import EmailVerificationVerify
 # send_new_code job run after the request transaction commits.
 router = APIRouter(
     prefix="/email-verification",
-    tags=["email-verification"],
+    tags=["auth"],
     dependencies=[
         Depends(get_post_commit_tasks),
         Depends(require_csrf),

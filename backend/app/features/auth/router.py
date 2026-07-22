@@ -15,22 +15,26 @@ from app.dependencies import (
     get_post_commit_tasks,
 )
 from app.errors.openapi import error_responses
-from app.features.sessions.cookies import (
+from app.features.users.schemas import UserOut
+from app.integrations.email import EmailClient
+from app.lib.crypto import generate_secret_token
+
+from . import service as auth_service
+from .cookies import (
     clear_csrf_cookie,
     clear_session_cookie,
     get_session_cookie,
     set_csrf_cookie,
     set_session_cookie,
 )
-from app.features.users.schemas import UserOut
-from app.integrations.email import EmailClient
-from app.lib.crypto import generate_secret_token
-
-from . import service as auth_service
+from .email_verification.router import router as email_verification_router
 from .schemas import AuthLogin, AuthRegister
 from .types import UserWithSessionToken
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Email verification lives under /auth (e.g. /auth/email-verification/verify).
+router.include_router(email_verification_router)
 
 
 # get_post_commit_tasks is listed first so it tears down after get_db commits:

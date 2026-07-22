@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.sessions.model import Session
+from app.features.auth.models import Session
 from tests.support.api import ADMIN_EMAIL, register
 from tests.support.factories import create_invitation
 

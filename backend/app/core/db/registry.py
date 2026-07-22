@@ -9,15 +9,14 @@ Models live in feature packages; importing them here registers them on
 from __future__ import annotations
 
 from app.core.db.models import Base
+from app.features.auth.models import EmailVerification, Session
 from app.features.cashout.models import (
     CashoutData,
     CashoutDocument,
     CashoutDocumentAnalysis,
     CashoutSubmission,
 )
-from app.features.email_verification.model import EmailVerification
 from app.features.invitations.model import Invitation
-from app.features.sessions.model import Session
 from app.features.users.model import User
 
 metadata = Base.metadata

@@ -34,15 +34,16 @@ completes the cashout.
 """
 
 OPENAPI_TAGS = [
-    {"name": "auth", "description": "Register, login, and logout (cookie sessions)."},
-    {"name": "users", "description": "The authenticated user."},
     {
-        "name": "email-verification",
+        "name": "auth",
         "description": (
-            "Verify a new account's email with the code sent on registration, "
-            "or resend it. Accounts stay unverified until confirmed."
+            "Register, login, and logout (cookie sessions), plus email "
+            "verification: confirm a new account's email with the code sent on "
+            "registration, or resend it. Accounts stay unverified until "
+            "confirmed."
         ),
     },
+    {"name": "users", "description": "The authenticated user."},
     {
         "name": "cashout",
         "description": (

@@ -1,4 +1,4 @@
-# backend/app/features/email_verification/model.py
+# backend/app/features/auth/email_verification/model.py
 
 from __future__ import annotations
 
