@@ -20,7 +20,7 @@ The repository is the source of truth. Inspect existing implementations and near
 ## Repository Structure
 
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
-* `backend/app/lifespan.py` is the composition root for the database engine and external clients stored on `app.state`.
+* `backend/app/lifespan.py` is the composition root for the database engine and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
 * `backend/app/core/` contains configuration, cookies, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (Base, registry).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
