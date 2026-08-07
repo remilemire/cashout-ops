@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db.models import Entity, enum_column
 from app.features.cashout.types import CashoutSubmissionStatus
+from app.infrastructure.db.models import Entity, enum_column
 
 if TYPE_CHECKING:
     from app.features.users.model import User

@@ -1,4 +1,4 @@
-# backend/app/core/db/registry.py
+# backend/app/infrastructure/db/registry.py
 
 """Imports every ORM model so Alembic autogenerate sees the full schema.
 
@@ -8,7 +8,6 @@ Models live in feature packages; importing them here registers them on
 
 from __future__ import annotations
 
-from app.core.db.models import Base
 from app.features.auth.models import EmailVerification, Session
 from app.features.cashout.models import (
     CashoutData,
@@ -18,6 +17,7 @@ from app.features.cashout.models import (
 )
 from app.features.invitations.model import Invitation
 from app.features.users.model import User
+from app.infrastructure.db.models import Base
 
 metadata = Base.metadata
 

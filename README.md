@@ -101,7 +101,8 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   └── app/
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: DB engine + AI/storage clients on app.state
-│       ├── core/                      # config, cookies, db/ (Base, Entity, registry), schemas
+│       ├── core/                      # config, cookies, schemas
+│       ├── infrastructure/            # db/ (Base, Entity, registry)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # password hashing, session/CSRF cookies, token crypto
 │       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients
@@ -194,7 +195,7 @@ Local Postgres is provisioned by `compose.yaml`:
 - Port: `5432`
 - Named volume: `postgres-data`
 
-Alembic reads `DATABASE_URL` from the environment (see [migrations/env.py](backend/migrations/env.py)) and targets `app.core.db.registry.metadata` — a module that imports every ORM model so autogenerate sees the full schema. Add new models to that registry.
+Alembic reads `DATABASE_URL` from the environment (see [migrations/env.py](backend/migrations/env.py)) and targets `app.infrastructure.db.registry.metadata` — a module that imports every ORM model so autogenerate sees the full schema. Add new models to that registry.
 
 ```bash
 make backend-migrate                    # uv run alembic upgrade head

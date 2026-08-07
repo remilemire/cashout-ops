@@ -10,11 +10,11 @@ from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db.models import Entity, enum_column
 from app.features.cashout.types import (
     CashoutDocumentClassification,
     DocumentAnalysisStatus,
 )
+from app.infrastructure.db.models import Entity, enum_column
 from app.integrations.ai import AIProvider
 
 if TYPE_CHECKING:

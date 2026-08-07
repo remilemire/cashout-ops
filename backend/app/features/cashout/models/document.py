@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db.models import Entity, enum_column
+from app.infrastructure.db.models import Entity, enum_column
 from app.lib.documents import DocumentContentType
 
 if TYPE_CHECKING:

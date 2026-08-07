@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.core.db import registry
+from app.infrastructure.db import registry
 
 
 @dataclass

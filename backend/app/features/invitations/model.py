@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db.models import Entity
+from app.infrastructure.db.models import Entity
 
 
 class Invitation(Entity):
