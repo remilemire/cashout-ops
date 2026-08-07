@@ -413,7 +413,9 @@ async def test_failed_extraction_and_retry(
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
     assert analysis["errorCode"] == AIErrorCode.DOCUMENT_REJECTED.value
     # The raw provider text must not leak; a safe mapped message is surfaced.
-    assert analysis["errorMessage"] == analysis_error_message(AIErrorCode.DOCUMENT_REJECTED.value)
+    assert analysis["errorMessage"] == analysis_error_message(
+        AIErrorCode.DOCUMENT_REJECTED.value
+    )
     assert "raw provider text" not in analysis["errorMessage"]
 
     # A FAILED analysis cannot be verified.

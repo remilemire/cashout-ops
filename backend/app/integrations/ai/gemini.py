@@ -104,7 +104,8 @@ def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
     feedback = response.prompt_feedback
     if feedback is not None and feedback.block_reason is not None:
         raise AIAnalysisError(
-            AIErrorCode.DOCUMENT_REJECTED, f"Prompt blocked: {feedback.block_reason.name}"
+            AIErrorCode.DOCUMENT_REJECTED,
+            f"Prompt blocked: {feedback.block_reason.name}",
         )
 
     for candidate in response.candidates or []:

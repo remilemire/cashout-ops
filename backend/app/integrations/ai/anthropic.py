@@ -64,7 +64,8 @@ class AnthropicAIClient(AIClient):
 
         if response.stop_reason == "refusal":
             raise AIAnalysisError(
-                AIErrorCode.DOCUMENT_REJECTED, "The provider declined to analyze this content."
+                AIErrorCode.DOCUMENT_REJECTED,
+                "The provider declined to analyze this content.",
             )
         # Checked before parsed_output: truncated output also fails to parse,
         # and the max_tokens stop reason is the more actionable signal.
