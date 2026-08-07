@@ -57,7 +57,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 
 ## What works today
 
-- FastAPI app factory with lifespan-managed async DB engine and session factory
+- FastAPI app factory with lifespan-managed async DB engine, session factory, and Redis client
 - Cookie-based session auth (`/api/auth/login`, `/api/auth/logout`) backed by SHA-256–hashed session tokens stored in Redis with a TTL
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Bcrypt password hashing (via the `bcrypt` library directly)
@@ -67,7 +67,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
-- Fully-migrated schema: `users`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Fully-migrated schema: `users`, `invitations`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
 - Cashout domain (create submission, upload document with background AI extraction + polling, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - React 19 SPA (first pass): auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (upload → poll extraction → correct → verify → complete), and admin submissions/data views
@@ -88,7 +88,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ## Project structure
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/lib`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
 
 ```
 .
@@ -97,20 +97,20 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   ├── alembic.ini                    # Alembic config (script_location = migrations/)
 │   ├── migrations/                    # Async migrations (env.py reads DATABASE_URL) + versions/
 │   ├── pyproject.toml                 # Deps (uv) + ruff + pytest config
-│   ├── tests/                         # pytest suite (testcontainers Postgres)
+│   ├── tests/                         # pytest suite (testcontainers Postgres + Redis)
 │   ├── static/                        # Built frontend assets (served by FastAPI)
 │   └── app/
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
 │       ├── core/                      # config, cookies, schemas
-│       ├── infrastructure/            # db/ (Base, registry), redis/ (client lifespan)
+│       ├── infrastructure/            # db/ (Base, registry, lifespan), redis/ (client + lifespan)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # password hashing, session/CSRF cookies, token crypto
 │       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/, storage/
 │       ├── documents/                 # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth, sessions, users, invitations, email_verification, cashout
+│       ├── features/                  # auth (sessions, email_verification), users, invitations, cashout
 │       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields)
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
@@ -236,7 +236,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it creates the async engine + `async_sessionmaker` and the document-AI clients, attaching them to `app.state`. The per-request `get_db` dependency ([app/dependencies/db.py](backend/app/dependencies/db.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/dependencies/db.py](backend/app/dependencies/db.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
 
 **AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
 
@@ -245,7 +245,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 ## Authentication and sessions
 
 - Registration is invitation-gated: `POST /api/auth/register` requires a pending invitation for the email (the `ADMIN_EMAIL` account is exempt and is created as an already-verified admin). Register and login (`POST /api/auth/login`) then create a session in Redis with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
-- New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/email-verification/verify`, resend via `/resend`). The code's SHA-256 hash lives in Redis with a TTL (`EMAIL_VERIFICATION_CODE_TTL_MINUTES`); a resend overwrites it, and a successful verify consumes it.
+- New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/auth/email-verification/verify`, resend via `/resend`). The code's SHA-256 hash lives in Redis with a TTL (`EMAIL_VERIFICATION_CODE_TTL_MINUTES`); a resend overwrites it, and a successful verify consumes it.
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` / `get_current_user` / `require_admin` dependencies from [app/dependencies/](backend/app/dependencies/).
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
@@ -282,8 +282,8 @@ Implemented under the `/api` prefix:
 | POST   | `/api/auth/register`                          | none            | 201     | Requires a pending invitation for the email; creates the user and sets `session_token` + `csrf_token` cookies. |
 | POST   | `/api/auth/login`                             | none            | 200     | Sets `session_token` + `csrf_token` cookies on success.     |
 | POST   | `/api/auth/logout`                            | session + CSRF  | 204     | Clears both cookies and deletes the Redis session.          |
-| POST   | `/api/email-verification/verify`              | session         | 200     | Confirm the emailed code; marks the account verified.        |
-| POST   | `/api/email-verification/resend`              | session         | 204     | Email a fresh code, invalidating the previous one.           |
+| POST   | `/api/auth/email-verification/verify`         | session         | 200     | Confirm the emailed code; marks the account verified.        |
+| POST   | `/api/auth/email-verification/resend`         | session         | 204     | Email a fresh code, invalidating the previous one.           |
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | GET    | `/api/users`                                  | admin           | 200     | List every user, newest first.                              |
 | POST   | `/api/users/{id}/promote`                     | admin + CSRF    | 200     | Grant a user admin access (idempotent).                     |
@@ -306,13 +306,13 @@ Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the ap
 
 The app is deployed to Render at <https://cashout-ops.onrender.com>.
 
-The three scripts under `scripts/` (repo root) are the Render deploy hooks:
+The three scripts under `backend/scripts/` are the Render deploy hooks:
 
 - `build.bash` — `uv sync` in `backend/`, then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
 - `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT`.
 
-The Render service must have `DATABASE_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), and `ADMIN_EMAIL` configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver verification emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise codes are only logged to stdout (`CONSOLE`), so registered users can't verify.
+The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), and `ADMIN_EMAIL` configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver verification emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise codes are only logged to stdout (`CONSOLE`), so registered users can't verify.
 
 ## Conventions
 

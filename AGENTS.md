@@ -20,7 +20,7 @@ The repository is the source of truth. Inspect existing implementations and near
 ## Repository Structure
 
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
-* `backend/app/lifespan.py` is the composition root for the database engine and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
+* `backend/app/lifespan.py` is the composition root for the database engine, Redis client, and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
 * `backend/app/core/` contains configuration, cookies, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry) and the Redis client (`redis/`: the `Redis` type and its lifespan).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
@@ -29,7 +29,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients.
 * `backend/app/documents/` contains generic document classification and extraction behavior.
-* `backend/app/features/` contains feature modules such as auth, sessions, users, and cashout.
+* `backend/app/features/` contains feature modules such as auth (with its `sessions/` and `email_verification/` submodules), users, invitations, and cashout.
 * `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, and processor registration.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
@@ -82,12 +82,12 @@ The frontend uses `npm`. Do not substitute another package manager.
 
 ### Database
 
-* Start Postgres: `make db-up`
-* Stop Postgres: `make db-down`
-* Reset Postgres and delete its data: `make db-reset`
+* Start Postgres and Redis: `make db-up`
+* Stop Postgres and Redis: `make db-down`
+* Reset Postgres and Redis and delete their data: `make db-reset`
 * Follow Postgres logs: `make db-logs`
 
-Do not run `make db-reset` unless the task explicitly permits deleting local database data.
+Do not run `make db-reset` unless the task explicitly permits deleting local database and Redis data.
 
 ## Backend Architecture
 
