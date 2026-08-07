@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     ENVIRONMENT: Literal["prod", "dev"] = "prod"
     DATABASE_URL: str
+    REDIS_URL: str
     SESSION_TTL_DAYS: int = 7
     INVITATION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"

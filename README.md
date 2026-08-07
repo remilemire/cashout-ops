@@ -45,6 +45,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | ORM         | SQLAlchemy 2.0 (async) + Alembic                        |
 | DB driver   | `psycopg` 3 (binary)                                    |
 | Database    | PostgreSQL 18                                           |
+| KV store    | Redis 8 (`redis-py` asyncio client)                     |
 | Validation  | Pydantic v2 + `pydantic-settings`                       |
 | Auth        | Server-side sessions + CSRF double-submit, bcrypt hashes |
 | Frontend    | React 19, TypeScript, Vite, TanStack Query, React Router |
@@ -91,7 +92,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 
 ```
 .
-├── compose.yaml                       # Postgres 18 for local dev
+├── compose.yaml                       # Postgres 18 + Redis 8 for local dev
 ├── backend/
 │   ├── alembic.ini                    # Alembic config (script_location = migrations/)
 │   ├── migrations/                    # Async migrations (env.py reads DATABASE_URL) + versions/
@@ -102,7 +103,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
 │       ├── core/                      # config, cookies, schemas
-│       ├── infrastructure/            # db/ (Base, Entity, registry)
+│       ├── infrastructure/            # db/ (Base, Entity, registry), redis/ (client lifespan)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # password hashing, session/CSRF cookies, token crypto
 │       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients
@@ -138,7 +139,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 
 - Python 3.13+
 - Node.js (matching `@types/node` 25.x is fine)
-- Docker (for the Postgres container)
+- Docker (for the Postgres and Redis containers)
 
 
 
@@ -152,7 +153,7 @@ cp backend/.env.example backend/.env   # then set ADMIN_EMAIL and the selected p
 make backend-install                   # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
-make db-up                             # docker compose up -d
+make db-up                             # docker compose up -d (Postgres + Redis)
 make backend-migrate                   # uv run alembic upgrade head
 
 # 3. Frontend
@@ -168,6 +169,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
+| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Verified with a `PING` at startup.                               |
 | `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
@@ -194,6 +196,8 @@ Local Postgres is provisioned by `compose.yaml`:
 - Database: `cashout_ops`
 - Port: `5432`
 - Named volume: `postgres-data`
+
+The same `compose.yaml` also provisions a local Redis: image `redis:8`, port `6379`, append-only persistence, named volume `redis-data`.
 
 Alembic reads `DATABASE_URL` from the environment (see [migrations/env.py](backend/migrations/env.py)) and targets `app.infrastructure.db.registry.metadata` — a module that imports every ORM model so autogenerate sees the full schema. Add new models to that registry.
 
@@ -316,7 +320,7 @@ The Render service must have `DATABASE_URL`, the selected provider's AI key (e.g
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
 - **Python typing.** `pyproject.toml` requires Python 3.13+ and configures Pyright in strict mode (`[tool.pyright] typeCheckingMode = "strict"`). Run `make typecheck` (backend Pyright + frontend `tsc`).
 - **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/React (the Tailwind plugin sorts classes).
-- **Tests.** `make test` (pytest) runs against a real Postgres — `TEST_DATABASE_URL` if set, otherwise a throwaway container via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
+- **Tests.** `make test` (pytest) runs against a real Postgres and Redis — `TEST_DATABASE_URL` / `TEST_REDIS_URL` if set, otherwise throwaway containers via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
 
 ### Known incomplete work
 

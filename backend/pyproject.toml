@@ -14,6 +14,7 @@ dependencies = [
     "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.2",
     "python-dotenv>=1.2.2",
+    "redis>=5",
     "resend>=2.34.0",
     "sqlalchemy[asyncio]>=2.0.50",
 ]
@@ -25,7 +26,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.15",
-    "testcontainers[postgresql]>=4.14.2",
+    "testcontainers[postgresql,redis]>=4.14.2",
 ]
 
 [tool.fastapi]
@@ -48,7 +49,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = ["--strict-markers"]
 markers = [
-    "unit: no database, no Docker container, no app instance",
-    "integration: full HTTP stack (ASGI client) against a real Postgres",
+    "unit: no database, no Redis, no Docker container, no app instance",
+    "integration: full HTTP stack (ASGI client) against a real Postgres and Redis",
 ]
 

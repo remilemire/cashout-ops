@@ -8,6 +8,7 @@ from .csrf import require_csrf
 from .db import get_db, get_db_sessionmaker
 from .email import get_email_client
 from .processor import get_cashout_document_processor
+from .redis import get_redis
 from .storage import get_document_storage
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "get_document_storage",
     "get_email_client",
     "get_post_commit_tasks",
+    "get_redis",
     "require_admin",
     "require_csrf",
     "require_verified_user",

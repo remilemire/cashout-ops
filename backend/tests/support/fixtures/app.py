@@ -16,8 +16,10 @@ from app.dependencies import (
     get_db_sessionmaker,
     get_document_storage,
     get_email_client,
+    get_redis,
 )
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.infrastructure.redis import Redis
 from app.main import create_app
 
 from ..fakes import FakeDocumentStorage, FakeEmailClient
@@ -26,6 +28,7 @@ from ..fakes import FakeDocumentStorage, FakeEmailClient
 @pytest.fixture
 def app(
     db_sessionmaker: async_sessionmaker[AsyncSession],
+    redis_client: Redis,
     processor: CashoutDocumentProcessor,
     storage: FakeDocumentStorage,
     email_client: FakeEmailClient,
@@ -50,4 +53,5 @@ def app(
     application.dependency_overrides[get_cashout_document_processor] = lambda: processor
     application.dependency_overrides[get_document_storage] = lambda: storage
     application.dependency_overrides[get_email_client] = lambda: email_client
+    application.dependency_overrides[get_redis] = lambda: redis_client
     return application

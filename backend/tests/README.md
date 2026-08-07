@@ -4,18 +4,19 @@
 
 | Tier | Directory | May use | Must not use | Run with |
 |---|---|---|---|---|
-| Unit | `tests/unit/` | pure code, `tests.support` fakes | database, Docker, `app`, HTTP clients | `make backend-test-unit` |
-| Integration | `tests/integration/` | full HTTP stack (ASGI client) + real Postgres | live network, real providers | `make backend-test-integration` |
+| Unit | `tests/unit/` | pure code, `tests.support` fakes | database, Redis, Docker, `app`, HTTP clients | `make backend-test-unit` |
+| Integration | `tests/integration/` | full HTTP stack (ASGI client) + real Postgres and Redis | live network, real providers | `make backend-test-integration` |
 
 `make backend-test` runs everything. Tests are auto-marked `unit` /
 `integration` by directory (see the root `conftest.py`), so `-m unit` and
 `-m integration` selection also works.
 
-The unit tier needs no Docker: the Postgres container is provisioned lazily,
-only when a test first touches a database fixture. `tests/unit/conftest.py`
-shadows `postgres_url` and `app` with guards that raise, so a unit test that
-transitively reaches for the database or the HTTP stack fails loudly instead
-of silently starting a container.
+The unit tier needs no Docker: the Postgres and Redis containers are
+provisioned lazily, only when a test first touches a database or Redis
+fixture. `tests/unit/conftest.py` shadows `postgres_url`, `redis_url`, and
+`app` with guards that raise, so a unit test that transitively reaches for
+the database, Redis, or the HTTP stack fails loudly instead of silently
+starting a container.
 
 ## Where does a new test go?
 
@@ -41,8 +42,8 @@ tests/
     documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads
     fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient
       sdk/               SDK-shaped fakes for the provider adapter unit tests
-    fixtures/            fixture modules loaded via pytest_plugins (db, integrations,
-                         app, clients)
+    fixtures/            fixture modules loaded via pytest_plugins (db, redis,
+                         integrations, app, clients)
   unit/                  no-DB tier (+ guard conftest)
   integration/           HTTP + Postgres tier
 ```
@@ -53,14 +54,16 @@ tests/
 postgres_url (session) ──> schema (session) ──sets──> _db_state (session)
         └──────────────────────┴─> db_sessionmaker ─> db_session
 clean_tables (autouse, function) ─reads─> _db_state    # no-op if DB never provisioned
+redis_url (session) ──sets──> _redis_state (session) ──> redis_client
+clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis never provisioned
 ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
-email_client ─────────────────────┘      └─> client / make_client
+email_client + redis_client ──────┘      └─> client / make_client
                                               └─> unverified_client / cashier_client / admin_client
 ```
 
-- `app` is a fresh `create_app()` instance per test with the database and all
-  external clients overridden; the lifespan never runs under ASGITransport, so
-  nothing real is constructed.
+- `app` is a fresh `create_app()` instance per test with the database, Redis,
+  and all external clients overridden; the lifespan never runs under
+  ASGITransport, so nothing real is constructed.
 - `make_client` is the way to get authenticated clients — including several
   users in one test:
 
@@ -74,10 +77,11 @@ email_client ─────────────────────┘ 
   session + csrf cookies), and marks the email verified unless
   `verified=False`. `cashier_client` / `admin_client` / `unverified_client`
   are shorthands built on it.
-- Isolation between tests is TRUNCATE-after-each-test (`clean_tables`), not
-  transaction rollback: tests really commit.
+- Isolation between tests is TRUNCATE-after-each-test (`clean_tables`) and
+  FLUSHDB-after-each-test (`clean_redis`), not transaction rollback: tests
+  really commit.
 - Set `TEST_DATABASE_URL` to reuse an existing Postgres instead of a
-  testcontainer.
+  testcontainer; `TEST_REDIS_URL` does the same for Redis.
 
 ## Rules
 

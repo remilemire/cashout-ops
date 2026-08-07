@@ -15,11 +15,13 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 # This block must stay above pytest_plugins: the fixture modules import app.*.
 os.environ.setdefault("ENVIRONMENT", "dev")
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
+os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("ADMIN_EMAIL", "admin@test.com")
 
 pytest_plugins = [
     "tests.support.fixtures.db",
+    "tests.support.fixtures.redis",
     "tests.support.fixtures.integrations",
     "tests.support.fixtures.app",
     "tests.support.fixtures.clients",
