@@ -1,4 +1,4 @@
-# backend/app/features/auth/cookies.py
+# backend/app/security/cookies.py
 
 from __future__ import annotations
 

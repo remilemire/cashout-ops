@@ -17,16 +17,16 @@ from app.dependencies import (
 from app.errors.openapi import error_responses
 from app.features.users.schemas import UserOut
 from app.integrations.email import EmailClient
-from app.lib.crypto import generate_secret_token
-
-from . import service as auth_service
-from .cookies import (
+from app.security.cookies import (
     clear_csrf_cookie,
     clear_session_cookie,
     get_session_cookie,
     set_csrf_cookie,
     set_session_cookie,
 )
+from app.security.crypto import generate_secret_token
+
+from . import service as auth_service
 from .email_verification.router import router as email_verification_router
 from .schemas import AuthLogin, AuthRegister
 from .types import UserWithSessionToken

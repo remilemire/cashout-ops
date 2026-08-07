@@ -13,9 +13,9 @@ from app.features.invitations import service as invitations_service
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
 from app.integrations.email import EmailClient
+from app.security.passwords import hash_password, verify_password
 
 from .email_verification import service as email_verification_service
-from .passwords import hash_password, verify_password
 from .schemas import AuthLogin, AuthRegister
 from .sessions import service as sessions_service
 from .types import AuthContext, UserWithSessionToken

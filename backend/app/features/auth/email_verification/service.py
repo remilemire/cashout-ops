@@ -17,7 +17,7 @@ from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
 from app.features.users.model import User
 from app.integrations.email import EmailClient
-from app.lib.crypto import hash_secret_token
+from app.security.crypto import hash_secret_token
 
 from .model import EmailVerification
 

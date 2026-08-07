@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import settings
-from app.lib.crypto import generate_secret_token, hash_secret_token
+from app.security.crypto import generate_secret_token, hash_secret_token
 
 from .model import Session
 from .types import SessionWithToken

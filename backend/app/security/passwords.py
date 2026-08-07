@@ -1,4 +1,4 @@
-# backend/app/features/auth/passwords.py
+# backend/app/security/passwords.py
 
 from __future__ import annotations
 

@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
 from app.features.auth import service as auth_service
-from app.features.auth.cookies import get_session_cookie
 from app.features.users.model import User
+from app.security.cookies import get_session_cookie
 
 from .db import get_db
 

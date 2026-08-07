@@ -1,4 +1,4 @@
-# backend/app/lib/crypto.py
+# backend/app/security/crypto.py
 
 from __future__ import annotations
 

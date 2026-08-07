@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.auth.passwords import hash_password
 from app.features.invitations.model import Invitation
 from app.features.users.model import User
+from app.security.passwords import hash_password
 
 from .api import DEFAULT_PASSWORD
 

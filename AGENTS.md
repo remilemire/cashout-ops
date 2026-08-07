@@ -22,7 +22,8 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
 * `backend/app/lifespan.py` is the composition root for the database engine and external clients stored on `app.state`.
 * `backend/app/core/` contains configuration, cookies, shared schemas, and database foundations.
-* `backend/app/lib/` contains pure helpers such as casing, cryptography, and document utilities.
+* `backend/app/lib/` contains pure helpers such as casing and document utilities.
+* `backend/app/security/` contains password hashing, session and CSRF cookie helpers, and secret-token cryptography.
 * `backend/app/dependencies/` contains FastAPI dependencies for the database, authentication, CSRF, and clients.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients.
