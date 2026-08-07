@@ -8,7 +8,6 @@ Models live in feature packages; importing them here registers them on
 
 from __future__ import annotations
 
-from app.features.auth.models import EmailVerification
 from app.features.cashout.models import (
     CashoutData,
     CashoutDocument,
@@ -26,7 +25,6 @@ __all__ = [
     "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
-    "EmailVerification",
     "Invitation",
     "User",
     "metadata",

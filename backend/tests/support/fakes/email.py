@@ -28,7 +28,7 @@ class FakeEmailClient(EmailClient):
         """The verification code from the most recent matching email.
 
         The service emails a `_CODE_DIGITS`-digit numeric code, which is the
-        only channel a test can learn it from (the DB stores only the hash).
+        only channel a test can learn it from (Redis stores only the hash).
         """
         for email in reversed(self.sent):
             if to is not None and email.to != to:

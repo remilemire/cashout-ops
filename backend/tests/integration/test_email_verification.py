@@ -2,33 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.auth.models import EmailVerification
-from app.features.users.model import User
+from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
 from tests.support.fakes import FakeEmailClient
+from tests.support.fixtures.redis import redis_keys
 
 CASHIER_EMAIL = "cashier@test.com"
-
-
-async def _latest_verification(db: AsyncSession, *, email: str) -> EmailVerification:
-    db.expire_all()
-    user = (await db.execute(select(User).where(User.email == email))).scalar_one()
-    verification = (
-        await db.execute(
-            select(EmailVerification)
-            .where(EmailVerification.user_id == user.id)
-            .order_by(EmailVerification.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    assert verification is not None, f"no verification row for {email}"
-    return verification
 
 
 # ================================
@@ -39,14 +20,14 @@ async def _latest_verification(db: AsyncSession, *, email: str) -> EmailVerifica
 async def test_register_emails_code_and_leaves_account_unverified(
     unverified_client: AsyncClient,
     email_client: FakeEmailClient,
-    db_session: AsyncSession,
+    redis_client: Redis,
 ) -> None:
     me = await unverified_client.get("/api/users/me")
     assert me.json()["emailVerifiedAt"] is None
 
-    # The post-commit job emailed a single code and left a matching row.
+    # The post-commit job emailed a single code and stored its hash in Redis.
     assert [email.to for email in email_client.sent] == [CASHIER_EMAIL]
-    await _latest_verification(db_session, email=CASHIER_EMAIL)
+    assert await redis_keys(redis_client, "email_verification:*")
 
 
 # ================================
@@ -84,8 +65,10 @@ async def test_verifying_unlocks_guarded_routes(
 # ================================
 
 
-async def test_verify_marks_user_verified(
-    unverified_client: AsyncClient, email_client: FakeEmailClient
+async def test_verify_marks_user_verified_and_consumes_the_code(
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    redis_client: Redis,
 ) -> None:
     code = email_client.latest_code(to=CASHIER_EMAIL)
 
@@ -99,6 +82,8 @@ async def test_verify_marks_user_verified(
     assert response.json()["emailVerifiedAt"] is not None
     me = await unverified_client.get("/api/users/me")
     assert me.json()["emailVerifiedAt"] is not None
+    # The code is consumed on success: its Redis key is deleted.
+    assert await redis_keys(redis_client, "email_verification:*") == []
 
 
 async def test_verify_wrong_code_is_invalid(unverified_client: AsyncClient) -> None:
@@ -115,12 +100,13 @@ async def test_verify_wrong_code_is_invalid(unverified_client: AsyncClient) -> N
 async def test_verify_expired_code(
     unverified_client: AsyncClient,
     email_client: FakeEmailClient,
-    db_session: AsyncSession,
+    redis_client: Redis,
 ) -> None:
     code = email_client.latest_code(to=CASHIER_EMAIL)
-    verification = await _latest_verification(db_session, email=CASHIER_EMAIL)
-    verification.expires_at = datetime.now(UTC) - timedelta(minutes=1)
-    await db_session.commit()
+    # Expiry is enforced by the Redis TTL, so an expired code IS a missing key;
+    # deleting the key is exactly what expiry looks like to the service.
+    [key] = await redis_keys(redis_client, "email_verification:*")
+    await redis_client.delete(key)
 
     response = await unverified_client.post(
         "/api/auth/email-verification/verify",
@@ -170,7 +156,9 @@ async def test_verify_requires_authentication(client: AsyncClient) -> None:
 
 
 async def test_resend_issues_a_new_code_and_supersedes_the_old(
-    unverified_client: AsyncClient, email_client: FakeEmailClient
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    redis_client: Redis,
 ) -> None:
     old_code = email_client.latest_code(to=CASHIER_EMAIL)
     headers = csrf_headers(unverified_client)
@@ -182,12 +170,15 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
 
     new_code = email_client.latest_code(to=CASHIER_EMAIL)
     assert new_code != old_code
+    # The SET overwrote the previous code: still exactly one key per user.
+    assert len(await redis_keys(redis_client, "email_verification:*")) == 1
 
     # The superseded code no longer verifies; the fresh one does.
     stale = await unverified_client.post(
         "/api/auth/email-verification/verify", json={"code": old_code}, headers=headers
     )
     assert stale.status_code == 400
+    assert stale.json()["code"] == "VERIFICATION_CODE_INVALID"
     ok = await unverified_client.post(
         "/api/auth/email-verification/verify", json={"code": new_code}, headers=headers
     )

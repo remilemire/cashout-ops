@@ -14,11 +14,13 @@ from app.dependencies import (
     get_db_sessionmaker,
     get_email_client,
     get_post_commit_tasks,
+    get_redis,
     require_csrf,
 )
 from app.errors.openapi import error_responses
 from app.features.users.model import User
 from app.features.users.schemas import UserOut
+from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 
 from . import service as email_verification_service
@@ -54,6 +56,7 @@ router = APIRouter(
 async def verify(
     payload: EmailVerificationVerify,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserOut:
     """Confirm the emailed verification code for the current user.
@@ -62,7 +65,7 @@ async def verify(
     A wrong or expired code is rejected; request a new one via `/resend`.
     """
     user = await email_verification_service.verify_email(
-        db, user=current_user, code=payload.code
+        db, redis, user=current_user, code=payload.code
     )
     return UserOut.model_validate(user)
 
@@ -77,6 +80,7 @@ async def resend(
     sessionmaker: Annotated[
         async_sessionmaker[AsyncSession], Depends(get_db_sessionmaker)
     ],
+    redis: Annotated[Redis, Depends(get_redis)],
     current_user: Annotated[User, Depends(get_current_user)],
     email_client: Annotated[EmailClient, Depends(get_email_client)],
 ) -> None:
@@ -87,6 +91,7 @@ async def resend(
     """
     await email_verification_service.resend(
         sessionmaker,
+        redis,
         post_commit=post_commit,
         email_client=email_client,
         user=current_user,

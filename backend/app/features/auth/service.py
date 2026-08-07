@@ -98,6 +98,7 @@ async def register(
             partial(
                 email_verification_service.send_new_code,
                 sessionmaker,
+                redis,
                 email_client=email_client,
                 user_id=user.id,
             )

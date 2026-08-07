@@ -62,7 +62,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Bcrypt password hashing (via the `bcrypt` library directly)
 - Invitation-gated registration: an admin invites an email, and only invited emails (plus the bootstrapped `ADMIN_EMAIL`) can register
-- Email verification: a short-lived numeric code is emailed on registration; accounts stay gated behind `require_verified_user` until they confirm it (resend supported), with pluggable `CONSOLE`/`RESEND` email delivery
+- Email verification: a short-lived numeric code is emailed on registration (only its SHA-256 hash is kept, in Redis with a TTL); accounts stay gated behind `require_verified_user` until they confirm it (resend supported), with pluggable `CONSOLE`/`RESEND` email delivery
 - Admin user management: list users, promote/demote admins, and manage invitations
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
@@ -169,7 +169,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
-| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions; verified with a `PING` at startup.                               |
+| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email verification codes; verified with a `PING` at startup.                               |
 | `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
@@ -245,7 +245,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 ## Authentication and sessions
 
 - Registration is invitation-gated: `POST /api/auth/register` requires a pending invitation for the email (the `ADMIN_EMAIL` account is exempt and is created as an already-verified admin). Register and login (`POST /api/auth/login`) then create a session in Redis with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
-- New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/email-verification/verify`, resend via `/resend`).
+- New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/email-verification/verify`, resend via `/resend`). The code's SHA-256 hash lives in Redis with a TTL (`EMAIL_VERIFICATION_CODE_TTL_MINUTES`); a resend overwrites it, and a successful verify consumes it.
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` / `get_current_user` / `require_admin` dependencies from [app/dependencies/](backend/app/dependencies/).
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.

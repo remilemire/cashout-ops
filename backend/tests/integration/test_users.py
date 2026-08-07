@@ -5,12 +5,14 @@ from __future__ import annotations
 from uuid import uuid4
 
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.features.auth.email_verification import service as email_verification_service
 from app.features.users import service as users_service
 from app.infrastructure.redis import Redis
 from tests.support.api import ADMIN_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
+from tests.support.fakes import FakeEmailClient
 from tests.support.fixtures.redis import redis_keys
 
 
@@ -144,8 +146,12 @@ async def test_demote_unknown_user_not_found(admin_client: AsyncClient) -> None:
     assert response.json()["code"] == "USER_NOT_FOUND"
 
 
-async def test_deleting_user_revokes_their_sessions(
-    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
+async def test_deleting_user_revokes_their_sessions_and_verification_code(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    redis_client: Redis,
+    email_client: FakeEmailClient,
 ) -> None:
     # Seeded directly (an invitation's accepted_by FK would block deletion),
     # then logged in through the API for a real session. No HTTP route deletes
@@ -156,6 +162,13 @@ async def test_deleting_user_revokes_their_sessions(
     assert (await client.get("/api/users/me")).status_code == 200
     assert await redis_keys(redis_client, "session:*")
 
+    # Give the (unverified) user an outstanding verification code the same way
+    # register's post-commit job would.
+    await email_verification_service.send_new_code(
+        db_sessionmaker, redis_client, email_client=email_client, user_id=user.id
+    )
+    assert await redis_keys(redis_client, "email_verification:*")
+
     await users_service.delete_by_id(db_session, redis_client, user_id=user.id)
     await db_session.commit()
 
@@ -163,3 +176,4 @@ async def test_deleting_user_revokes_their_sessions(
     assert response.status_code == 401
     assert await redis_keys(redis_client, "session:*") == []
     assert await redis_keys(redis_client, "user_sessions:*") == []
+    assert await redis_keys(redis_client, "email_verification:*") == []

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
+from app.features.auth.email_verification import service as email_verification_service
 from app.features.auth.sessions import service as sessions_service
 from app.infrastructure.redis import Redis
 
@@ -61,10 +62,13 @@ async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None
     if user is None:
         raise AppError("USER_NOT_FOUND")
     await db.delete(user)
-    # Best-effort session revocation: not atomic with the transaction (the
-    # planned transactional outbox will make it so). If the Redis write is
-    # lost, authenticate's failed user lookup remains the backstop.
+    # Best-effort session revocation and verification-code cleanup (the old
+    # FK cascade): not atomic with the transaction (the planned transactional
+    # outbox will make it so). If the Redis write is lost, authenticate's
+    # failed user lookup remains the backstop for sessions, and an orphaned
+    # verification code expires with its TTL.
     await sessions_service.delete_all_for_user(redis, user_id=user_id)
+    await email_verification_service.delete_for_user(redis, user_id=user_id)
 
 
 async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
