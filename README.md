@@ -58,7 +58,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 ## What works today
 
 - FastAPI app factory with lifespan-managed async DB engine and session factory
-- Cookie-based session auth (`/api/auth/login`, `/api/auth/logout`) backed by SHA-256–hashed session tokens stored in Postgres
+- Cookie-based session auth (`/api/auth/login`, `/api/auth/logout`) backed by SHA-256–hashed session tokens stored in Redis with a TTL
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Bcrypt password hashing (via the `bcrypt` library directly)
 - Invitation-gated registration: an admin invites an email, and only invited emails (plus the bootstrapped `ADMIN_EMAIL`) can register
@@ -67,7 +67,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
-- Fully-migrated schema: `users`, `sessions`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Fully-migrated schema: `users`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
 - Cashout domain (create submission, upload document with background AI extraction + polling, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - React 19 SPA (first pass): auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (upload → poll extraction → correct → verify → complete), and admin submissions/data views
@@ -169,7 +169,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
-| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Verified with a `PING` at startup.                               |
+| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions; verified with a `PING` at startup.                               |
 | `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
@@ -244,13 +244,13 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 ## Authentication and sessions
 
-- Registration is invitation-gated: `POST /api/auth/register` requires a pending invitation for the email (the `ADMIN_EMAIL` account is exempt and is created as an already-verified admin). Register and login (`POST /api/auth/login`) then create a `Session` row with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token in the DB.
+- Registration is invitation-gated: `POST /api/auth/register` requires a pending invitation for the email (the `ADMIN_EMAIL` account is exempt and is created as an already-verified admin). Register and login (`POST /api/auth/login`) then create a session in Redis with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
 - New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/email-verification/verify`, resend via `/resend`).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` / `get_current_user` / `require_admin` dependencies from [app/dependencies/](backend/app/dependencies/).
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
 - Session TTL is `SESSION_TTL_DAYS` (default 7). There is no "remember me".
-- Logout clears both cookies and deletes the corresponding session row.
+- Logout clears both cookies and deletes the corresponding Redis session.
 
 ## Error contract
 
@@ -281,7 +281,7 @@ Implemented under the `/api` prefix:
 | ------ | --------------------------------------------- | --------------- | ------- | ----------------------------------------------------------- |
 | POST   | `/api/auth/register`                          | none            | 201     | Requires a pending invitation for the email; creates the user and sets `session_token` + `csrf_token` cookies. |
 | POST   | `/api/auth/login`                             | none            | 200     | Sets `session_token` + `csrf_token` cookies on success.     |
-| POST   | `/api/auth/logout`                            | session + CSRF  | 204     | Clears both cookies and deletes the session row.            |
+| POST   | `/api/auth/logout`                            | session + CSRF  | 204     | Clears both cookies and deletes the Redis session.          |
 | POST   | `/api/email-verification/verify`              | session         | 200     | Confirm the emailed code; marks the account verified.        |
 | POST   | `/api/email-verification/resend`              | session         | 204     | Email a fresh code, invalidating the previous one.           |
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |

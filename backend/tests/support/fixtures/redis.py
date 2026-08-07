@@ -76,3 +76,9 @@ async def redis_client(redis_url: str) -> AsyncIterator[Redis]:
         yield client
     finally:
         await client.aclose()
+
+
+async def redis_keys(client: Redis, pattern: str) -> list[str]:
+    """Typed KEYS wrapper for assertions (redis-py's `keys` is partially untyped)."""
+    keys = await client.keys(pattern)  # pyright: ignore[reportUnknownMemberType]
+    return [str(key) for key in keys]

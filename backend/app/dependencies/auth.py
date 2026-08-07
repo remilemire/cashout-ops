@@ -10,21 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import AppError
 from app.features.auth import service as auth_service
 from app.features.users.model import User
+from app.infrastructure.redis import Redis
 from app.security.cookies import get_session_cookie
 
 from .db import get_db
+from .redis import get_redis
 
 
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
 ) -> User:
     session_token = get_session_cookie(request)
     if session_token is None:
         raise AppError("UNAUTHENTICATED")
 
-    context = await auth_service.authenticate(db, session_token=session_token)
-    return context.user
+    return await auth_service.authenticate(db, redis, session_token=session_token)
 
 
 def require_verified_user(

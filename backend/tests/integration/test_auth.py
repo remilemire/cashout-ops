@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.auth.models import Session
+from app.infrastructure.redis import Redis
 from tests.support.api import ADMIN_EMAIL, register
 from tests.support.factories import create_invitation
+from tests.support.fixtures.redis import redis_keys
 
 
 async def test_register_creates_user_and_sets_cookies(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
 ) -> None:
     await create_invitation(db_session, email="new@test.com")
 
@@ -33,6 +33,8 @@ async def test_register_creates_user_and_sets_cookies(
     assert body["fullName"] == "New User"
     assert "session_token" in client.cookies
     assert "csrf_token" in client.cookies
+    # The session is tracked in Redis (keyed by the token's hash).
+    assert await redis_keys(redis_client, "session:*")
 
 
 async def test_register_promotes_admin_email(client: AsyncClient) -> None:
@@ -79,11 +81,13 @@ async def test_register_rejects_short_password(client: AsyncClient) -> None:
 
 
 async def test_login_succeeds_with_correct_password(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
 ) -> None:
     await create_invitation(db_session, email="login@test.com")
     await register(client, email="login@test.com", password="password123")
     client.cookies.clear()
+    # Drop the registration session so the assertion sees only login's.
+    await redis_client.flushdb()  # pyright: ignore[reportUnknownMemberType]
 
     response = await client.post(
         "/api/auth/login",
@@ -92,6 +96,8 @@ async def test_login_succeeds_with_correct_password(
 
     assert response.status_code == 200
     assert "session_token" in client.cookies
+    # Login minted a fresh Redis-tracked session.
+    assert await redis_keys(redis_client, "session:*")
 
 
 async def test_login_wrong_password_unauthorized(
@@ -119,18 +125,22 @@ async def test_login_unknown_email_unauthorized(client: AsyncClient) -> None:
 
 
 async def test_logout_clears_session_and_cookies(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
 ) -> None:
     await create_invitation(db_session, email="out@test.com")
     await register(client, email="out@test.com")
-    assert (await db_session.execute(select(Session))).scalars().all()
+    session_token = client.cookies["session_token"]
+    assert await redis_keys(redis_client, "session:*")
 
     response = await client.post("/api/auth/logout")
 
     assert response.status_code == 204
-    # Cookies cleared, and the session row is deleted.
+    # Cookies cleared, and the Redis session key is deleted.
     assert not client.cookies.get("session_token")
-    assert (await db_session.execute(select(Session))).scalars().all() == []
+    assert await redis_keys(redis_client, "session:*") == []
+    # The session is revoked server-side: replaying the old token fails.
+    client.cookies.set("session_token", session_token)
+    assert (await client.get("/api/users/me")).status_code == 401
 
 
 async def test_logout_with_invalid_session_returns_204(client: AsyncClient) -> None:

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, String, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.db.models import Entity
-
-if TYPE_CHECKING:
-    from app.features.auth.models import Session
 
 
 class User(Entity):
@@ -35,8 +31,4 @@ class User(Entity):
     # unverified accounts. The bootstrapped admin is created already verified.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )
-
-    sessions: Mapped[list[Session]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
     )

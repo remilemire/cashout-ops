@@ -7,8 +7,11 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.support.api import ADMIN_EMAIL, csrf_headers
+from app.features.users import service as users_service
+from app.infrastructure.redis import Redis
+from tests.support.api import ADMIN_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
+from tests.support.fixtures.redis import redis_keys
 
 
 async def test_me_returns_current_user(cashier_client: AsyncClient) -> None:
@@ -139,3 +142,24 @@ async def test_demote_unknown_user_not_found(admin_client: AsyncClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["code"] == "USER_NOT_FOUND"
+
+
+async def test_deleting_user_revokes_their_sessions(
+    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
+) -> None:
+    # Seeded directly (an invitation's accepted_by FK would block deletion),
+    # then logged in through the API for a real session. No HTTP route deletes
+    # users yet, so the deletion goes through the service; the revocation is
+    # still observed through the deleted user's previously-valid client.
+    user = await create_user(db_session, email="doomed@test.com")
+    await login(client, email="doomed@test.com")
+    assert (await client.get("/api/users/me")).status_code == 200
+    assert await redis_keys(redis_client, "session:*")
+
+    await users_service.delete_by_id(db_session, redis_client, user_id=user.id)
+    await db_session.commit()
+
+    response = await client.get("/api/users/me")
+    assert response.status_code == 401
+    assert await redis_keys(redis_client, "session:*") == []
+    assert await redis_keys(redis_client, "user_sessions:*") == []

@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
+from app.features.auth.sessions import service as sessions_service
+from app.infrastructure.redis import Redis
 
 from .model import User
 from .schemas import UserCreate
@@ -54,11 +56,15 @@ def bootstrap_admin(
     return user
 
 
-async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
+async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None:
     user = await User.find_by_id(db, user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     await db.delete(user)
+    # Best-effort session revocation: not atomic with the transaction (the
+    # planned transactional outbox will make it so). If the Redis write is
+    # lost, authenticate's failed user lookup remains the backstop.
+    await sessions_service.delete_all_for_user(redis, user_id=user_id)
 
 
 async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:

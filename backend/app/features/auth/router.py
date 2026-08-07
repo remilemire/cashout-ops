@@ -13,9 +13,11 @@ from app.dependencies import (
     get_db_sessionmaker,
     get_email_client,
     get_post_commit_tasks,
+    get_redis,
 )
 from app.errors.openapi import error_responses
 from app.features.users.schemas import UserOut
+from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 from app.security.cookies import (
     clear_csrf_cookie,
@@ -53,6 +55,7 @@ async def register(
     payload: AuthRegister,
     post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
     sessionmaker: Annotated[
         async_sessionmaker[AsyncSession], Depends(get_db_sessionmaker)
     ],
@@ -69,6 +72,7 @@ async def register(
     """
     result = await auth_service.register(
         db,
+        redis,
         payload=payload,
         post_commit=post_commit,
         sessionmaker=sessionmaker,
@@ -86,12 +90,13 @@ async def login(
     response: Response,
     payload: AuthLogin,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
 ) -> UserOut:
     """Authenticate with email and password.
 
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable) cookies.
     """
-    result = await auth_service.login(db, payload=payload)
+    result = await auth_service.login(db, redis, payload=payload)
     return _authenticated_response(response, result)
 
 
@@ -99,7 +104,7 @@ async def login(
 async def logout(
     request: Request,
     response: Response,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
 ) -> None:
     """End the current session and clear the auth cookies.
 
@@ -108,7 +113,7 @@ async def logout(
     """
     session_token = get_session_cookie(request)
     if session_token is not None:
-        await auth_service.logout(db, session_token=session_token)
+        await auth_service.logout(redis, session_token=session_token)
 
     clear_session_cookie(response)
     clear_csrf_cookie(response)
