@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from app.core.schemas import BaseIn, EntityOut, UtcDateTime
+from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.users.schemas import UserOut
 from app.integrations.ai import AIProvider
 from app.lib.documents import DocumentContentType
@@ -18,7 +18,9 @@ from .types import (
 )
 
 
-class CashoutSubmissionOut(EntityOut):
+class CashoutSubmissionOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     status: CashoutSubmissionStatus
     submitted_by_user_id: uuid.UUID
     submitted_at: UtcDateTime
@@ -28,7 +30,9 @@ class CashoutSubmissionListOut(CashoutSubmissionOut):
     submitted_by: UserOut
 
 
-class CashoutDocumentAnalysisOut(EntityOut):
+class CashoutDocumentAnalysisOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     provider: AIProvider
     model: str
     status: DocumentAnalysisStatus
@@ -47,7 +51,9 @@ class CashoutDocumentAnalysisOut(EntityOut):
     cashout_document_id: uuid.UUID
 
 
-class CashoutDocumentOut(EntityOut):
+class CashoutDocumentOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     content_type: DocumentContentType
     original_filename: str
     checksum_sha256: str
@@ -57,7 +63,9 @@ class CashoutDocumentOut(EntityOut):
     analysis: CashoutDocumentAnalysisOut | None = None
 
 
-class CashoutDataOut(EntityOut):
+class CashoutDataOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     # TODO(document-ai): placeholder reconciled fields; see models/data.py.
     daily_tipout: Decimal | None = None
     net_total: Decimal | None = None

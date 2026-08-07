@@ -6,10 +6,12 @@ import uuid
 
 from pydantic import EmailStr
 
-from app.core.schemas import BaseIn, EntityOut, UtcDateTime
+from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 
 
-class InvitationOut(EntityOut):
+class InvitationOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     email: EmailStr
     expires_at: UtcDateTime
     accepted_at: UtcDateTime | None = None

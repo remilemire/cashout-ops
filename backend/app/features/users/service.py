@@ -31,6 +31,10 @@ async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
     return user
 
 
+async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
+    return await db.get(User, user_id)
+
+
 def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
     user = User(
         email=payload.email,
@@ -58,7 +62,7 @@ def bootstrap_admin(
 
 
 async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None:
-    user = await User.find_by_id(db, user_id)
+    user = await find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     await db.delete(user)
@@ -78,7 +82,7 @@ async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
-    user = await User.find_by_id(db, user_id)
+    user = await find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     user.is_admin = True
@@ -92,7 +96,7 @@ async def demote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
-    user = await User.find_by_id(db, user_id)
+    user = await find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     user.is_admin = False
@@ -102,6 +106,7 @@ async def demote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
 __all__ = [
     "list_users",
     "find_by_email",
+    "find_by_id",
     "create",
     "bootstrap_admin",
     "delete_by_id",

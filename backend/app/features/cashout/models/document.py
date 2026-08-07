@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.infrastructure.db.models import Entity, enum_column
+from app.infrastructure.db.models import Base, enum_column
 from app.lib.documents import DocumentContentType
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .submission import CashoutSubmission
 
 
-class CashoutDocument(Entity):
+class CashoutDocument(Base):
     __tablename__ = "cashout_documents"
     # Name the unique index explicitly: cashout/errors.py maps it to
     # DOCUMENT_DUPLICATE, and a unique-index violation reports the index name.
@@ -56,6 +56,16 @@ class CashoutDocument(Entity):
         nullable=False,
         index=True,
     )
+
+    # Last to match the migrations' column order (metadata orders columns by
+    # declaration, and the inherited Entity columns used to land last).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
     cashout_submission: Mapped[CashoutSubmission] = relationship(
         back_populates="documents"
     )

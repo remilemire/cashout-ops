@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -37,8 +36,3 @@ class BaseIn(BaseModel):
     model_config = ConfigDict(
         alias_generator=snake_to_camel, validate_by_name=True, extra="forbid"
     )
-
-
-class EntityOut(BaseOut):
-    id: uuid.UUID
-    created_at: UtcDateTime

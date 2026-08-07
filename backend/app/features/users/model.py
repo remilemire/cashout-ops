@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, String, text
+from sqlalchemy import Boolean, DateTime, Index, String, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.infrastructure.db.models import Entity
+from app.infrastructure.db.models import Base
 
 
-class User(Entity):
+class User(Base):
     __tablename__ = "users"
     # Name the unique index explicitly: users/errors.py maps it to EMAIL_TAKEN,
     # and a unique-index violation reports the index name.
@@ -31,4 +32,13 @@ class User(Entity):
     # unverified accounts. The bootstrapped admin is created already verified.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # Last to match the migrations' column order (metadata orders columns by
+    # declaration, and the inherited Entity columns used to land last).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )

@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
+from app.features.users import service as users_service
 from app.features.users.model import User
 from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
@@ -77,7 +78,7 @@ async def send_new_code(
     ttl_minutes = settings.EMAIL_VERIFICATION_CODE_TTL_MINUTES
 
     async with sessionmaker() as db:
-        user = await User.find_by_id(db, user_id)
+        user = await users_service.find_by_id(db, user_id=user_id)
         if user is None or user.email_verified_at is not None:
             return
         recipient = user.email

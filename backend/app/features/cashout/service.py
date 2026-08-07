@@ -314,7 +314,7 @@ async def run_extraction(
     """
     async with sessionmaker() as db:
         try:
-            document = await CashoutDocument.find_by_id(db, document_id)
+            document = await db.get(CashoutDocument, document_id)
             if document is None:
                 # Deleted between the request committing and this job running;
                 # the cascade removed its analysis too — nothing to update.
@@ -417,21 +417,21 @@ async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
 
 
 async def _get_submission(db: AsyncSession, submission_id: UUID) -> CashoutSubmission:
-    submission = await CashoutSubmission.find_by_id(db, submission_id)
+    submission = await db.get(CashoutSubmission, submission_id)
     if submission is None:
         raise AppError("SUBMISSION_NOT_FOUND")
     return submission
 
 
 async def _get_document(db: AsyncSession, document_id: UUID) -> CashoutDocument:
-    document = await CashoutDocument.find_by_id(db, document_id)
+    document = await db.get(CashoutDocument, document_id)
     if document is None:
         raise AppError("DOCUMENT_NOT_FOUND")
     return document
 
 
 async def _get_analysis(db: AsyncSession, analysis_id: UUID) -> CashoutDocumentAnalysis:
-    analysis = await CashoutDocumentAnalysis.find_by_id(db, analysis_id)
+    analysis = await db.get(CashoutDocumentAnalysis, analysis_id)
     if analysis is None:
         raise AppError("ANALYSIS_NOT_FOUND")
     return analysis

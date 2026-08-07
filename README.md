@@ -103,7 +103,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
 │       ├── core/                      # config, cookies, schemas
-│       ├── infrastructure/            # db/ (Base, Entity, registry), redis/ (client lifespan)
+│       ├── infrastructure/            # db/ (Base, registry), redis/ (client lifespan)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # password hashing, session/CSRF cookies, token crypto
 │       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients

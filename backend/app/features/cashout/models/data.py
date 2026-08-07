@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Numeric
+from sqlalchemy import DateTime, ForeignKey, Numeric, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.infrastructure.db.models import Entity
+from app.infrastructure.db.models import Base
 
 if TYPE_CHECKING:
     from .submission import CashoutSubmission
 
 
-class CashoutData(Entity):
+class CashoutData(Base):
     """The reconciled result of a completed cashout.
 
     Built from the submission's verified document analyses when the cashout is
@@ -44,4 +45,14 @@ class CashoutData(Entity):
         unique=True,
         index=True,
     )
+
+    # Last to match the migrations' column order (metadata orders columns by
+    # declaration, and the inherited Entity columns used to land last).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
     submission: Mapped[CashoutSubmission] = relationship(back_populates="data")

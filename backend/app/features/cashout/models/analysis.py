@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +14,7 @@ from app.features.cashout.types import (
     CashoutDocumentClassification,
     DocumentAnalysisStatus,
 )
-from app.infrastructure.db.models import Entity, enum_column
+from app.infrastructure.db.models import Base, enum_column
 from app.integrations.ai import AIProvider
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .document import CashoutDocument
 
 
-class CashoutDocumentAnalysis(Entity):
+class CashoutDocumentAnalysis(Base):
     """One AI classification + extraction pass over a cashout document."""
 
     __tablename__ = "cashout_document_analyses"
@@ -89,6 +89,16 @@ class CashoutDocumentAnalysis(Entity):
         unique=True,
         index=True,
     )
+
+    # Last to match the migrations' column order (metadata orders columns by
+    # declaration, and the inherited Entity columns used to land last).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
     cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analysis")
 
     verified_by: Mapped[User | None] = relationship()

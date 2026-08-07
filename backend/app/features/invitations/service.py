@@ -65,7 +65,7 @@ async def mark_accepted(
 
 
 async def delete_by_id(db: AsyncSession, *, invitation_id: UUID) -> None:
-    invitation = await Invitation.find_by_id(db, invitation_id)
+    invitation = await db.get(Invitation, invitation_id)
     if invitation is None:
         raise AppError("INVITATION_NOT_FOUND")
     await db.delete(invitation)

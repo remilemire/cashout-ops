@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy import DateTime, ForeignKey, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.features.cashout.types import CashoutSubmissionStatus
-from app.infrastructure.db.models import Entity, enum_column
+from app.infrastructure.db.models import Base, enum_column
 
 if TYPE_CHECKING:
     from app.features.users.model import User
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .document import CashoutDocument
 
 
-class CashoutSubmission(Entity):
+class CashoutSubmission(Base):
     __tablename__ = "cashout_submissions"
 
     status: Mapped[CashoutSubmissionStatus] = mapped_column(
@@ -34,6 +34,15 @@ class CashoutSubmission(Entity):
     )
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+    # Last to match the migrations' column order (metadata orders columns by
+    # declaration, and the inherited Entity columns used to land last).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
     submitted_by: Mapped[User] = relationship()

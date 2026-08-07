@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import uuid
+
 from pydantic import EmailStr, Field
 
-from app.core.schemas import BaseIn, EntityOut, UtcDateTime
+from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 
 
-class UserOut(EntityOut):
+class UserOut(BaseOut):
+    id: uuid.UUID
+    created_at: UtcDateTime
     email: EmailStr
     full_name: str
     is_admin: bool
