@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
@@ -13,40 +12,36 @@ from app.features.auth.email_verification import service as email_verification_s
 from app.features.auth.sessions import service as sessions_service
 from app.infrastructure.redis import Redis
 
+from . import repository
 from .model import User
 from .schemas import UserCreate
 
 
 async def list_users(db: AsyncSession) -> Sequence[User]:
     """Every user, newest first (admin table)."""
-    stmt = select(User).order_by(User.created_at.desc())
-    return (await db.execute(stmt)).scalars().all()
+    return await repository.list_all(db)
 
 
 async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
-    stmt = select(User).where(User.email == email)
-
-    user = (await db.execute(stmt)).scalar_one_or_none()
-
-    return user
+    return await repository.find_by_email(db, email=email)
 
 
 async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
-    return await db.get(User, user_id)
+    return await repository.find_by_id(db, user_id=user_id)
 
 
-def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
+async def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         password_hash=password_hash,
     )
-    db.add(user)
+    await repository.add(db, user)
 
     return user
 
 
-def bootstrap_admin(
+async def bootstrap_admin(
     db: AsyncSession, *, payload: UserCreate, password_hash: str
 ) -> User:
     """Create the bootstrapped ADMIN_EMAIL account as an admin."""
@@ -56,16 +51,16 @@ def bootstrap_admin(
         is_admin=True,
         password_hash=password_hash,
     )
-    db.add(user)
+    await repository.add(db, user)
 
     return user
 
 
 async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None:
-    user = await find_by_id(db, user_id=user_id)
+    user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
-    await db.delete(user)
+    await repository.delete(db, user)
     # Best-effort session revocation and verification-code cleanup (the old
     # FK cascade): not atomic with the transaction (the planned transactional
     # outbox will make it so). If the Redis write is lost, authenticate's
@@ -82,7 +77,7 @@ async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
-    user = await find_by_id(db, user_id=user_id)
+    user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     user.is_admin = True
@@ -96,7 +91,7 @@ async def demote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
-    user = await find_by_id(db, user_id=user_id)
+    user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     user.is_admin = False

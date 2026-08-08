@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -11,7 +12,6 @@ from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
 from app.features.invitations import service as invitations_service
 from app.features.users import service as users_service
-from app.features.users.model import User
 from app.features.users.schemas import UserCreate
 from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
@@ -21,6 +21,9 @@ from .email_verification import service as email_verification_service
 from .schemas import AuthLogin, AuthRegister
 from .sessions import service as sessions_service
 from .types import UserWithSessionToken
+
+if TYPE_CHECKING:
+    from app.features.users.model import User
 
 
 async def login(
@@ -67,19 +70,17 @@ async def register(
     # needs a pending (unaccepted, unexpired) one.
     is_bootstrap_admin = payload.email == settings.ADMIN_EMAIL
     if is_bootstrap_admin:
-        user = users_service.bootstrap_admin(
+        user = await users_service.bootstrap_admin(
             db, payload=user_payload, password_hash=password_hash
         )
     else:
         if not await invitations_service.is_invited(db, email=payload.email):
             raise AppError("INVITATION_REQUIRED")
-        user = users_service.create(
+        user = await users_service.create(
             db, payload=user_payload, password_hash=password_hash
         )
 
-    # Flush so the new user's PK is assigned before it is referenced below.
-    await db.flush()
-
+    # The users repository flushed on add, so user.id is assigned below.
     if not is_bootstrap_admin:
         await invitations_service.mark_accepted(
             db, email=payload.email, accepted_by_id=user.id
@@ -113,7 +114,7 @@ async def authenticate(db: AsyncSession, redis: Redis, *, session_token: str) ->
     if user_id is None:
         raise AppError("INVALID_SESSION")
 
-    user = await db.get(User, user_id)
+    user = await users_service.find_by_id(db, user_id=user_id)
 
     if user is None:
         # The user row is gone (e.g. the account was deleted); the session is
