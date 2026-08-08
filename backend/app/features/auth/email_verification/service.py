@@ -1,25 +1,18 @@
 # backend/app/features/auth/email_verification/service.py
 
-"""Redis-backed email verification codes.
+"""Email verification orchestration.
 
-Verification codes live in Redis, not Postgres:
-
-- ``email_verification:{user_id}`` holds the SHA-256 hash of the emailed
-  6-digit code and expires after ``EMAIL_VERIFICATION_CODE_TTL_MINUTES`` —
-  Redis TTLs enforce expiry, so a missing key covers both "never issued"
-  and "expired".
-- A plain SET overwrites any outstanding code, so each user has at most one
-  active code and a resend invalidates the previous one.
-- A successful verification consumes the code by deleting the key.
-
-Only the hash is stored; the plaintext code exists solely in the email.
+Issues 6-digit codes, emails them to the user, and confirms submitted
+codes — marking the user verified and consuming the code on success. Only
+the SHA-256 hash of a code reaches the store; the plaintext exists solely
+in the email.
 """
 
 from __future__ import annotations
 
 import logging
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import partial
 from importlib.resources import files
 from uuid import UUID
@@ -35,6 +28,8 @@ from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 from app.security.crypto import hash_secret_token
 
+from . import store
+
 logger = logging.getLogger("app.email")
 
 # Six numeric digits (leading zeros allowed).
@@ -46,10 +41,6 @@ _TEMPLATE = (
     .joinpath("templates", "verify_email.html")
     .read_text(encoding="utf-8")
 )
-
-
-def _verification_key(user_id: UUID | str) -> str:
-    return f"email_verification:{user_id}"
 
 
 def _generate_code() -> str:
@@ -84,11 +75,8 @@ async def send_new_code(
         recipient = user.email
 
     code = _generate_code()
-    # SET overwrites: at most one active code per user, resend supersedes.
-    await redis.set(
-        _verification_key(user_id),
-        hash_secret_token(code),
-        ex=timedelta(minutes=ttl_minutes),
+    await store.save_code_hash(
+        redis, user_id=user_id, code_hash=hash_secret_token(code)
     )
 
     try:
@@ -136,25 +124,24 @@ async def verify_email(
     if user.email_verified_at is not None:
         raise AppError("VERIFICATION_ALREADY_VERIFIED")
 
-    key = _verification_key(user.id)
-    stored_hash = await redis.get(key)
+    stored_hash = await store.find_code_hash(redis, user_id=user.id)
 
     if stored_hash is None:
         # Redis TTL enforces expiry, so an expired code IS a missing key.
         raise AppError("VERIFICATION_CODE_EXPIRED")
 
-    if not secrets.compare_digest(str(stored_hash), hash_secret_token(code)):
+    if not secrets.compare_digest(stored_hash, hash_secret_token(code)):
         raise AppError("VERIFICATION_CODE_INVALID")
 
     # Consume the code so it cannot be replayed.
-    await redis.delete(key)
+    await store.delete(redis, user_id=user.id)
     user.email_verified_at = datetime.now(UTC)
     return user
 
 
 async def delete_for_user(redis: Redis, *, user_id: UUID) -> None:
     """Drop any outstanding verification code for the user (e.g. on deletion)."""
-    await redis.delete(_verification_key(user_id))
+    await store.delete(redis, user_id=user_id)
 
 
 __all__ = ["resend", "send_new_code", "verify_email", "delete_for_user"]
