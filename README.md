@@ -88,7 +88,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ## Project structure
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`.
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly.
 
 ```
 .

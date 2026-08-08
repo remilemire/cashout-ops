@@ -121,6 +121,18 @@ Services own application behavior and workflows.
 * Do not pass the authenticated actor into a service unless the actor is logically required by the operation itself.
 * Authentication, admin protection, and verified-user enforcement normally belong in FastAPI dependencies rather than being reproduced inside services.
 * Do not couple services to FastAPI request or response objects.
+* Services construct and mutate ORM entities, but delegate every session interaction to their feature's repository.
+
+### Repositories and stores
+
+Each feature's data access lives in a dedicated module beside its service:
+
+* `repository.py` owns all database access for the feature: query construction and every `AsyncSession` call (`select`/`execute`/`get`/`add`/`delete`/`flush`).
+* The Redis-backed auth sub-features (`sessions/`, `email_verification/`) use a `store.py` instead: it owns all Redis commands, key building, TTL enforcement, and value encoding/decoding.
+* Repositories and stores are feature-private: only the owning feature's service imports them. Cross-feature access goes service to service.
+* Services never build queries, call `db.*`, or issue Redis commands directly. Background jobs may own their transaction boundary (`async with sessionmaker() as db`, commit/rollback) but perform all reads and writes through the repository.
+* Flush placement is behavior (it controls when integrity errors surface for translation); preserve it when moving code.
+* Crypto stays out of stores: services hash tokens and codes; stores receive hashes.
 
 ### Dependencies
 
