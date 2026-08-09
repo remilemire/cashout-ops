@@ -10,6 +10,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import settings
+
 from .catalog import outbox_message_catalog
 from .contracts import OutboxHandler, OutboxHandlerRegistry
 from .dispatcher import OutboxDispatcher
@@ -51,7 +53,16 @@ def create_outbox_handler_registry(
 async def outbox_lifespan(worker_pool: OutboxWorkerPool) -> AsyncGenerator[None]:
     """Run the pool's dispatcher workers for the app's lifetime."""
     dispatchers = [
-        OutboxDispatcher(worker_pool.sessionmaker, worker_pool.registry)
+        OutboxDispatcher(
+            worker_pool.sessionmaker,
+            worker_pool.registry,
+            max_attempts=settings.OUTBOX_MAX_ATTEMPTS,
+            batch_size=settings.OUTBOX_BATCH_SIZE,
+            poll_interval_s=settings.OUTBOX_POLL_INTERVAL_SECONDS,
+            claim_ttl_s=settings.OUTBOX_CLAIM_TTL_SECONDS,
+            backoff_base_s=settings.OUTBOX_BACKOFF_BASE_SECONDS,
+            backoff_cap_s=settings.OUTBOX_BACKOFF_CAP_SECONDS,
+        )
         for _ in range(worker_pool.workers)
     ]
     for dispatcher in dispatchers:

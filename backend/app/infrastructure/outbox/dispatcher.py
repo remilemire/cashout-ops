@@ -51,12 +51,12 @@ class OutboxDispatcher:
         sessionmaker: async_sessionmaker[AsyncSession],
         registry: OutboxHandlerRegistry,
         *,
-        max_attempts: int = 10,
-        batch_size: int = 1,
-        poll_interval_s: int = 1,
-        claim_ttl_s: int = 30,
-        backoff_base_s: int = 5,
-        backoff_cap_s: int = 900,
+        max_attempts: int,
+        batch_size: int,
+        poll_interval_s: float,
+        claim_ttl_s: float,
+        backoff_base_s: float,
+        backoff_cap_s: float,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._registry = registry

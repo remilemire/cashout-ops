@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     # the account stays unverified until the code is entered before it expires.
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 15
 
+    # Outbox dispatch. Workers poll outbox_messages every POLL_INTERVAL; a
+    # claim is protected for CLAIM_TTL before a crashed worker's row becomes
+    # claimable again. Failed attempts retry with exponential backoff
+    # (BACKOFF_BASE * 2^(attempt-1), capped at BACKOFF_CAP) until MAX_ATTEMPTS
+    # runs out and the message dead-letters.
+    OUTBOX_MAX_ATTEMPTS: int = 10
+    OUTBOX_BATCH_SIZE: int = 1
+    OUTBOX_POLL_INTERVAL_SECONDS: float = 1.0
+    OUTBOX_CLAIM_TTL_SECONDS: float = 30.0
+    OUTBOX_BACKOFF_BASE_SECONDS: float = 5.0
+    OUTBOX_BACKOFF_CAP_SECONDS: float = 900.0
+
     # Document-AI provider selection. Only the selected provider's API key is
     # required; the lifespan validates it at startup.
     AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC

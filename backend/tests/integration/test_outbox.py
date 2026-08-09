@@ -12,7 +12,10 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.infrastructure.outbox.contracts import OutboxMessageDefinition
+from app.infrastructure.outbox.contracts import (
+    OutboxHandlerRegistry,
+    OutboxMessageDefinition,
+)
 from app.infrastructure.outbox.dispatcher import OutboxDispatcher
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.outbox.messages.service import insert_outbox_message
@@ -47,6 +50,23 @@ class RecordingHandler:
 
     async def on_dead_letter(self, payload: GreetPayload) -> None:
         self.dead_lettered.append(payload)
+
+
+def _dispatcher(
+    sessionmaker: async_sessionmaker[AsyncSession], registry: OutboxHandlerRegistry
+) -> OutboxDispatcher:
+    # Production defaults except the poll interval, kept short so the
+    # lifecycle test reacts quickly.
+    return OutboxDispatcher(
+        sessionmaker,
+        registry,
+        max_attempts=10,
+        batch_size=1,
+        poll_interval_s=0.05,
+        claim_ttl_s=30.0,
+        backoff_base_s=5.0,
+        backoff_cap_s=900.0,
+    )
 
 
 async def _insert(
@@ -122,7 +142,7 @@ async def test_tick_processes_a_pending_message(
     message_id = await _insert(
         db_sessionmaker, type=greet_message.type, payload=GreetPayload(name="ada")
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {greet_message.type: handler})
+    dispatcher = _dispatcher(db_sessionmaker, {greet_message.type: handler})
 
     assert await dispatcher.tick() == 1
 
@@ -143,7 +163,7 @@ async def test_a_failed_attempt_backs_off_and_records_the_error(
     message_id = await _insert(
         db_sessionmaker, type=greet_message.type, payload=GreetPayload(name="ada")
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {greet_message.type: handler})
+    dispatcher = _dispatcher(db_sessionmaker, {greet_message.type: handler})
 
     before = datetime.now(UTC)
     assert await dispatcher.tick() == 1
@@ -172,7 +192,7 @@ async def test_exhausted_attempts_dead_letter_the_message(
         payload=GreetPayload(name="ada"),
         max_attempts=1,
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {greet_message.type: handler})
+    dispatcher = _dispatcher(db_sessionmaker, {greet_message.type: handler})
 
     # The single allowed attempt fails; the same tick's sweep dead-letters it.
     assert await dispatcher.tick() == 1
@@ -198,7 +218,7 @@ async def test_an_unparseable_payload_dead_letters_without_the_callback(
     message_id = await _insert(
         db_sessionmaker, type=greet_message.type, payload=WrongPayload(count=3)
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {greet_message.type: handler})
+    dispatcher = _dispatcher(db_sessionmaker, {greet_message.type: handler})
 
     assert await dispatcher.tick() == 1
 
@@ -215,7 +235,7 @@ async def test_a_message_with_no_handler_dead_letters(
     message_id = await _insert(
         db_sessionmaker, type="test.orphan", payload=GreetPayload(name="ada")
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {})
+    dispatcher = _dispatcher(db_sessionmaker, {})
 
     assert await dispatcher.tick() == 1
 
@@ -237,7 +257,7 @@ async def test_start_and_end_process_messages_in_the_background(
     await _insert(
         db_sessionmaker, type=greet_message.type, payload=GreetPayload(name="ada")
     )
-    dispatcher = OutboxDispatcher(db_sessionmaker, {greet_message.type: handler})
+    dispatcher = _dispatcher(db_sessionmaker, {greet_message.type: handler})
 
     await dispatcher.start()
     try:
