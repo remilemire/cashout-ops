@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -27,6 +27,9 @@ class OutboxHandler[TPayload: BaseModel = BaseModel](Protocol):
     async def on_dead_letter(self, payload: TPayload) -> None: ...
 
 
-type OutboxHandlerRegistry = Mapping[str, OutboxHandler]
+# Registry values are handlers for heterogeneous payload types; `Any` is what
+# makes a concrete OutboxHandler[SpecificPayload] assignable here (TPayload is
+# invariant because it appears in `handle`'s parameter position).
+type OutboxHandlerRegistry = Mapping[str, OutboxHandler[Any]]
 
 __all__ = ["OutboxMessageDefinition", "OutboxHandler", "OutboxHandlerRegistry"]

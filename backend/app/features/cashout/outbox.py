@@ -1,37 +1,80 @@
 # backend/app/features/cashout/outbox.py
 
+"""Outbox message definitions and handlers for the cashout feature.
+
+Defined but not yet wired: the upload/re-extract services still queue
+`run_extraction` through PostCommitTasks; replacing that with `enqueue` is a
+separate task.
+"""
+
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING
+from uuid import UUID
+
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.infrastructure.outbox import (
-    OutboxMessageDefinition,
+from app.infrastructure.outbox import OutboxMessageDefinition
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from .extraction import CashoutDocumentProcessor
+
+logger = logging.getLogger(__name__)
+
+
+class RunExtraction(BaseModel):
+    document_id: UUID
+
+
+run_extraction_message = OutboxMessageDefinition(
+    "cashout.run_extraction", RunExtraction
 )
 
-
-class _ExampleSchema(BaseModel):
-    name: str
-
-
-_example_outbox_message_definition = OutboxMessageDefinition(
-    "cashout.example", _ExampleSchema
-)
-
-cashout_outbox_message_definitions = [_example_outbox_message_definition]
+cashout_outbox_message_definitions: list[OutboxMessageDefinition] = [
+    run_extraction_message
+]
 
 
-class ExampleOutboxHandler:
-    message = _example_outbox_message_definition
+class RunExtractionOutboxHandler:
+    """Runs the AI extraction for an uploaded document."""
 
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]):
-        self.sessionmaker = sessionmaker
+    message = run_extraction_message
 
-    async def handler(self, payload: _ExampleSchema) -> None:
-        print(payload.name + " handled")
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        processor: CashoutDocumentProcessor,
+    ) -> None:
+        self._sessionmaker = sessionmaker
+        self._processor = processor
 
-    async def on_dead_letter(self, payload: _ExampleSchema) -> None:
-        print(payload.name + " dead")
+    async def handle(self, payload: RunExtraction) -> None:
+        # Imported at call time: the outbox catalog imports this module, and
+        # the service will import the outbox to enqueue — a module-level
+        # service import would close that cycle.
+        from .service import run_extraction
+
+        await run_extraction(
+            self._sessionmaker,
+            document_id=payload.document_id,
+            processor=self._processor,
+        )
+
+    async def on_dead_letter(self, payload: RunExtraction) -> None:
+        # run_extraction already marks its analysis FAILED on any error, so
+        # there is nothing to clean up here beyond making the loss visible.
+        logger.error(
+            "Extraction outbox message dead-lettered for document %s",
+            payload.document_id,
+        )
 
 
-__all__ = ["cashout_outbox_message_definitions", "ExampleOutboxHandler"]
+__all__ = [
+    "RunExtraction",
+    "RunExtractionOutboxHandler",
+    "cashout_outbox_message_definitions",
+    "run_extraction_message",
+]
