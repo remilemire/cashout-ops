@@ -2,9 +2,8 @@
 
 """Outbox message definitions and handlers for the cashout feature.
 
-Defined but not yet wired: the upload/re-extract services still queue
-`run_extraction` through PostCommitTasks; replacing that with `enqueue` is a
-separate task.
+The upload and re-extract services enqueue `cashout.run_extraction` in their
+request transaction; the handler runs the AI extraction at dispatch.
 """
 
 from __future__ import annotations

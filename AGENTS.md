@@ -158,17 +158,13 @@ Do not move request-bound authorization checks into services merely to make a ro
 
 ## Transactions and Deferred Work
 
-Post-commit tasks are currently used for:
+Deferred work runs through the transactional outbox (`backend/app/infrastructure/outbox/`): `enqueue` persists a message inside the caller's transaction, and dispatcher workers started by the app lifespan deliver it through the owning feature's registered handler (`features/<feature>/outbox.py`).
 
-* AI extraction.
-* Verification email delivery.
-
-The planned replacement is a transactional outbox.
-
-* Do not introduce a second deferred-work mechanism without explicit instruction.
+* AI extraction and verification email delivery both run through the outbox.
+* Do not introduce another deferred-work mechanism without explicit instruction.
 * Do not send emails or start AI extraction before the required database transaction has committed.
-* When implementing the transactional outbox task, replace the applicable post-commit behavior rather than layering an unrelated mechanism beside it.
 * Keep HTTP routers unaware of the low-level delivery mechanism.
+* In tests, delivery is explicit: the app fixture runs no dispatcher, so use the `drain_outbox` fixture to run enqueued work.
 
 ## Errors
 

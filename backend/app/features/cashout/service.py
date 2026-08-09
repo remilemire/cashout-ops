@@ -6,15 +6,14 @@ import hashlib
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from functools import partial
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.dependencies.background import PostCommitTasks
 from app.documents import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
+from app.infrastructure.outbox import service as outbox_service
 from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
 
@@ -27,6 +26,7 @@ from .models import (
     CashoutDocumentAnalysis,
     CashoutSubmission,
 )
+from .outbox import run_extraction_message
 from .schemas import CashoutAnalysisVerify
 from .types import (
     CashoutSubmissionStatus,
@@ -146,14 +146,13 @@ async def upload_document(
     user_id: UUID,
     storage: DocumentStorageClient,
     processor: CashoutDocumentProcessor,
-    post_commit: PostCommitTasks,
-    sessionmaker: async_sessionmaker[AsyncSession],
 ) -> CashoutDocumentAnalysis:
     """Store the document, create its EXTRACTING analysis, and queue extraction.
 
-    The AI extraction itself runs in a post-commit background job
-    (`run_extraction`), queued here to run once the request transaction
-    commits; clients poll the returned analysis.
+    The AI extraction itself runs from the outbox (`run_extraction` via the
+    extraction handler); the message is enqueued in this transaction, so it
+    dispatches only once the upload commits. Clients poll the returned
+    analysis.
     """
     submission = await _get_owned_submission(
         db, submission_id=submission_id, user_id=user_id
@@ -180,13 +179,10 @@ async def upload_document(
     await storage.write(document.storage_key, payload.data)
 
     analysis = await _reset_analysis(db, document=document, processor=processor)
-    post_commit.add(
-        partial(
-            run_extraction,
-            sessionmaker,
-            document_id=document.id,
-            processor=processor,
-        )
+    await outbox_service.enqueue(
+        db,
+        type=run_extraction_message.type,
+        payload={"document_id": str(document.id)},
     )
     return analysis
 
@@ -233,15 +229,12 @@ async def extract_document(
     document_id: UUID,
     user_id: UUID,
     processor: CashoutDocumentProcessor,
-    post_commit: PostCommitTasks,
-    sessionmaker: async_sessionmaker[AsyncSession],
 ) -> CashoutDocumentAnalysis:
     """Reset a document's analysis and queue a fresh extraction attempt.
 
-    As with upload, the extraction itself runs in a post-commit background
-    job, queued here to run once the request transaction commits. Verified
-    analyses cannot be re-run, and an extraction already in flight cannot be
-    restarted.
+    As with upload, the extraction message is enqueued in this transaction
+    and dispatches once the request commits. Verified analyses cannot be
+    re-run, and an extraction already in flight cannot be restarted.
     """
     document = await _get_document(db, document_id)
     submission = await _get_owned_submission(
@@ -253,13 +246,10 @@ async def extract_document(
         )
 
     analysis = await _reset_analysis(db, document=document, processor=processor)
-    post_commit.add(
-        partial(
-            run_extraction,
-            sessionmaker,
-            document_id=document_id,
-            processor=processor,
-        )
+    await outbox_service.enqueue(
+        db,
+        type=run_extraction_message.type,
+        payload={"document_id": str(document_id)},
     )
     return analysis
 
@@ -270,11 +260,13 @@ async def run_extraction(
     document_id: UUID,
     processor: CashoutDocumentProcessor,
 ) -> None:
-    """Background task: run the AI extraction and persist the outcome.
+    """Outbox job: run the AI extraction and persist the outcome.
 
-    Runs after the upload/extract request has committed its EXTRACTING
-    analysis, so it owns its session and transaction — the one sanctioned
-    exception to "services never commit".
+    Runs from the extraction handler after the upload/extract request has
+    committed its EXTRACTING analysis, so it owns its session and
+    transaction — the one sanctioned exception to "services never commit".
+    All failures are handled here (the analysis is marked FAILED), so the
+    outbox message completes even when the extraction does not.
     """
     async with sessionmaker() as db:
         try:

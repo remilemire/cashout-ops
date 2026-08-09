@@ -6,16 +6,13 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Response, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import (
-    PostCommitTasks,
     get_cashout_document_processor,
     get_current_user,
     get_db,
-    get_db_sessionmaker,
     get_document_storage,
-    get_post_commit_tasks,
     require_admin,
     require_csrf,
     require_verified_user,
@@ -38,14 +35,10 @@ from .schemas import (
 )
 from .types import DocumentUpload
 
-# get_post_commit_tasks MUST come first: teardown is LIFO, so entering it
-# before get_current_user (which opens the get_db session) is what makes the
-# queued extraction jobs run after the request transaction commits.
 router = APIRouter(
     prefix="/cashout",
     tags=["cashout"],
     dependencies=[
-        Depends(get_post_commit_tasks),
         Depends(require_csrf),
         Depends(get_current_user),
         Depends(require_verified_user),
@@ -63,10 +56,6 @@ router = APIRouter(
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
 DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
-
-DbSessionmaker = Annotated[
-    async_sessionmaker[AsyncSession], Depends(get_db_sessionmaker)
-]
 
 
 # ================================
@@ -194,9 +183,7 @@ async def complete_submission(
 async def upload_document(
     submission_id: SubmissionId,
     file: UploadFile,
-    post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    sessionmaker: DbSessionmaker,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
     processor: Annotated[
@@ -223,8 +210,6 @@ async def upload_document(
         user_id=current_user.id,
         storage=storage,
         processor=processor,
-        post_commit=post_commit,
-        sessionmaker=sessionmaker,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 
@@ -268,9 +253,7 @@ async def delete_document(
 )
 async def extract_document(
     document_id: DocumentId,
-    post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    sessionmaker: DbSessionmaker,
     current_user: Annotated[User, Depends(get_current_user)],
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
@@ -287,8 +270,6 @@ async def extract_document(
         document_id=document_id,
         user_id=current_user.id,
         processor=processor,
-        post_commit=post_commit,
-        sessionmaker=sessionmaker,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

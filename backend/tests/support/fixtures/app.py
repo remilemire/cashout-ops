@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.dependencies import (
     get_cashout_document_processor,
     get_db,
-    get_db_sessionmaker,
     get_document_storage,
     get_email_client,
     get_redis,
@@ -48,8 +47,6 @@ def app(
 
     application = create_app()
     application.dependency_overrides[get_db] = _get_db
-    # Background tasks (document extraction) build their own session from this.
-    application.dependency_overrides[get_db_sessionmaker] = lambda: db_sessionmaker
     application.dependency_overrides[get_cashout_document_processor] = lambda: processor
     application.dependency_overrides[get_document_storage] = lambda: storage
     application.dependency_overrides[get_email_client] = lambda: email_client

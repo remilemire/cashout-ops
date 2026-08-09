@@ -22,6 +22,7 @@ from tests.support.cashout import (
 from tests.support.documents import SAMPLE_PDF_BYTES
 from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 from tests.support.fixtures.clients import ClientFactory
+from tests.support.fixtures.outbox import OutboxDrain
 
 # ================================
 # --------- Happy path -----------
@@ -31,13 +32,14 @@ from tests.support.fixtures.clients import ClientFactory
 async def test_full_cashout_flow(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
 
     submission_id = await create_submission(cashier_client)
 
     # Upload returns immediately with an EXTRACTING analysis.
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert created["status"] == DocumentAnalysisStatus.EXTRACTING.value
     assert created["extractedDataJson"] is None
 
@@ -85,11 +87,13 @@ async def test_full_cashout_flow(
 
 
 async def test_verify_without_corrections_confirms_extraction(
-    cashier_client: AsyncClient, ai_client: FakeAIClient
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
 
     verified = await verify_analysis(cashier_client, analysis["id"])
@@ -120,10 +124,11 @@ async def test_document_content_served_to_owner_and_admin(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     url = f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
 
     owner = await cashier_client.get(url)
@@ -139,10 +144,11 @@ async def test_data_table_is_admin_only(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
     await complete_submission(cashier_client, submission_id)
 
@@ -179,10 +185,11 @@ async def test_delete_processing_submission_removes_documents(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id)
+    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
 
     response = await cashier_client.delete(
@@ -202,10 +209,11 @@ async def test_delete_completed_submission_is_restricted(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id)
+    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, analysis["id"])
     await complete_submission(cashier_client, submission_id)
 
@@ -244,10 +252,11 @@ async def test_delete_document_from_processing_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id)
+    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
 
     response = await cashier_client.delete(
@@ -272,10 +281,11 @@ async def test_delete_document_after_completion_conflicts(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id)
+    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, analysis["id"])
     await complete_submission(cashier_client, submission_id)
 
@@ -298,10 +308,11 @@ async def test_delete_document_requires_owner(
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id)
+    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
     response = await admin_client.delete(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
@@ -350,10 +361,11 @@ async def test_upload_rejects_duplicate_document(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    await upload_document(cashier_client, submission_id)
+    await upload_document(cashier_client, submission_id, drain=drain_outbox)
     stored_before = len(storage.objects)
 
     # Same bytes again (filename doesn't matter): rejected by checksum.
@@ -370,18 +382,20 @@ async def test_upload_rejects_duplicate_document(
 
     # The same file is still allowed in a *different* submission.
     other_submission_id = await create_submission(cashier_client)
-    await upload_document(cashier_client, other_submission_id)
+    await upload_document(cashier_client, other_submission_id, drain=drain_outbox)
 
 
 async def test_unknown_document_completes_without_data(
-    cashier_client: AsyncClient, ai_client: FakeAIClient
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     ai_client.classification = DocumentClassification[CashoutDocumentClassification](
         value=None, confidence=0.3
     )
 
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
     # A document the AI can't place is not a failure: the analysis completes
     # as UNKNOWN with nothing to extract, awaiting the cashier.
@@ -397,6 +411,7 @@ async def test_unknown_document_completes_without_data(
 async def test_failed_extraction_and_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     from app.features.cashout.analysis_errors import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
@@ -406,7 +421,7 @@ async def test_failed_extraction_and_retry(
     )
 
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
     # The provider failure is recorded on the analysis as FAILED.
     analysis = await poll_analysis(cashier_client, created["id"])
@@ -436,17 +451,21 @@ async def test_failed_extraction_and_retry(
     assert retry.status_code == 200, retry.text
     assert retry.json()["status"] == DocumentAnalysisStatus.EXTRACTING.value
 
+    # The retry only enqueued the extraction; run it before polling.
+    await drain_outbox()
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["errorCode"] is None
 
 
 async def test_verify_twice_conflicts(
-    cashier_client: AsyncClient, ai_client: FakeAIClient
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     response = await cashier_client.post(
@@ -460,11 +479,15 @@ async def test_verify_twice_conflicts(
 
 
 async def test_complete_requires_every_analysis_verified(
-    cashier_client: AsyncClient, ai_client: FakeAIClient
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    await upload_document(cashier_client, submission_id)  # extracted, never verified
+    await upload_document(
+        cashier_client, submission_id, drain=drain_outbox
+    )  # extracted, never verified
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
@@ -479,10 +502,11 @@ async def test_complete_requires_owner(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     # Completion is the cashier's action; even an admin cannot close out
@@ -500,10 +524,11 @@ async def test_cannot_access_another_users_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     make_client: ClientFactory,
+    drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
     # A second, unrelated cashier can see neither the submission nor poll
     # its analyses.
