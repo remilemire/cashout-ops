@@ -10,11 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
 from app.errors.openapi import error_responses
-from app.features.auth.dependencies import (
-    get_current_user,
-    require_admin,
-    require_verified_user,
-)
+from app.features.auth.dependencies import get_current_user, require_admin
 from app.features.users.model import User
 from app.infrastructure.db.dependencies import get_db
 from app.integrations.storage import DocumentStorageClient
@@ -41,14 +37,12 @@ router = APIRouter(
     dependencies=[
         Depends(require_csrf),
         Depends(get_current_user),
-        Depends(require_verified_user),
     ],
     responses=error_responses(
         "UNAUTHENTICATED",
         "INVALID_SESSION",
         "INVALID_CSRF_TOKEN",
         "FORBIDDEN",
-        "EMAIL_NOT_VERIFIED",
     ),
 )
 

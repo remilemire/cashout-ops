@@ -15,13 +15,9 @@ from app.security.cookies import (
 )
 
 from . import service as auth_service
-from .email_verification.router import router as email_verification_router
 from .login_challenges.router import router as login_challenges_router
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# Email verification lives under /auth (e.g. /auth/email-verification/verify).
-router.include_router(email_verification_router)
 
 # Passwordless login lives under /auth (e.g. /auth/login/verify-code).
 router.include_router(login_challenges_router)

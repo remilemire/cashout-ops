@@ -37,20 +37,6 @@ class FakeEmailClient(EmailClient):
             raise self.fail_with
         self.sent.append(SentEmail(to=to, subject=subject, html=html))
 
-    def latest_code(self, *, to: str | None = None) -> str:
-        """The verification code from the most recent matching email.
-
-        The service emails a `_CODE_DIGITS`-digit numeric code, which is the
-        only channel a test can learn it from (Redis stores only the hash).
-        """
-        for email in reversed(self.sent):
-            if to is not None and email.to != to:
-                continue
-            match = re.search(r"\d{6}", email.html)
-            if match is not None:
-                return match.group()
-        raise AssertionError(f"no verification code emailed (to={to!r})")
-
     def latest_link(self, *, to: str | None = None) -> LoginLink:
         """The sign-in link parameters from the most recent matching email.
 

@@ -37,10 +37,6 @@ class Settings(BaseSettings):
     # default targets the Vite server; production must set its real origin.
     APP_BASE_URL: str = "http://localhost:5173"
 
-    # Email verification. A short-lived numeric code is emailed on registration;
-    # the account stays unverified until the code is entered before it expires.
-    EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 15
-
     # Login challenges. A sign-in link is emailed on login; the challenge (and
     # with it the link and its one-time code) expires this long after initiation.
     LOGIN_CHALLENGE_TTL_MINUTES: int = 15

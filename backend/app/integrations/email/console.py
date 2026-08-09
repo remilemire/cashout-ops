@@ -11,8 +11,9 @@ class ConsoleEmailClient:
     """`EmailClient` that logs messages instead of sending them.
 
     The development/default stand-in when no `RESEND_API_KEY` is configured, so
-    the app boots and the verification flow works end to end locally — the code
-    lands in the server logs. Swap in `ResendEmailClient` for real delivery.
+    the app boots and the passwordless sign-in flow works end to end locally —
+    the link lands in the server logs. Swap in `ResendEmailClient` for real
+    delivery.
     """
 
     def __init__(self, *, sender: str) -> None:

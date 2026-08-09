@@ -24,14 +24,6 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default=text("true")
-    )
-    # Null until the emailed verification code is entered; the frontend gates
-    # unverified accounts. The bootstrapped admin is created already verified.
-    email_verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
 
     # Last to match the migrations' column order (metadata orders columns by
     # declaration, and the inherited Entity columns used to land last).

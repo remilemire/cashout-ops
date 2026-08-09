@@ -9,11 +9,7 @@ from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.openapi import error_responses
-from app.features.auth.dependencies import (
-    get_current_user,
-    require_admin,
-    require_verified_user,
-)
+from app.features.auth.dependencies import get_current_user, require_admin
 from app.infrastructure.db.dependencies import get_db
 from app.security.dependencies import require_csrf
 
@@ -40,8 +36,8 @@ def get_me(
 @router.get(
     "",
     response_model=list[UserOut],
-    dependencies=[Depends(require_verified_user), Depends(require_admin)],
-    responses=error_responses("FORBIDDEN", "EMAIL_NOT_VERIFIED"),
+    dependencies=[Depends(require_admin)],
+    responses=error_responses("FORBIDDEN"),
 )
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -55,10 +51,8 @@ async def list_users(
     "",
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_verified_user), Depends(require_admin)],
-    responses=error_responses(
-        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "EMAIL_TAKEN", "VALIDATION_FAILED"
-    ),
+    dependencies=[Depends(require_admin)],
+    responses=error_responses("FORBIDDEN", "EMAIL_TAKEN", "VALIDATION_FAILED"),
 )
 async def create_user(
     payload: UserCreate,
@@ -79,10 +73,8 @@ UserId = Annotated[UUID, Path(description="User ID.")]
 @router.post(
     "/{user_id}/promote",
     response_model=UserOut,
-    dependencies=[Depends(require_verified_user)],
     responses=error_responses(
         "FORBIDDEN",
-        "EMAIL_NOT_VERIFIED",
         "USER_NOT_FOUND",
         "VALIDATION_FAILED",
         "CANNOT_MODIFY_OWN_ADMIN",
@@ -101,10 +93,8 @@ async def promote_user(
 @router.post(
     "/{user_id}/demote",
     response_model=UserOut,
-    dependencies=[Depends(require_verified_user)],
     responses=error_responses(
         "FORBIDDEN",
-        "EMAIL_NOT_VERIFIED",
         "USER_NOT_FOUND",
         "VALIDATION_FAILED",
         "CANNOT_MODIFY_OWN_ADMIN",

@@ -25,7 +25,8 @@ completes the cashout.
 ## Conventions
 
 - JSON is **camelCase** in and out; timestamps are ISO-8601 UTC with a trailing `Z`.
-- Authentication is a `session_token` HttpOnly cookie (set by register/login).
+- Authentication is a `session_token` HttpOnly cookie, set when a passwordless
+  login challenge is completed (`/auth/login/verify-code`).
 - Unsafe methods require the double-submit CSRF check: send the JS-readable
   `csrf_token` cookie's value in the `x-csrf-token` header.
 - Errors always use one body shape: `{ "kind", "code", "message", "issues" }`,
@@ -37,10 +38,11 @@ OPENAPI_TAGS = [
     {
         "name": "auth",
         "description": (
-            "Register, login, and logout (cookie sessions), plus email "
-            "verification: confirm a new account's email with the code sent on "
-            "registration, or resend it. Accounts stay unverified until "
-            "confirmed."
+            "Passwordless login. Submitting an email always returns a "
+            "challenge (account existence is never revealed); the emailed "
+            "link reveals a one-time code, and verifying the code in the "
+            "initiating tab starts a cookie session. Accounts are created "
+            "by admins."
         ),
     },
     {"name": "users", "description": "The authenticated user."},

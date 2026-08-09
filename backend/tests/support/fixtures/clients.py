@@ -6,17 +6,13 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from app.features.users.model import User
 
 from ..api import ADMIN_EMAIL, login
 from ..factories import create_user
@@ -35,7 +31,6 @@ class ClientFactory(Protocol):
         email: str | None = None,
         full_name: str = "Test User",
         admin: bool = False,
-        verified: bool = True,
     ) -> AsyncClient: ...
 
 
@@ -70,16 +65,13 @@ async def make_client(
             email: str | None = None,
             full_name: str = "Test User",
             admin: bool = False,
-            verified: bool = True,
         ) -> AsyncClient:
             resolved = (
                 ADMIN_EMAIL if admin else (email or f"user-{uuid4().hex[:8]}@test.com")
             )
             if not admin:
                 async with db_sessionmaker() as db:
-                    await create_user(
-                        db, email=resolved, full_name=full_name, verified=verified
-                    )
+                    await create_user(db, email=resolved, full_name=full_name)
             http_client = await stack.enter_async_context(
                 AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
             )
@@ -89,24 +81,9 @@ async def make_client(
                 drain_outbox=drain_outbox,
                 email_client=email_client,
             )
-            if admin and verified:
-                # The lazy bootstrap creates the admin unverified; mark it
-                # verified directly. Temporary scaffolding until the next
-                # increment removes email verification entirely.
-                async with db_sessionmaker() as db:
-                    stmt = select(User).where(User.email == resolved)
-                    user = (await db.execute(stmt)).scalar_one()
-                    user.email_verified_at = datetime.now(UTC)
-                    await db.commit()
             return http_client
 
         yield _make
-
-
-@pytest_asyncio.fixture
-async def unverified_client(make_client: ClientFactory) -> AsyncClient:
-    """A signed-in cashier that has NOT verified its email (for the gate flow)."""
-    return await make_client(email="cashier@test.com", verified=False)
 
 
 @pytest_asyncio.fixture

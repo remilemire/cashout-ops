@@ -34,8 +34,8 @@ starting a container.
 tests/
   conftest.py            env defaults, pytest_plugins, tier auto-markers
   support/
-    api.py               ADMIN_EMAIL, DEFAULT_PASSWORD, csrf_headers, register, login
-    factories.py         direct DB seeding: create_user, create_invitation, verify_user
+    api.py               ADMIN_EMAIL, csrf_headers, login
+    factories.py         direct DB seeding: create_user
     cashout.py           workflow drivers: create_submission, upload_document,
                          poll_analysis, verify_analysis, complete_submission,
                          configure_manual_note
@@ -58,7 +58,7 @@ redis_url (session) ──sets──> _redis_state (session) ──> redis_clien
 clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis never provisioned
 ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
 email_client + redis_client ──────┘      └─> client / make_client
-                                              └─> unverified_client / cashier_client / admin_client
+                                              └─> cashier_client / admin_client
 ```
 
 - `app` is a fresh `create_app()` instance per test with the database, Redis,
@@ -73,10 +73,9 @@ email_client + redis_client ──────┘      └─> client / make_cli
       admin = await make_client(admin=True)
   ```
 
-  It seeds the invitation, registers through the real API (the client carries
-  session + csrf cookies), and marks the email verified unless
-  `verified=False`. `cashier_client` / `admin_client` / `unverified_client`
-  are shorthands built on it.
+  It seeds the user row directly, then signs in through the real passwordless
+  challenge flow (the client carries session + csrf cookies).
+  `cashier_client` / `admin_client` are shorthands built on it.
 - Isolation between tests is TRUNCATE-after-each-test (`clean_tables`) and
   FLUSHDB-after-each-test (`clean_redis`), not transaction rollback: tests
   really commit.
