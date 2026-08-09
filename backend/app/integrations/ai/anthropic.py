@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from app.lib.documents import DocumentContent, DocumentContentType
 
-from .client import AIClient, AIContent, ResponseModelT
+from .client import AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
 from .types import AIProvider
@@ -31,7 +31,7 @@ _IMAGE_MEDIA_TYPES: Mapping[
 }
 
 
-class AnthropicAIClient(AIClient):
+class AnthropicAIClient:
     """`AIClient` backed by the Anthropic Messages API."""
 
     provider: AIProvider = AIProvider.ANTHROPIC

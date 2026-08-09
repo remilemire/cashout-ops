@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from .client import EmailClient
-
 logger = logging.getLogger("app.email")
 
 
-class ConsoleEmailClient(EmailClient):
+class ConsoleEmailClient:
     """`EmailClient` that logs messages instead of sending them.
 
     The development/default stand-in when no `RESEND_API_KEY` is configured, so

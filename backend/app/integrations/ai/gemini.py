@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.lib.documents import DocumentContent
 
-from .client import AIClient, AIContent, ResponseModelT
+from .client import AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
 from .types import AIProvider
@@ -27,7 +27,7 @@ _REFUSAL_FINISH_REASONS = frozenset(
 )
 
 
-class GeminiAIClient(AIClient):
+class GeminiAIClient:
     """`AIClient` backed by the Google Gemini API (structured output).
 
     Note: exercised only against fakes in the test suite — not yet verified

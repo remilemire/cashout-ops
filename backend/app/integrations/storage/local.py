@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from .client import DocumentStorageClient
 from .errors import DocumentNotFoundError
 from .keys import validate_storage_key
 
 
-class LocalDocumentStorageClient(DocumentStorageClient):
+class LocalDocumentStorageClient:
     """`DocumentStorageClient` backed by a local directory.
 
     Suitable for development and single-instance deployments; the directory is

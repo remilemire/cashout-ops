@@ -6,10 +6,10 @@ import asyncio
 
 import resend
 
-from .client import EmailClient, EmailDeliveryError
+from .client import EmailDeliveryError
 
 
-class ResendEmailClient(EmailClient):
+class ResendEmailClient:
     """`EmailClient` backed by Resend (https://resend.com).
 
     The Resend SDK is synchronous and keeps its API key in a module global, so
