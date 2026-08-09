@@ -172,8 +172,8 @@ async def test_a_failed_attempt_backs_off_and_records_the_error(
     assert message.completed_at is None
     assert message.dead_lettered_at is None
     assert message.attempts == 1
-    assert message.last_error is not None
-    assert "smtp down" in message.last_error
+    # A concise application-level description, not a stack trace.
+    assert message.last_error == "RuntimeError: smtp down"
     assert message.claim_id is None
     assert message.available_at > before  # pushed forward by the retry backoff
 

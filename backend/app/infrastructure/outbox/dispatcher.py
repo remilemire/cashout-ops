@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,6 +16,16 @@ from .contracts import OutboxHandler, OutboxHandlerRegistry
 from .messages import repository
 
 logger = logging.getLogger(__name__)
+
+
+def _describe_error(error: BaseException) -> str:
+    """One-line summary for `last_error`: the exception type and its message.
+
+    Stack traces are operator diagnostics and belong in the logs (every
+    failure path below calls `logger.exception`), not in application state.
+    """
+    detail = str(error) or repr(error)
+    return f"{type(error).__qualname__}: {detail}"
 
 
 @dataclass(frozen=True)
@@ -160,25 +169,25 @@ class OutboxDispatcher:
 
         try:
             payload = handler.message.payload.model_validate(message.payload)
-        except ValidationError:
+        except ValidationError as error:
             logger.exception(
                 'Outbox payload for message type "%s" no longer parses', message.type
             )
             await self._finalize_dead_letter(
-                claim_id, message.id, error=traceback.format_exc()
+                claim_id, message.id, error=_describe_error(error)
             )
             return
 
         try:
             await handler.handle(payload)
-        except Exception:
+        except Exception as error:
             logger.exception(
                 'Outbox handler for message type "%s" failed (attempt %d)',
                 message.type,
                 message.attempts,
             )
             await self._finalize_failure(
-                claim_id, message, error=traceback.format_exc()
+                claim_id, message, error=_describe_error(error)
             )
         else:
             await self._finalize_success(claim_id, message.id)
