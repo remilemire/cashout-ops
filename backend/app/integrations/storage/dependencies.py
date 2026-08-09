@@ -1,10 +1,10 @@
-# backend/app/dependencies/storage.py
+# backend/app/integrations/storage/dependencies.py
 
 from __future__ import annotations
 
 from fastapi import Request
 
-from app.integrations.storage import DocumentStorageClient
+from .client import DocumentStorageClient
 
 
 def get_document_storage(request: Request) -> DocumentStorageClient:

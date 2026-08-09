@@ -8,14 +8,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import (
+from app.errors.openapi import error_responses
+from app.features.auth.dependencies import (
     get_current_user,
-    get_db,
     require_admin,
-    require_csrf,
     require_verified_user,
 )
-from app.errors.openapi import error_responses
+from app.infrastructure.db.dependencies import get_db
+from app.security.dependencies import require_csrf
 
 from . import service as users_service
 from .model import User

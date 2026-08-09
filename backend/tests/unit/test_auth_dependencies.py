@@ -1,4 +1,4 @@
-# backend/tests/unit/test_dependencies.py
+# backend/tests/unit/test_auth_dependencies.py
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.dependencies.auth import require_verified_user
 from app.errors import AppError
+from app.features.auth.dependencies import require_verified_user
 from app.features.users.model import User
 
 

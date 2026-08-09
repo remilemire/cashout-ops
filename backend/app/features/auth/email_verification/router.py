@@ -7,11 +7,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db, get_redis, require_csrf
 from app.errors.openapi import error_responses
+from app.features.auth.dependencies import get_current_user
 from app.features.users.model import User
 from app.features.users.schemas import UserOut
+from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
+from app.security.dependencies import require_csrf
 
 from . import service as email_verification_service
 from .schemas import EmailVerificationVerify

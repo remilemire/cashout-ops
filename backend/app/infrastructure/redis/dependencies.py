@@ -1,10 +1,10 @@
-# backend/app/dependencies/redis.py
+# backend/app/infrastructure/redis/dependencies.py
 
 from __future__ import annotations
 
 from fastapi import Request
 
-from app.infrastructure.redis import Redis
+from . import Redis
 
 
 def get_redis(request: Request) -> Redis:

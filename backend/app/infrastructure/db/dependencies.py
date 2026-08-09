@@ -1,4 +1,4 @@
-# backend/app/dependencies/db.py
+# backend/app/infrastructure/db/dependencies.py
 
 from __future__ import annotations
 

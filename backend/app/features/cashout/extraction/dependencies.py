@@ -1,10 +1,10 @@
-# backend/app/dependencies/processor.py
+# backend/app/features/cashout/extraction/dependencies.py
 
 from __future__ import annotations
 
 from fastapi import Request
 
-from app.features.cashout.extraction import CashoutDocumentProcessor
+from .processor import CashoutDocumentProcessor
 
 
 def get_cashout_document_processor(request: Request) -> CashoutDocumentProcessor:

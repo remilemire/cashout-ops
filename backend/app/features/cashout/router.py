@@ -8,23 +8,23 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import (
-    get_cashout_document_processor,
-    get_current_user,
-    get_db,
-    get_document_storage,
-    require_admin,
-    require_csrf,
-    require_verified_user,
-)
 from app.errors import AppError
 from app.errors.openapi import error_responses
+from app.features.auth.dependencies import (
+    get_current_user,
+    require_admin,
+    require_verified_user,
+)
 from app.features.users.model import User
+from app.infrastructure.db.dependencies import get_db
 from app.integrations.storage import DocumentStorageClient
+from app.integrations.storage.dependencies import get_document_storage
 from app.lib.documents import DocumentContentType
+from app.security.dependencies import require_csrf
 
 from . import service as cashout_service
 from .extraction import CashoutDocumentProcessor
+from .extraction.dependencies import get_cashout_document_processor
 from .schemas import (
     CashoutAnalysisVerify,
     CashoutDataOut,

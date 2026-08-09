@@ -88,7 +88,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ## Project structure
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/dependencies`, `app/integrations`, and `app/documents`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly.
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/integrations`, and `app/documents`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly. Each module that owns a request-bound resource exposes its FastAPI dependency in a `dependencies.py` beside it (e.g. `infrastructure/db/dependencies.py`'s `get_db`, `features/auth/dependencies.py`'s `get_current_user`).
 
 ```
 .
@@ -103,15 +103,14 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
 │       ├── core/                      # config, cookies, schemas
-│       ├── infrastructure/            # db/ (Base, registry, lifespan), redis/ (client + lifespan)
+│       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis)
 │       ├── lib/                       # pure helpers: casing, documents
-│       ├── security/                  # password hashing, session/CSRF cookies, token crypto
-│       ├── dependencies/              # FastAPI deps: get_db, auth, csrf, clients
+│       ├── security/                  # password hashing, session/CSRF cookies, token crypto, require_csrf
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
-│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/, storage/
+│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
 │       ├── documents/                 # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth (sessions, email_verification), users, invitations, cashout
-│       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields)
+│       ├── features/                  # auth (sessions, email_verification, dependencies: get_current_user/require_admin), users, invitations, cashout
+│       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
@@ -236,7 +235,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/dependencies/db.py](backend/app/dependencies/db.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
 
 **AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
 
@@ -247,7 +246,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 - Registration is invitation-gated: `POST /api/auth/register` requires a pending invitation for the email (the `ADMIN_EMAIL` account is exempt and is created as an already-verified admin). Register and login (`POST /api/auth/login`) then create a session in Redis with an opaque random token (`secrets.token_urlsafe(32)`), storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
 - New accounts are emailed a numeric verification code and stay behind the `require_verified_user` gate until they confirm it (`POST /api/auth/email-verification/verify`, resend via `/resend`). The code's SHA-256 hash lives in Redis with a TTL (`EMAIL_VERIFICATION_CODE_TTL_MINUTES`); a resend overwrites it, and a successful verify consumes it.
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
-- A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` / `get_current_user` / `require_admin` dependencies from [app/dependencies/](backend/app/dependencies/).
+- A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
 - Session TTL is `SESSION_TTL_DAYS` (default 7). There is no "remember me".
 - Logout clears both cookies and deletes the corresponding Redis session.

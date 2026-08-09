@@ -1,4 +1,4 @@
-# backend/app/dependencies/csrf.py
+# backend/app/security/dependencies.py
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import secrets
 from fastapi import Request
 
 from app.errors import AppError
-from app.security.cookies import get_csrf_cookie, get_csrf_header
+
+from .cookies import get_csrf_cookie, get_csrf_header
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 

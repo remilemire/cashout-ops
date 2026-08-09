@@ -22,15 +22,14 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
 * `backend/app/lifespan.py` is the composition root for the database engine, Redis client, and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
 * `backend/app/core/` contains configuration, cookies, and shared schemas.
-* `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry) and the Redis client (`redis/`: the `Redis` type and its lifespan).
+* `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency) and the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
-* `backend/app/security/` contains password hashing, session and CSRF cookie helpers, and secret-token cryptography.
-* `backend/app/dependencies/` contains FastAPI dependencies for the database, authentication, CSRF, and clients.
+* `backend/app/security/` contains password hashing, session and CSRF cookie helpers, secret-token cryptography, and the `require_csrf` dependency.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
-* `backend/app/integrations/` contains external AI and storage clients.
+* `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
 * `backend/app/documents/` contains generic document classification and extraction behavior.
-* `backend/app/features/` contains feature modules such as auth (with its `sessions/` and `email_verification/` submodules), users, invitations, and cashout.
-* `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, and processor registration.
+* `backend/app/features/` contains feature modules such as auth (with its `sessions/` and `email_verification/` submodules), users, invitations, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_verified_user`, and `require_admin`.
+* `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
 * `frontend/src/auth/` contains authentication state, guards, login, registration, and email-verification gating.

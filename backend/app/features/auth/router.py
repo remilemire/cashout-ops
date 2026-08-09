@@ -7,10 +7,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db, get_redis
 from app.errors.openapi import error_responses
 from app.features.users.schemas import UserOut
+from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
 from app.security.cookies import (
     clear_csrf_cookie,
     clear_session_cookie,

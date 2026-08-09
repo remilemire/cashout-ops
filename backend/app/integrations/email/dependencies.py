@@ -1,10 +1,10 @@
-# backend/app/dependencies/email.py
+# backend/app/integrations/email/dependencies.py
 
 from __future__ import annotations
 
 from fastapi import Request
 
-from app.integrations.email import EmailClient
+from .client import EmailClient
 
 
 def get_email_client(request: Request) -> EmailClient:

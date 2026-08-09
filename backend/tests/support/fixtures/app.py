@@ -10,15 +10,15 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.dependencies import (
-    get_cashout_document_processor,
-    get_db,
-    get_document_storage,
-    get_email_client,
-    get_redis,
-)
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.features.cashout.extraction.dependencies import (
+    get_cashout_document_processor,
+)
+from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
+from app.integrations.email.dependencies import get_email_client
+from app.integrations.storage.dependencies import get_document_storage
 from app.main import create_app
 
 from ..fakes import FakeDocumentStorage, FakeEmailClient

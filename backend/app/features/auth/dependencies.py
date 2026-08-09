@@ -1,4 +1,4 @@
-# backend/app/dependencies/auth.py
+# backend/app/features/auth/dependencies.py
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
-from app.features.auth import service as auth_service
 from app.features.users.model import User
+from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
 from app.security.cookies import get_session_cookie
 
-from .db import get_db
-from .redis import get_redis
+from . import service as auth_service
 
 
 async def get_current_user(
