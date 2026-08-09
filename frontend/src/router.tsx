@@ -4,8 +4,8 @@ import { createBrowserRouter } from "react-router-dom";
 
 import { RequireAdmin, RequireAuth } from "@/auth/guards";
 import { HomeRedirect } from "@/auth/HomeRedirect";
+import { LoginLinkPage } from "@/auth/LoginLinkPage";
 import { LoginPage } from "@/auth/LoginPage";
-import { RegisterPage } from "@/auth/RegisterPage";
 import { EmptyState } from "@/components/ui";
 import { AdminDataPage } from "@/features/admin/AdminDataPage";
 import { AdminSubmissionsPage } from "@/features/admin/AdminSubmissionsPage";
@@ -17,7 +17,8 @@ import { AppLayout } from "@/layout/AppLayout";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
-  { path: "/register", element: <RegisterPage /> },
+  // Public: the emailed magic link opens here, possibly on another device.
+  { path: "/login/link", element: <LoginLinkPage /> },
   {
     element: <RequireAuth />,
     children: [

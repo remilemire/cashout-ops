@@ -5,7 +5,6 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { FullScreenSpinner } from "@/components/ui";
 
 import { useAuth } from "./useAuth";
-import { EmailVerificationGate } from "./EmailVerificationGate";
 
 /** Everything behind this requires a session; unauthenticated → /login. */
 export function RequireAuth() {
@@ -17,11 +16,7 @@ export function RequireAuth() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  return (
-    <EmailVerificationGate user={user}>
-      <Outlet />
-    </EmailVerificationGate>
-  );
+  return <Outlet />;
 }
 
 /** Nested under RequireAuth; non-admins are bounced to their home. */

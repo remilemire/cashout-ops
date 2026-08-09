@@ -2,14 +2,14 @@
 
 import { createContext, useContext } from "react";
 
-import type { LoginInput, RegisterInput, User } from "@/api/types";
+import type { User } from "@/api/types";
 
 export interface AuthContextValue {
   /** null = definitely signed out; undefined never escapes isLoading. */
   user: User | null;
   isLoading: boolean;
-  login: (input: LoginInput) => Promise<User>;
-  register: (input: RegisterInput) => Promise<User>;
+  /** Record the user returned by a completed login as the session user. */
+  completeSignIn: (user: User) => void;
   logout: () => Promise<void>;
 }
 

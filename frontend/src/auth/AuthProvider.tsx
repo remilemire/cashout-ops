@@ -31,15 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     user: meQuery.data ?? null,
     isLoading: meQuery.isLoading,
-    login: async (input) => {
-      const user = await authApi.login(input);
+    completeSignIn: (user) => {
       queryClient.setQueryData(ME_KEY, user);
-      return user;
-    },
-    register: async (input) => {
-      const user = await authApi.register(input);
-      queryClient.setQueryData(ME_KEY, user);
-      return user;
     },
     logout: async () => {
       try {

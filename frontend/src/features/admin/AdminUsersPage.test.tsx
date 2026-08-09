@@ -70,8 +70,6 @@ const admin: User = {
   email: "admin@test.com",
   fullName: "Admin User",
   isAdmin: true,
-  isActive: true,
-  emailVerifiedAt: "2026-07-17T00:00:00Z",
 };
 
 const staff: User = {
@@ -80,8 +78,6 @@ const staff: User = {
   email: "staff@test.com",
   fullName: "Staff User",
   isAdmin: false,
-  isActive: true,
-  emailVerifiedAt: "2026-07-16T00:00:00Z",
 };
 
 const otherAdmin: User = {
@@ -90,8 +86,6 @@ const otherAdmin: User = {
   email: "other@test.com",
   fullName: "Other Admin",
   isAdmin: true,
-  isActive: true,
-  emailVerifiedAt: "2026-07-15T00:00:00Z",
 };
 
 function renderPage() {
@@ -120,8 +114,7 @@ beforeEach(() => {
   useAuthMock.mockReturnValue({
     user: admin,
     isLoading: false,
-    login: vi.fn(async () => admin),
-    register: vi.fn(async () => admin),
+    completeSignIn: vi.fn(),
     logout: vi.fn(async () => undefined),
   });
 });

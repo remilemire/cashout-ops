@@ -1,11 +1,13 @@
 // frontend/src/auth/LoginPage.tsx
 
-import { GlassWater } from "lucide-react";
+import { GlassWater, MailCheck } from "lucide-react";
 import { useState, type ReactNode, type SyntheticEvent } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
+import { authApi } from "@/api/auth";
 import { Button, Card, ErrorBanner, TextField } from "@/components/ui";
 
+import { CodeInput } from "./CodeInput";
 import { useAuth } from "./useAuth";
 
 export function AuthShell({ children }: { children: ReactNode }) {
@@ -27,28 +29,34 @@ export function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Set once the email is accepted; its presence selects the code phase. */
+interface Challenge {
+  challengeId: string;
+  email: string;
+}
+
 export function LoginPage() {
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, completeSignIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // Remounts the code input after a rejected code so the boxes clear.
+  const [attempt, setAttempt] = useState(0);
 
   if (!isLoading && user) return <Navigate to="/" replace />;
 
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
-  const onSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
+  const onSubmitEmail = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const email = String(new FormData(event.currentTarget).get("email"));
     setPending(true);
     setError(null);
     try {
-      await login({
-        email: String(form.get("email")),
-        password: String(form.get("password")),
-      });
-      navigate(from, { replace: true });
+      const { challengeId } = await authApi.startLogin({ email });
+      setChallenge({ challengeId, email });
     } catch (err) {
       setError(err);
     } finally {
@@ -56,39 +64,88 @@ export function LoginPage() {
     }
   };
 
+  const onCodeComplete = async (code: string) => {
+    if (!challenge || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const signedIn = await authApi.verifyLoginCode({
+        challengeId: challenge.challengeId,
+        code,
+      });
+      completeSignIn(signedIn);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(err);
+      setAttempt((count) => count + 1);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const startOver = () => {
+    setChallenge(null);
+    setError(null);
+    setAttempt(0);
+  };
+
   return (
     <AuthShell>
       <Card>
-        <h1 className="mb-4 text-lg font-semibold">Log in</h1>
-        <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
-          <TextField
-            label="Email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-          />
-          <TextField
-            label="Password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-          <ErrorBanner error={error} />
-          <Button type="submit" loading={pending} className="w-full">
-            Log in
-          </Button>
-        </form>
-        <p className="text-ink-muted mt-4 text-center text-sm">
-          No account?{" "}
-          <Link
-            to="/register"
-            className="text-accent-strong font-medium hover:underline"
-          >
-            Register
-          </Link>
-        </p>
+        {challenge === null ? (
+          <>
+            <h1 className="mb-1 text-lg font-semibold">Sign in</h1>
+            <p className="text-ink-muted mb-4 text-sm">
+              Enter your email and we&apos;ll email you a sign-in link.
+            </p>
+            <form onSubmit={(e) => void onSubmitEmail(e)} className="space-y-3">
+              <TextField
+                label="Email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+              />
+              <ErrorBanner error={error} />
+              <Button type="submit" loading={pending} className="w-full">
+                Email me a sign-in link
+              </Button>
+            </form>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <h1 className="text-lg font-semibold">Check your email</h1>
+            <p className="text-ink-muted flex items-start gap-2 text-sm">
+              <MailCheck className="text-accent-strong mt-0.5 size-4 shrink-0" />
+              <span>
+                If an account exists for <strong>{challenge.email}</strong>, we
+                sent it a sign-in link. Open the link, then enter the code it
+                shows you here.
+              </span>
+            </p>
+            <div>
+              <span className="mb-1 block text-sm font-medium">
+                Sign-in code
+              </span>
+              <CodeInput
+                key={attempt}
+                disabled={pending}
+                error={error != null}
+                onComplete={(code) => void onCodeComplete(code)}
+              />
+            </div>
+            <ErrorBanner error={error} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={startOver}
+              disabled={pending}
+            >
+              Start over
+            </Button>
+          </div>
+        )}
       </Card>
     </AuthShell>
   );

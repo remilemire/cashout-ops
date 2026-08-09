@@ -28,18 +28,13 @@ export type ErrorCode =
   | "USER_NOT_FOUND"
   | "EMAIL_TAKEN"
   // auth
-  | "INVALID_CREDENTIALS"
+  | "LOGIN_CHALLENGE_INVALID"
   | "INVALID_SESSION"
   | "INVALID_CSRF_TOKEN"
   // invitations
   | "INVITATION_NOT_FOUND"
   | "INVITATION_EXISTS"
   | "INVITATION_REQUIRED"
-  // email verification
-  | "VERIFICATION_CODE_INVALID"
-  | "VERIFICATION_CODE_EXPIRED"
-  | "VERIFICATION_ALREADY_VERIFIED"
-  | "EMAIL_NOT_VERIFIED"
   // cashout
   | "SUBMISSION_NOT_FOUND"
   | "DOCUMENT_NOT_FOUND"
@@ -77,18 +72,30 @@ export interface User {
   email: string;
   fullName: string;
   isAdmin: boolean;
-  isActive: boolean;
-  /** Null until the account confirms its emailed verification code. */
-  emailVerifiedAt: string | null;
 }
 
-export interface LoginInput {
+export interface LoginStartInput {
   email: string;
-  password: string;
 }
 
-export interface RegisterInput extends LoginInput {
-  fullName: string;
+/** Handle for an in-progress passwordless login challenge. */
+export interface LoginStart {
+  challengeId: string;
+}
+
+export interface VerifyLoginLinkInput {
+  challengeId: string;
+  token: string;
+}
+
+/** The 6-digit code shown on the magic-link page. */
+export interface LoginCode {
+  code: string;
+}
+
+export interface VerifyLoginCodeInput {
+  challengeId: string;
+  code: string;
 }
 
 // ---------- Invitations ----------
@@ -105,12 +112,6 @@ export interface Invitation {
 
 export interface InvitationCreateInput {
   email: string;
-}
-
-// ---------- Email verification ----------
-
-export interface VerifyEmailInput {
-  code: string;
 }
 
 // ---------- Cashout ----------

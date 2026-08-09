@@ -15,8 +15,9 @@ import { RequireAuth } from "./guards";
 vi.mock("@/api/auth", () => ({
   authApi: {
     me: vi.fn(),
-    login: vi.fn(),
-    register: vi.fn(),
+    startLogin: vi.fn(),
+    verifyLoginLink: vi.fn(),
+    verifyLoginCode: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -29,8 +30,6 @@ const cashier: User = {
   email: "cashier@test.com",
   fullName: "Test User",
   isAdmin: false,
-  isActive: true,
-  emailVerifiedAt: "2026-07-17T00:00:00Z",
 };
 
 function renderGuarded() {
@@ -81,13 +80,5 @@ describe("RequireAuth", () => {
     renderGuarded();
 
     expect(await screen.findByText("Private home")).toBeDefined();
-  });
-
-  it("gates an unverified user behind the verification dialog", async () => {
-    meMock.mockResolvedValue({ ...cashier, emailVerifiedAt: null });
-
-    renderGuarded();
-
-    expect(await screen.findByText("Verify your email")).toBeDefined();
   });
 });

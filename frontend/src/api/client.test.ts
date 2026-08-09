@@ -58,7 +58,7 @@ describe("api client", () => {
       }),
     );
 
-    const failure = api("/auth/register", { method: "POST", json: {} });
+    const failure = api("/invitations", { method: "POST", json: {} });
 
     await expect(failure).rejects.toBeInstanceOf(ApiError);
     await failure.catch((error: ApiError) => {

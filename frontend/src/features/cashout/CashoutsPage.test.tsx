@@ -54,8 +54,6 @@ const user: User = {
   email: "cashier@test.com",
   fullName: "Test User",
   isAdmin: false,
-  isActive: true,
-  emailVerifiedAt: "2026-07-17T00:00:00Z",
 };
 
 const submissions: CashoutSubmissionListItem[] = [
@@ -102,8 +100,7 @@ beforeEach(() => {
   useAuthMock.mockReturnValue({
     user,
     isLoading: false,
-    login: vi.fn(async () => user),
-    register: vi.fn(async () => user),
+    completeSignIn: vi.fn(),
     logout: vi.fn(async () => undefined),
   });
 });
