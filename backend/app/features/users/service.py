@@ -30,26 +30,22 @@ async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
     return await repository.find_by_id(db, user_id=user_id)
 
 
-async def create(db: AsyncSession, *, payload: UserCreate, password_hash: str) -> User:
+async def create(db: AsyncSession, *, payload: UserCreate) -> User:
     user = User(
         email=payload.email,
         full_name=payload.full_name,
-        password_hash=password_hash,
     )
     await repository.add(db, user)
 
     return user
 
 
-async def bootstrap_admin(
-    db: AsyncSession, *, payload: UserCreate, password_hash: str
-) -> User:
+async def bootstrap_admin(db: AsyncSession, *, payload: UserCreate) -> User:
     """Create the bootstrapped ADMIN_EMAIL account as an admin."""
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         is_admin=True,
-        password_hash=password_hash,
     )
     await repository.add(db, user)
 

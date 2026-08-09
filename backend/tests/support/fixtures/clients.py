@@ -6,16 +6,21 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..api import ADMIN_EMAIL, DEFAULT_PASSWORD, register
-from ..factories import create_invitation, verify_user
+from app.features.users.model import User
+
+from ..api import ADMIN_EMAIL, login
+from ..factories import create_user
+from ..fakes import FakeEmailClient
 
 if TYPE_CHECKING:
     # Type-only: importing the plugin module at runtime would beat pytest's
@@ -28,7 +33,6 @@ class ClientFactory(Protocol):
         self,
         *,
         email: str | None = None,
-        password: str = DEFAULT_PASSWORD,
         full_name: str = "Test User",
         admin: bool = False,
         verified: bool = True,
@@ -48,24 +52,22 @@ async def make_client(
     app: FastAPI,
     db_sessionmaker: async_sessionmaker[AsyncSession],
     drain_outbox: OutboxDrain,
+    email_client: FakeEmailClient,
 ) -> AsyncIterator[ClientFactory]:
     """Factory for authenticated clients; call repeatedly for multi-user tests.
 
-    Registers through the real API so the returned client carries session +
-    csrf cookies, seeding the required invitation first. `admin=True` registers
-    ADMIN_EMAIL instead, which auto-promotes and needs no invitation. Omitting
-    `email` picks a unique address. All clients close at fixture teardown.
-
-    Registration enqueues the verification email on the outbox; the drain
-    afterwards delivers it, so tests can read the code from the fake email
-    client immediately (as the dispatcher would in production).
+    Seeds the user row directly, then signs in through the real passwordless
+    challenge flow so the returned client carries session + csrf cookies.
+    `admin=True` seeds nothing: initiating a login for ADMIN_EMAIL exercises
+    the real lazy admin bootstrap (which names the account ADMIN_FULL_NAME,
+    ignoring `full_name`). Omitting `email` picks a unique address. All
+    clients close at fixture teardown.
     """
     async with contextlib.AsyncExitStack() as stack:
 
         async def _make(
             *,
             email: str | None = None,
-            password: str = DEFAULT_PASSWORD,
             full_name: str = "Test User",
             admin: bool = False,
             verified: bool = True,
@@ -75,17 +77,27 @@ async def make_client(
             )
             if not admin:
                 async with db_sessionmaker() as db:
-                    await create_invitation(db, email=resolved)
+                    await create_user(
+                        db, email=resolved, full_name=full_name, verified=verified
+                    )
             http_client = await stack.enter_async_context(
                 AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
             )
-            await register(
-                http_client, email=resolved, full_name=full_name, password=password
+            await login(
+                http_client,
+                email=resolved,
+                drain_outbox=drain_outbox,
+                email_client=email_client,
             )
-            await drain_outbox()
-            if verified:
+            if admin and verified:
+                # The lazy bootstrap creates the admin unverified; mark it
+                # verified directly. Temporary scaffolding until the next
+                # increment removes email verification entirely.
                 async with db_sessionmaker() as db:
-                    await verify_user(db, email=resolved)
+                    stmt = select(User).where(User.email == resolved)
+                    user = (await db.execute(stmt)).scalar_one()
+                    user.email_verified_at = datetime.now(UTC)
+                    await db.commit()
             return http_client
 
         yield _make
@@ -93,7 +105,7 @@ async def make_client(
 
 @pytest_asyncio.fixture
 async def unverified_client(make_client: ClientFactory) -> AsyncClient:
-    """A registered cashier that has NOT verified its email (for the gate flow)."""
+    """A signed-in cashier that has NOT verified its email (for the gate flow)."""
     return await make_client(email="cashier@test.com", verified=False)
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.openapi import error_responses
@@ -19,7 +19,7 @@ from app.security.dependencies import require_csrf
 
 from . import service as users_service
 from .model import User
-from .schemas import UserOut
+from .schemas import UserCreate, UserOut
 
 router = APIRouter(
     prefix="/users",
@@ -49,6 +49,28 @@ async def list_users(
     """List every user, newest first (admin only)."""
     users = await users_service.list_users(db)
     return [UserOut.model_validate(user) for user in users]
+
+
+@router.post(
+    "",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_verified_user), Depends(require_admin)],
+    responses=error_responses(
+        "FORBIDDEN", "EMAIL_NOT_VERIFIED", "EMAIL_TAKEN", "VALIDATION_FAILED"
+    ),
+)
+async def create_user(
+    payload: UserCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """Create a staff account (admin only).
+
+    The new user signs in via an emailed login link — there is no password,
+    and no email is sent at creation time.
+    """
+    user = await users_service.create(db, payload=payload)
+    return UserOut.model_validate(user)
 
 
 UserId = Annotated[UUID, Path(description="User ID.")]

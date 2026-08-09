@@ -25,8 +25,7 @@ from .schemas import (
     LoginChallengeVerifyLinkOut,
 )
 
-# No auth or CSRF dependencies: these routes run before any session exists,
-# like the password login they replace.
+# No auth or CSRF dependencies: these routes run before any session exists.
 router = APIRouter(tags=["auth"])
 
 

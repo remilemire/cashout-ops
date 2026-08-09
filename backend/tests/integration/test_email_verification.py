@@ -17,23 +17,23 @@ from tests.support.fixtures.redis import redis_keys
 CASHIER_EMAIL = "cashier@test.com"
 
 
-# ================================
-# ---------- Registration --------
-# ================================
-
-
-async def test_register_emails_code_and_leaves_account_unverified(
-    unverified_client: AsyncClient,
+async def _issue_code(
+    client: AsyncClient,
+    *,
+    drain_outbox: OutboxDrain,
     email_client: FakeEmailClient,
-    redis_client: Redis,
-) -> None:
-    me = await unverified_client.get("/api/users/me")
-    assert me.json()["emailVerifiedAt"] is None
+) -> str:
+    """Request a fresh verification code via resend and read it from the email.
 
-    # The outbox message (drained by the client fixture, as the dispatcher
-    # would in production) emailed a single code and stored its hash in Redis.
-    assert [email.to for email in email_client.sent] == [CASHIER_EMAIL]
-    assert await redis_keys(redis_client, "email_verification:*")
+    Signing in issues no verification code (registration is gone), so tests
+    start from an unverified session and request one explicitly.
+    """
+    response = await client.post(
+        "/api/auth/email-verification/resend", headers=csrf_headers(client)
+    )
+    assert response.status_code == 204, response.text
+    assert await drain_outbox() == 1
+    return email_client.latest_code(to=CASHIER_EMAIL)
 
 
 # ================================
@@ -53,9 +53,13 @@ async def test_unverified_user_is_blocked_from_guarded_routes(
 
 
 async def test_verifying_unlocks_guarded_routes(
-    unverified_client: AsyncClient, email_client: FakeEmailClient
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    code = email_client.latest_code(to=CASHIER_EMAIL)
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
     await unverified_client.post(
         "/api/auth/email-verification/verify",
         json={"code": code},
@@ -75,8 +79,11 @@ async def test_verify_marks_user_verified_and_consumes_the_code(
     unverified_client: AsyncClient,
     email_client: FakeEmailClient,
     redis_client: Redis,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    code = email_client.latest_code(to=CASHIER_EMAIL)
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
 
     response = await unverified_client.post(
         "/api/auth/email-verification/verify",
@@ -92,10 +99,19 @@ async def test_verify_marks_user_verified_and_consumes_the_code(
     assert await redis_keys(redis_client, "email_verification:*") == []
 
 
-async def test_verify_wrong_code_is_invalid(unverified_client: AsyncClient) -> None:
+async def test_verify_wrong_code_is_invalid(
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
+    wrong_code = "999999" if code != "999999" else "000000"
+
     response = await unverified_client.post(
         "/api/auth/email-verification/verify",
-        json={"code": "000000"},
+        json={"code": wrong_code},
         headers=csrf_headers(unverified_client),
     )
 
@@ -107,8 +123,11 @@ async def test_verify_expired_code(
     unverified_client: AsyncClient,
     email_client: FakeEmailClient,
     redis_client: Redis,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    code = email_client.latest_code(to=CASHIER_EMAIL)
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
     # Expiry is enforced by the Redis TTL, so an expired code IS a missing key;
     # deleting the key is exactly what expiry looks like to the service.
     [key] = await redis_keys(redis_client, "email_verification:*")
@@ -125,9 +144,13 @@ async def test_verify_expired_code(
 
 
 async def test_verify_already_verified_conflicts(
-    unverified_client: AsyncClient, email_client: FakeEmailClient
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    code = email_client.latest_code(to=CASHIER_EMAIL)
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
     headers = csrf_headers(unverified_client)
     first = await unverified_client.post(
         "/api/auth/email-verification/verify", json={"code": code}, headers=headers
@@ -167,7 +190,9 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
     redis_client: Redis,
     drain_outbox: OutboxDrain,
 ) -> None:
-    old_code = email_client.latest_code(to=CASHIER_EMAIL)
+    old_code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
     headers = csrf_headers(unverified_client)
 
     resent = await unverified_client.post(
@@ -226,9 +251,13 @@ async def test_resend_send_failure_is_recorded_for_retry(
 
 
 async def test_resend_after_verification_conflicts(
-    unverified_client: AsyncClient, email_client: FakeEmailClient
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    code = email_client.latest_code(to=CASHIER_EMAIL)
+    code = await _issue_code(
+        unverified_client, drain_outbox=drain_outbox, email_client=email_client
+    )
     headers = csrf_headers(unverified_client)
     await unverified_client.post(
         "/api/auth/email-verification/verify", json={"code": code}, headers=headers

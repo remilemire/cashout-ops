@@ -6,7 +6,6 @@ from typing import Literal
 
 from app.features.auth.errors import AuthErrorCode
 from app.features.cashout.errors import CashoutErrorCode
-from app.features.invitations.errors import InvitationErrorCode
 from app.features.users.errors import UserErrorCode
 
 # Cross-cutting codes raised outside any feature (translators, dependencies,
@@ -23,12 +22,6 @@ type BaseErrorCode = Literal[
     "SERVICE_UNAVAILABLE",
 ]
 
-type ErrorCode = (
-    BaseErrorCode
-    | UserErrorCode
-    | AuthErrorCode
-    | InvitationErrorCode
-    | CashoutErrorCode
-)
+type ErrorCode = BaseErrorCode | UserErrorCode | AuthErrorCode | CashoutErrorCode
 
 __all__ = ["BaseErrorCode", "ErrorCode"]

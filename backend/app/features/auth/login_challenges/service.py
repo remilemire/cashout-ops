@@ -26,7 +26,6 @@ from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 from app.security.crypto import generate_secret_token, hash_secret_token
-from app.security.passwords import hash_password
 
 from ..outbox import (
     SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
@@ -75,16 +74,14 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
 
     if user is None and email == settings.ADMIN_EMAIL:
         # First sign-in bootstraps the admin account (there is no registration
-        # step for it in the passwordless flow). The password hash is a
-        # throwaway — the column dies in the next increment. Concurrent
-        # initiations can race to a 409 on ix_users_email at commit; the loser
-        # simply retries and finds the row, so it self-heals.
+        # step for it in the passwordless flow). Concurrent initiations can
+        # race to a 409 on ix_users_email at commit; the loser simply retries
+        # and finds the row, so it self-heals.
         user = await users_service.bootstrap_admin(
             db,
             payload=UserCreate(
                 email=settings.ADMIN_EMAIL, full_name=settings.ADMIN_FULL_NAME
             ),
-            password_hash=hash_password(generate_secret_token()),
         )
 
     if user is None:

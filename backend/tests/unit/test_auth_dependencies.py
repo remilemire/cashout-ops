@@ -15,7 +15,6 @@ def _user(*, verified: bool) -> User:
     return User(
         email="user@test.com",
         full_name="Test User",
-        password_hash="!",
         email_verified_at=datetime.now(UTC) if verified else None,
     )
 

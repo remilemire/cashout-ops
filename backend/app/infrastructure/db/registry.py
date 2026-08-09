@@ -14,7 +14,6 @@ from app.features.cashout.models import (
     CashoutDocumentAnalysis,
     CashoutSubmission,
 )
-from app.features.invitations.model import Invitation
 from app.features.users.model import User
 from app.infrastructure.db.models import Base
 from app.infrastructure.outbox.messages.model import OutboxMessage
@@ -26,7 +25,6 @@ __all__ = [
     "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
-    "Invitation",
     "OutboxMessage",
     "User",
     "metadata",

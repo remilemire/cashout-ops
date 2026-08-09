@@ -23,8 +23,6 @@ async def test_me_returns_current_user(cashier_client: AsyncClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["email"] == "cashier@test.com"
-    assert "passwordHash" not in body  # never expose the hash
-    assert "password" not in body
 
 
 async def test_me_requires_authentication(client: AsyncClient) -> None:
@@ -40,11 +38,82 @@ async def test_admin_lists_users(admin_client: AsyncClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert ADMIN_EMAIL in [user["email"] for user in body]
-    assert all("passwordHash" not in user for user in body)
 
 
 async def test_list_users_requires_admin(cashier_client: AsyncClient) -> None:
     response = await cashier_client.get("/api/users")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+async def test_admin_creates_user(admin_client: AsyncClient) -> None:
+    response = await admin_client.post(
+        "/api/users",
+        json={"email": "new@test.com", "fullName": "New Staff"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["email"] == "new@test.com"
+    # Inbound/outbound JSON is camelCase.
+    assert body["fullName"] == "New Staff"
+    assert body["isAdmin"] is False
+    # Creating an account signs nobody in: no auth cookies on the response.
+    assert "session_token" not in response.cookies
+    assert "csrf_token" not in response.cookies
+
+
+async def test_created_user_can_sign_in(
+    admin_client: AsyncClient,
+    client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    created = await admin_client.post(
+        "/api/users",
+        json={"email": "staff@test.com", "fullName": "New Staff"},
+        headers=csrf_headers(admin_client),
+    )
+    assert created.status_code == 201, created.text
+
+    await login(
+        client,
+        email="staff@test.com",
+        drain_outbox=drain_outbox,
+        email_client=email_client,
+    )
+
+    assert (await client.get("/api/users/me")).status_code == 200
+
+
+async def test_create_user_duplicate_email_conflicts(
+    admin_client: AsyncClient,
+) -> None:
+    first = await admin_client.post(
+        "/api/users",
+        json={"email": "dupe@test.com", "fullName": "First Staff"},
+        headers=csrf_headers(admin_client),
+    )
+    assert first.status_code == 201, first.text
+
+    response = await admin_client.post(
+        "/api/users",
+        json={"email": "dupe@test.com", "fullName": "Second Staff"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "EMAIL_TAKEN"
+
+
+async def test_create_user_requires_admin(cashier_client: AsyncClient) -> None:
+    response = await cashier_client.post(
+        "/api/users",
+        json={"email": "new@test.com", "fullName": "New Staff"},
+        headers=csrf_headers(cashier_client),
+    )
 
     assert response.status_code == 403
     assert response.json()["code"] == "FORBIDDEN"
@@ -155,11 +224,11 @@ async def test_deleting_user_revokes_their_sessions_and_verification_code(
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Seeded directly (an invitation's accepted_by FK would block deletion),
+    # Seeded directly (unverified, so a verification code can be issued below),
     # then logged in through the API for a real session. No HTTP route deletes
     # users yet, so the deletion goes through the service; the revocation is
     # still observed through the deleted user's previously-valid client.
-    user = await create_user(db_session, email="doomed@test.com")
+    user = await create_user(db_session, email="doomed@test.com", verified=False)
     await login(
         client,
         email="doomed@test.com",
@@ -170,7 +239,7 @@ async def test_deleting_user_revokes_their_sessions_and_verification_code(
     assert await redis_keys(redis_client, "session:*")
 
     # Give the (unverified) user an outstanding verification code the same way
-    # register's post-commit job would.
+    # the resend outbox job would.
     await email_verification_service.send_new_code(
         db_sessionmaker, redis_client, email_client=email_client, user_id=user.id
     )

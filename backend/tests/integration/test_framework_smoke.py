@@ -2,8 +2,8 @@
 
 """Framework smoke tests for the integration tier.
 
-These prove the auto-marker and the make_client factory (invitation seeding,
-registration through the real API, verification, per-test app + database).
+These prove the auto-marker and the make_client factory (user seeding,
+passwordless sign-in through the real API, per-test app + database).
 They are not application coverage.
 """
 

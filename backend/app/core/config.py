@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
     SESSION_TTL_DAYS: int = 7
-    INVITATION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"
     # Full name given to the ADMIN_EMAIL account when a first passwordless
     # sign-in bootstraps it (no registration form supplies one).
