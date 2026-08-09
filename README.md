@@ -153,7 +153,7 @@ cp backend/.env.example backend/.env   # then set ADMIN_EMAIL and the selected p
 make backend-install                   # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
-make db-up                             # docker compose up -d (Postgres + Redis)
+make up                                # docker compose up -d (Postgres + Redis)
 make backend-migrate                   # uv run alembic upgrade head
 
 # 3. Frontend

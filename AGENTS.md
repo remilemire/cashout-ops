@@ -82,12 +82,12 @@ The frontend uses `npm`. Do not substitute another package manager.
 
 ### Database
 
-* Start Postgres and Redis: `make db-up`
-* Stop Postgres and Redis: `make db-down`
-* Reset Postgres and Redis and delete their data: `make db-reset`
-* Follow Postgres logs: `make db-logs`
+* Start Postgres and Redis: `make up`
+* Stop Postgres and Redis: `make down`
+* Reset Postgres and Redis and delete their data: `make reset` (prompts for confirmation)
+* Follow Postgres and Redis logs: `make logs`
 
-Do not run `make db-reset` unless the task explicitly permits deleting local database and Redis data.
+Do not run `make reset` unless the task explicitly permits deleting local database and Redis data.
 
 ## Backend Architecture
 

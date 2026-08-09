@@ -10,7 +10,7 @@ DOCKER_DATABASE_URL := postgresql+psycopg://postgres:dev@localhost:5432/cashout_
 	build start \
 	backend-install backend-dev backend-format backend-lint backend-typecheck backend-test backend-test-unit backend-test-integration backend-check backend-migrate backend-revision \
 	frontend-install frontend-dev frontend-build frontend-lint frontend-typecheck frontend-format frontend-test \
-	db-up db-down db-logs db-reset db-migrate
+	up down reset logs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -97,17 +97,22 @@ frontend-format: ## prettier --write
 frontend-test: ## vitest
 	cd frontend && npm run test
 
-## ── Database (docker compose) ──────────────────────────────────────
+## ── Docker (Postgres + Redis) ───────────────────────────────────────
 
-db-up: ## Start Postgres (detached)
+up: ## Start Postgres + Redis (detached)
 	docker compose up -d
 
-db-down: ## Stop Postgres
+down: ## Stop Postgres + Redis
 	docker compose down
 
-db-reset: ## Delete database data and restart Postgres
+reset: ## Delete Postgres + Redis data and restart (asks for confirmation)
+	@read -p "This deletes all local Postgres and Redis data. Continue? [y/N] " ans; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
+		echo "Aborted."; \
+		exit 1; \
+	fi
 	docker compose down --volumes
 	docker compose up -d
 
-db-logs: ## Tail Postgres logs
-	docker compose logs -f db
+logs: ## Tail Postgres + Redis logs
+	docker compose logs -f
