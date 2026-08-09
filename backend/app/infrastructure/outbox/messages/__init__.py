@@ -2,7 +2,4 @@
 
 from __future__ import annotations
 
-from .model import OutboxMessage
-from .service import insert_outbox_message
-
-__all__ = ["insert_outbox_message", "OutboxMessage"]
+__all__ = []

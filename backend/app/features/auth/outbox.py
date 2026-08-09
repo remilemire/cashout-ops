@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.infrastructure.outbox import OutboxMessageDefinition
+from app.infrastructure.outbox.contracts import OutboxMessageDefinition
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

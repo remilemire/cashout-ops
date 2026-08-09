@@ -12,12 +12,10 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.infrastructure.outbox import (
-    OutboxDispatcher,
-    OutboxMessage,
-    OutboxMessageDefinition,
-)
-from app.infrastructure.outbox.messages import insert_outbox_message
+from app.infrastructure.outbox.contracts import OutboxMessageDefinition
+from app.infrastructure.outbox.dispatcher import OutboxDispatcher
+from app.infrastructure.outbox.messages.model import OutboxMessage
+from app.infrastructure.outbox.messages.service import insert_outbox_message
 from app.infrastructure.outbox.service import enqueue
 
 # ================================

@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from app.infrastructure.outbox import OutboxHandler, OutboxMessageDefinition
 from app.infrastructure.outbox.catalog import outbox_message_catalog
+from app.infrastructure.outbox.contracts import OutboxHandler, OutboxMessageDefinition
 from app.infrastructure.outbox.lifespan import create_outbox_handler_registry
 
 

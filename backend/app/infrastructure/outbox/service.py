@@ -9,7 +9,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .catalog import outbox_message_catalog
-from .messages import OutboxMessage, insert_outbox_message
+from .messages.model import OutboxMessage
+from .messages.service import insert_outbox_message
 
 
 async def enqueue(
