@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import AsyncIterator
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import pytest_asyncio
@@ -16,6 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..api import ADMIN_EMAIL, DEFAULT_PASSWORD, register
 from ..factories import create_invitation, verify_user
+
+if TYPE_CHECKING:
+    # Type-only: importing the plugin module at runtime would beat pytest's
+    # own (assertion-rewriting) import of it and trigger a rewrite warning.
+    from .outbox import OutboxDrain
 
 
 class ClientFactory(Protocol):
@@ -40,7 +45,9 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 @pytest_asyncio.fixture
 async def make_client(
-    app: FastAPI, db_sessionmaker: async_sessionmaker[AsyncSession]
+    app: FastAPI,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    drain_outbox: OutboxDrain,
 ) -> AsyncIterator[ClientFactory]:
     """Factory for authenticated clients; call repeatedly for multi-user tests.
 
@@ -48,6 +55,10 @@ async def make_client(
     csrf cookies, seeding the required invitation first. `admin=True` registers
     ADMIN_EMAIL instead, which auto-promotes and needs no invitation. Omitting
     `email` picks a unique address. All clients close at fixture teardown.
+
+    Registration enqueues the verification email on the outbox; the drain
+    afterwards delivers it, so tests can read the code from the fake email
+    client immediately (as the dispatcher would in production).
     """
     async with contextlib.AsyncExitStack() as stack:
 
@@ -71,6 +82,7 @@ async def make_client(
             await register(
                 http_client, email=resolved, full_name=full_name, password=password
             )
+            await drain_outbox()
             if verified:
                 async with db_sessionmaker() as db:
                     await verify_user(db, email=resolved)

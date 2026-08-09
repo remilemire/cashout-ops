@@ -6,7 +6,7 @@ import asyncio
 
 import resend
 
-from .client import EmailClient
+from .client import EmailClient, EmailDeliveryError
 
 
 class ResendEmailClient(EmailClient):
@@ -28,7 +28,10 @@ class ResendEmailClient(EmailClient):
             "subject": subject,
             "html": html,
         }
-        await asyncio.to_thread(resend.Emails.send, params)
+        try:
+            await asyncio.to_thread(resend.Emails.send, params)
+        except Exception as error:
+            raise EmailDeliveryError(f"Resend send to {to} failed: {error}") from error
 
 
 __all__ = ["ResendEmailClient"]

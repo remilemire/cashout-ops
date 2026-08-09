@@ -5,20 +5,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import (
-    PostCommitTasks,
-    get_db,
-    get_db_sessionmaker,
-    get_email_client,
-    get_post_commit_tasks,
-    get_redis,
-)
+from app.dependencies import get_db, get_redis
 from app.errors.openapi import error_responses
 from app.features.users.schemas import UserOut
 from app.infrastructure.redis import Redis
-from app.integrations.email import EmailClient
 from app.security.cookies import (
     clear_csrf_cookie,
     clear_session_cookie,
@@ -39,13 +31,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 router.include_router(email_verification_router)
 
 
-# get_post_commit_tasks is listed first so it tears down after get_db commits:
-# the verification code is issued + emailed only once the new user is persisted.
 @router.post(
     "/register",
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(get_post_commit_tasks)],
     responses=error_responses(
         "EMAIL_TAKEN", "INVITATION_REQUIRED", "VALIDATION_FAILED"
     ),
@@ -53,31 +42,19 @@ router.include_router(email_verification_router)
 async def register(
     response: Response,
     payload: AuthRegister,
-    post_commit: Annotated[PostCommitTasks, Depends(get_post_commit_tasks)],
     db: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
-    sessionmaker: Annotated[
-        async_sessionmaker[AsyncSession], Depends(get_db_sessionmaker)
-    ],
-    email_client: Annotated[EmailClient, Depends(get_email_client)],
 ) -> UserOut:
     """Create an account and start a session.
 
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable) cookies.
     Registration requires a pending invitation for the email; the invitation is
     marked accepted. The email matching `ADMIN_EMAIL` is exempt and is created
-    as an admin. A verification code is emailed after the request
-    commits (via a post-commit job); the account stays unverified until it's
+    as an admin. A verification code is emailed once the request commits (via
+    the transactional outbox); the account stays unverified until it's
     confirmed.
     """
-    result = await auth_service.register(
-        db,
-        redis,
-        payload=payload,
-        post_commit=post_commit,
-        sessionmaker=sessionmaker,
-        email_client=email_client,
-    )
+    result = await auth_service.register(db, redis, payload=payload)
     return _authenticated_response(response, result)
 
 

@@ -2,9 +2,8 @@
 
 """Outbox message definitions and handlers for the auth feature.
 
-Defined but not yet wired: register/resend still queue the verification
-email through PostCommitTasks; replacing that with `enqueue` is a separate
-task.
+Register and resend enqueue `auth.send_verification_email` in their request
+transaction; the handler issues the code and sends the email at dispatch.
 """
 
 from __future__ import annotations
@@ -33,6 +32,11 @@ class SendVerificationEmail(BaseModel):
 send_verification_email_message = OutboxMessageDefinition(
     "auth.send_verification_email", SendVerificationEmail
 )
+
+# Verification emails give up quickly (about a minute at the default backoff)
+# instead of retrying for an hour: the user is sitting on the verify screen
+# and can always hit resend.
+SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS = 5
 
 auth_outbox_message_definitions: list[OutboxMessageDefinition] = [
     send_verification_email_message
@@ -82,6 +86,7 @@ class SendVerificationEmailOutboxHandler:
 
 
 __all__ = [
+    "SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS",
     "SendVerificationEmail",
     "SendVerificationEmailOutboxHandler",
     "auth_outbox_message_definitions",

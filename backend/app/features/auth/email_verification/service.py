@@ -10,27 +10,27 @@ in the email.
 
 from __future__ import annotations
 
-import logging
 import secrets
 from datetime import UTC, datetime
-from functools import partial
 from importlib.resources import files
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
-from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
 from app.features.users import service as users_service
 from app.features.users.model import User
+from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 from app.security.crypto import hash_secret_token
 
+from ..outbox import (
+    SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS,
+    send_verification_email_message,
+)
 from . import store
-
-logger = logging.getLogger("app.email")
 
 # Six numeric digits (leading zeros allowed).
 _CODE_DIGITS = 6
@@ -60,11 +60,13 @@ async def send_new_code(
     email_client: EmailClient,
     user_id: UUID,
 ) -> None:
-    """Post-commit job: issue a fresh code and email it via the email client.
+    """Outbox job: issue a fresh code and email it via the email client.
 
-    Runs after the triggering request (register/resend) has committed, so it
-    owns its session and transaction. Supersedes any outstanding code. Delivery
-    is best-effort — a send failure is logged, not raised (the user can resend).
+    Runs from the outbox handler once the triggering request (register/resend)
+    has committed, so it owns its session and transaction. Supersedes any
+    outstanding code. A send failure propagates so the outbox records it and
+    retries; each attempt issues a fresh code whose hash overwrites the stored
+    one, so the most recently emailed code is always the one that verifies.
     """
     ttl_minutes = settings.EMAIL_VERIFICATION_CODE_TTL_MINUTES
 
@@ -79,41 +81,28 @@ async def send_new_code(
         redis, user_id=user_id, code_hash=hash_secret_token(code)
     )
 
-    try:
-        await email_client.send(
-            to=recipient,
-            subject=_SUBJECT,
-            html=_render_html(code=code, ttl_minutes=ttl_minutes),
-        )
-    except Exception:
-        logger.exception("Failed to send verification email to %s", recipient)
+    await email_client.send(
+        to=recipient,
+        subject=_SUBJECT,
+        html=_render_html(code=code, ttl_minutes=ttl_minutes),
+    )
 
 
-async def resend(
-    sessionmaker: async_sessionmaker[AsyncSession],
-    redis: Redis,
-    *,
-    post_commit: PostCommitTasks,
-    email_client: EmailClient,
-    user: User,
-) -> None:
+async def resend(db: AsyncSession, *, user: User) -> None:
     """Queue a fresh verification code for the current user.
 
-    Rejects an already-verified user. Otherwise queues the same post-commit
-    job `register` uses, so the code is issued and the email sent only once
-    the request transaction commits.
+    Rejects an already-verified user. Otherwise enqueues the same outbox
+    message `register` uses, in the caller's transaction, so the code is
+    issued and the email sent only once the request commits.
     """
     if user.email_verified_at is not None:
         raise AppError("VERIFICATION_ALREADY_VERIFIED")
 
-    post_commit.add(
-        partial(
-            send_new_code,
-            sessionmaker,
-            redis,
-            email_client=email_client,
-            user_id=user.id,
-        )
+    await outbox_service.enqueue(
+        db,
+        type=send_verification_email_message.type,
+        payload={"user_id": str(user.id)},
+        max_attempts=SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS,
     )
 
 

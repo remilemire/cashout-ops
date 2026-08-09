@@ -25,6 +25,7 @@ pytest_plugins = [
     "tests.support.fixtures.integrations",
     "tests.support.fixtures.app",
     "tests.support.fixtures.clients",
+    "tests.support.fixtures.outbox",
 ]
 
 

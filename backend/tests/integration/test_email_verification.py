@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.features.auth.outbox import send_verification_email_message
+from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
 from tests.support.fakes import FakeEmailClient
+from tests.support.fixtures.outbox import OutboxDrain
 from tests.support.fixtures.redis import redis_keys
 
 CASHIER_EMAIL = "cashier@test.com"
@@ -25,7 +30,8 @@ async def test_register_emails_code_and_leaves_account_unverified(
     me = await unverified_client.get("/api/users/me")
     assert me.json()["emailVerifiedAt"] is None
 
-    # The post-commit job emailed a single code and stored its hash in Redis.
+    # The outbox message (drained by the client fixture, as the dispatcher
+    # would in production) emailed a single code and stored its hash in Redis.
     assert [email.to for email in email_client.sent] == [CASHIER_EMAIL]
     assert await redis_keys(redis_client, "email_verification:*")
 
@@ -159,6 +165,7 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
     unverified_client: AsyncClient,
     email_client: FakeEmailClient,
     redis_client: Redis,
+    drain_outbox: OutboxDrain,
 ) -> None:
     old_code = email_client.latest_code(to=CASHIER_EMAIL)
     headers = csrf_headers(unverified_client)
@@ -167,6 +174,8 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
         "/api/auth/email-verification/resend", headers=headers
     )
     assert resent.status_code == 204
+    # The resend only enqueued the message; delivery happens at dispatch.
+    assert await drain_outbox() == 1
 
     new_code = email_client.latest_code(to=CASHIER_EMAIL)
     assert new_code != old_code
@@ -183,6 +192,37 @@ async def test_resend_issues_a_new_code_and_supersedes_the_old(
         "/api/auth/email-verification/verify", json={"code": new_code}, headers=headers
     )
     assert ok.status_code == 200
+
+
+async def test_resend_send_failure_is_recorded_for_retry(
+    unverified_client: AsyncClient,
+    email_client: FakeEmailClient,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    drain_outbox: OutboxDrain,
+) -> None:
+    email_client.fail_with = RuntimeError("provider down")
+    sent_before = len(email_client.sent)
+
+    resent = await unverified_client.post(
+        "/api/auth/email-verification/resend",
+        headers=csrf_headers(unverified_client),
+    )
+    assert resent.status_code == 204
+    assert await drain_outbox() == 1
+
+    # The failed attempt sent nothing and left the message pending retry, with
+    # a concise application-level error — no stack trace, no provider guts.
+    assert len(email_client.sent) == sent_before
+    async with db_sessionmaker() as db:
+        stmt = select(OutboxMessage).where(
+            OutboxMessage.type == send_verification_email_message.type,
+            OutboxMessage.completed_at.is_(None),
+        )
+        message = (await db.execute(stmt)).scalar_one()
+    assert message.dead_lettered_at is None
+    assert message.attempts == 1
+    assert message.max_attempts == 5
+    assert message.last_error == "RuntimeError: provider down"
 
 
 async def test_resend_after_verification_conflicts(

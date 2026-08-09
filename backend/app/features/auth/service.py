@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.dependencies.background import PostCommitTasks
 from app.errors import AppError
 from app.features.invitations import service as invitations_service
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
+from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
-from app.integrations.email import EmailClient
 from app.security.passwords import hash_password, verify_password
 
-from .email_verification import service as email_verification_service
+from .outbox import (
+    SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS,
+    send_verification_email_message,
+)
 from .schemas import AuthLogin, AuthRegister
 from .sessions import service as sessions_service
 from .types import UserWithSessionToken
@@ -46,16 +47,14 @@ async def register(
     redis: Redis,
     *,
     payload: AuthRegister,
-    post_commit: PostCommitTasks,
-    sessionmaker: async_sessionmaker[AsyncSession],
-    email_client: EmailClient,
 ) -> UserWithSessionToken:
     """Create an account, start a session, and queue a verification email.
 
     Registration requires a pending invitation for the email; the invitation
     is marked accepted. The email matching `ADMIN_EMAIL` is exempt and is
     created as an admin. Unless the new account is already verified, a
-    verification code is queued to be emailed after the request commits.
+    verification email is enqueued on the outbox in this same transaction,
+    so it is delivered only if the registration commits.
     """
     if await users_service.find_by_email(db, email=payload.email) is not None:
         raise AppError("EMAIL_TAKEN")
@@ -92,17 +91,14 @@ async def register(
     # for now — authenticate's user lookup rejects such sessions.
     session_token = await sessions_service.create(redis, user_id=user.id)
 
-    # Queued so the verification code is issued + emailed only once the new
-    # user is persisted (the job runs after the request transaction commits).
+    # Enqueued in this transaction, so the verification code is issued and
+    # emailed only if the new user's row actually commits.
     if user.email_verified_at is None:
-        post_commit.add(
-            partial(
-                email_verification_service.send_new_code,
-                sessionmaker,
-                redis,
-                email_client=email_client,
-                user_id=user.id,
-            )
+        await outbox_service.enqueue(
+            db,
+            type=send_verification_email_message.type,
+            payload={"user_id": str(user.id)},
+            max_attempts=SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS,
         )
 
     return UserWithSessionToken(user=user, session_token=session_token)

@@ -16,12 +16,19 @@ class SentEmail:
 
 
 class FakeEmailClient(EmailClient):
-    """`EmailClient` that records sent messages instead of delivering them."""
+    """`EmailClient` that records sent messages instead of delivering them.
+
+    Set `fail_with` to make subsequent sends raise instead of recording, for
+    testing delivery-failure paths (e.g. outbox retries).
+    """
 
     def __init__(self) -> None:
         self.sent: list[SentEmail] = []
+        self.fail_with: Exception | None = None
 
     async def send(self, *, to: str, subject: str, html: str) -> None:
+        if self.fail_with is not None:
+            raise self.fail_with
         self.sent.append(SentEmail(to=to, subject=subject, html=html))
 
     def latest_code(self, *, to: str | None = None) -> str:
