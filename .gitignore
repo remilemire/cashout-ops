@@ -16,4 +16,5 @@ instance
 static
 .ruff_cache
 .claude
+.pytest_cache 
 */**/storage/documents
