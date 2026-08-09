@@ -8,7 +8,10 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.documents import DocumentAIClient
-from app.features.auth.outbox import SendVerificationEmailOutboxHandler
+from app.features.auth.outbox import (
+    SendLoginLinkEmailOutboxHandler,
+    SendVerificationEmailOutboxHandler,
+)
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.db.lifespan import db_lifespan
@@ -59,6 +62,9 @@ async def lifespan(app: FastAPI):
         registry = create_outbox_handler_registry(
             [
                 SendVerificationEmailOutboxHandler(
+                    db.sessionmaker, redis_client, email_client
+                ),
+                SendLoginLinkEmailOutboxHandler(
                     db.sessionmaker, redis_client, email_client
                 ),
                 RunExtractionOutboxHandler(db.sessionmaker, processor),

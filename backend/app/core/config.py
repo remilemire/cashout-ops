@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     SESSION_TTL_DAYS: int = 7
     INVITATION_TTL_DAYS: int = 7
     ADMIN_EMAIL: EmailStr = "admin@test.com"
+    # Full name given to the ADMIN_EMAIL account when a first passwordless
+    # sign-in bootstraps it (no registration form supplies one).
+    ADMIN_FULL_NAME: str = "Admin"
 
     # Email delivery. EMAIL_PROVIDER selects the client: CONSOLE logs the
     # message (dev default; boots without a key), RESEND sends for real and
@@ -31,10 +34,17 @@ class Settings(BaseSettings):
     EMAIL_PROVIDER: EmailProvider = EmailProvider.CONSOLE
     RESEND_API_KEY: str | None = None
     EMAIL_FROM: str = "Whiskey District <onboarding@resend.dev>"
+    # Public base URL of the SPA, used to build emailed sign-in links. The dev
+    # default targets the Vite server; production must set its real origin.
+    APP_BASE_URL: str = "http://localhost:5173"
 
     # Email verification. A short-lived numeric code is emailed on registration;
     # the account stays unverified until the code is entered before it expires.
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 15
+
+    # Login challenges. A sign-in link is emailed on login; the challenge (and
+    # with it the link and its one-time code) expires this long after initiation.
+    LOGIN_CHALLENGE_TTL_MINUTES: int = 15
 
     # Outbox dispatch. Workers poll outbox_messages every POLL_INTERVAL; a
     # claim is protected for CLAIM_TTL before a crashed worker's row becomes

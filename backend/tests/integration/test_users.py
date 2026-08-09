@@ -13,6 +13,7 @@ from app.infrastructure.redis import Redis
 from tests.support.api import ADMIN_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
 from tests.support.fakes import FakeEmailClient
+from tests.support.fixtures.outbox import OutboxDrain
 from tests.support.fixtures.redis import redis_keys
 
 
@@ -152,13 +153,19 @@ async def test_deleting_user_revokes_their_sessions_and_verification_code(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     redis_client: Redis,
     email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
     # Seeded directly (an invitation's accepted_by FK would block deletion),
     # then logged in through the API for a real session. No HTTP route deletes
     # users yet, so the deletion goes through the service; the revocation is
     # still observed through the deleted user's previously-valid client.
     user = await create_user(db_session, email="doomed@test.com")
-    await login(client, email="doomed@test.com")
+    await login(
+        client,
+        email="doomed@test.com",
+        drain_outbox=drain_outbox,
+        email_client=email_client,
+    )
     assert (await client.get("/api/users/me")).status_code == 200
     assert await redis_keys(redis_client, "session:*")
 

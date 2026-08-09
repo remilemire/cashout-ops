@@ -80,50 +80,6 @@ async def test_register_rejects_short_password(client: AsyncClient) -> None:
     assert body["issues"][0]["path"] == ["password"]
 
 
-async def test_login_succeeds_with_correct_password(
-    client: AsyncClient, db_session: AsyncSession, redis_client: Redis
-) -> None:
-    await create_invitation(db_session, email="login@test.com")
-    await register(client, email="login@test.com", password="password123")
-    client.cookies.clear()
-    # Drop the registration session so the assertion sees only login's.
-    await redis_client.flushdb()  # pyright: ignore[reportUnknownMemberType]
-
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": "login@test.com", "password": "password123"},
-    )
-
-    assert response.status_code == 200
-    assert "session_token" in client.cookies
-    # Login minted a fresh Redis-tracked session.
-    assert await redis_keys(redis_client, "session:*")
-
-
-async def test_login_wrong_password_unauthorized(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    await create_invitation(db_session, email="wrong@test.com")
-    await register(client, email="wrong@test.com", password="password123")
-
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": "wrong@test.com", "password": "not-the-password"},
-    )
-
-    assert response.status_code == 401
-    assert response.json()["code"] == "INVALID_CREDENTIALS"
-
-
-async def test_login_unknown_email_unauthorized(client: AsyncClient) -> None:
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": "nobody@test.com", "password": "password123"},
-    )
-
-    assert response.status_code == 401
-
-
 async def test_logout_clears_session_and_cookies(
     client: AsyncClient, db_session: AsyncSession, redis_client: Redis
 ) -> None:

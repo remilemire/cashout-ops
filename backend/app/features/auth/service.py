@@ -13,33 +13,18 @@ from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
 from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
-from app.security.passwords import hash_password, verify_password
+from app.security.passwords import hash_password
 
 from .outbox import (
     SEND_VERIFICATION_EMAIL_MAX_ATTEMPTS,
     send_verification_email_message,
 )
-from .schemas import AuthLogin, AuthRegister
+from .schemas import AuthRegister
 from .sessions import service as sessions_service
 from .types import UserWithSessionToken
 
 if TYPE_CHECKING:
     from app.features.users.model import User
-
-
-async def login(
-    db: AsyncSession, redis: Redis, *, payload: AuthLogin
-) -> UserWithSessionToken:
-    user = await users_service.find_by_email(db, email=payload.email)
-
-    if user is None:
-        raise AppError("INVALID_CREDENTIALS")
-
-    if not verify_password(payload.password, user.password_hash):
-        raise AppError("INVALID_CREDENTIALS")
-
-    session_token = await sessions_service.create(redis, user_id=user.id)
-    return UserWithSessionToken(user=user, session_token=session_token)
 
 
 async def register(

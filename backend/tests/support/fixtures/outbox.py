@@ -12,7 +12,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.features.auth.outbox import SendVerificationEmailOutboxHandler
+from app.features.auth.outbox import (
+    SendLoginLinkEmailOutboxHandler,
+    SendVerificationEmailOutboxHandler,
+)
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.outbox.dispatcher import OutboxDispatcher
@@ -45,6 +48,9 @@ def drain_outbox(
     registry = create_outbox_handler_registry(
         [
             SendVerificationEmailOutboxHandler(
+                db_sessionmaker, redis_client, email_client
+            ),
+            SendLoginLinkEmailOutboxHandler(
                 db_sessionmaker, redis_client, email_client
             ),
             RunExtractionOutboxHandler(db_sessionmaker, processor),

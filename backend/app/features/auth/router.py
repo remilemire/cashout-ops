@@ -23,13 +23,17 @@ from app.security.crypto import generate_secret_token
 
 from . import service as auth_service
 from .email_verification.router import router as email_verification_router
-from .schemas import AuthLogin, AuthRegister
+from .login_challenges.router import router as login_challenges_router
+from .schemas import AuthRegister
 from .types import UserWithSessionToken
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Email verification lives under /auth (e.g. /auth/email-verification/verify).
 router.include_router(email_verification_router)
+
+# Passwordless login lives under /auth (e.g. /auth/login/verify-code).
+router.include_router(login_challenges_router)
 
 
 @router.post(
@@ -56,25 +60,6 @@ async def register(
     confirmed.
     """
     result = await auth_service.register(db, redis, payload=payload)
-    return _authenticated_response(response, result)
-
-
-@router.post(
-    "/login",
-    response_model=UserOut,
-    responses=error_responses("INVALID_CREDENTIALS", "VALIDATION_FAILED"),
-)
-async def login(
-    response: Response,
-    payload: AuthLogin,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> UserOut:
-    """Authenticate with email and password.
-
-    Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable) cookies.
-    """
-    result = await auth_service.login(db, redis, payload=payload)
     return _authenticated_response(response, result)
 
 
