@@ -22,3 +22,7 @@ class UserOut(BaseOut):
 class UserCreate(BaseIn):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=200)
+
+
+class UserUpdate(BaseIn):
+    full_name: str = Field(min_length=1, max_length=200)

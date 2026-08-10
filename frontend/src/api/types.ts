@@ -85,6 +85,10 @@ export interface UserCreateInput {
   fullName: string;
 }
 
+export interface UserUpdateInput {
+  fullName: string;
+}
+
 export interface LoginStartInput {
   email: string;
 }

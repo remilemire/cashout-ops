@@ -1,7 +1,7 @@
 // frontend/src/api/users.ts
 
 import { api } from "./client";
-import type { User, UserCreateInput } from "./types";
+import type { User, UserCreateInput, UserUpdateInput } from "./types";
 
 export const usersApi = {
   /** Every user, newest first (admin only). */
@@ -9,6 +9,9 @@ export const usersApi = {
   /** Create a user account (admin only). */
   create: (input: UserCreateInput) =>
     api<User>("/users", { method: "POST", json: input }),
+  /** Rename a user (admin only; any account, the owner's included). */
+  update: (id: string, input: UserUpdateInput) =>
+    api<User>(`/users/${id}`, { method: "PATCH", json: input }),
   /** Grant a user admin access (admin only). */
   promote: (id: string) =>
     api<User>(`/users/${id}/promote`, { method: "POST" }),

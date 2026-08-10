@@ -2,12 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   Crown,
+  Pencil,
   ShieldMinus,
   ShieldPlus,
   Trash2,
   UserPlus,
   UsersRound,
+  X,
 } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 
@@ -22,6 +25,7 @@ import {
   Card,
   EmptyState,
   ErrorBanner,
+  Input,
   PageHeader,
   SkeletonList,
   TextField,
@@ -82,6 +86,9 @@ export function AdminUsersPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [userAction, setUserAction] = useState<UserAction | null>(null);
+  // The row whose name is currently an input, and its working value.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamedName, setRenamedName] = useState("");
 
   const usersQuery = useQuery({
     queryKey: userKeys.list,
@@ -94,6 +101,18 @@ export function AdminUsersPage() {
       setFullName("");
       setEmail("");
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
+    },
+  });
+  const renameUser = useMutation({
+    mutationFn: (input: { id: string; fullName: string }) =>
+      usersApi.update(input.id, { fullName: input.fullName }),
+    onSuccess: async (updated) => {
+      setRenamingId(null);
+      await queryClient.invalidateQueries({ queryKey: userKeys.list });
+      // Renaming yourself changes the name the nav shows.
+      if (updated.id === currentUser?.id) {
+        await queryClient.invalidateQueries({ queryKey: ME_KEY });
+      }
     },
   });
   const promoteUser = useMutation({
@@ -139,6 +158,23 @@ export function AdminUsersPage() {
     }
   };
 
+  const startRename = (user: User) => {
+    // Drop a previous failure so the field never opens pre-errored.
+    renameUser.reset();
+    setRenamedName(user.fullName);
+    setRenamingId(user.id);
+  };
+
+  const cancelRename = () => setRenamingId(null);
+
+  const onRename = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = renamedName.trim();
+    if (renamingId && trimmedName) {
+      renameUser.mutate({ id: renamingId, fullName: trimmedName });
+    }
+  };
+
   const createError = createUser.error;
   const fullNameError =
     createError instanceof ApiError
@@ -149,6 +185,12 @@ export function AdminUsersPage() {
       ? createError.messageFor("email")
       : undefined;
   const hasFieldError = fullNameError !== undefined || emailError !== undefined;
+
+  const renameError = renameUser.error;
+  const renamedNameError =
+    renameError instanceof ApiError
+      ? renameError.messageFor("fullName")
+      : undefined;
 
   const users = usersQuery.data ?? [];
 
@@ -199,6 +241,8 @@ export function AdminUsersPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Accounts</h2>
         <ErrorBanner error={usersQuery.error} />
+        {/* A rejected name is shown under its own field instead. */}
+        <ErrorBanner error={renamedNameError ? null : renameError} />
         <ErrorBanner error={promoteUser.error} />
         <ErrorBanner error={demoteUser.error} />
         <ErrorBanner error={deleteUser.error} />
@@ -236,13 +280,72 @@ export function AdminUsersPage() {
                         <span className="bg-accent/15 text-accent-strong grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold">
                           {initials(user.fullName)}
                         </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">
-                            {user.fullName}
-                          </span>
+                        <span className="min-w-0 flex-1">
+                          {renamingId === user.id ? (
+                            <form
+                              onSubmit={onRename}
+                              className="flex items-center gap-1"
+                            >
+                              <Input
+                                autoFocus
+                                required
+                                aria-label={`Full name for ${user.email}`}
+                                className="min-h-9"
+                                invalid={renamedNameError !== undefined}
+                                value={renamedName}
+                                onChange={(event) =>
+                                  setRenamedName(event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") cancelRename();
+                                }}
+                              />
+                              <Button
+                                type="submit"
+                                variant="ghost"
+                                size="sm"
+                                className="ml-1"
+                                aria-label={`Save name for ${user.email}`}
+                                loading={renameUser.isPending}
+                              >
+                                {!renameUser.isPending && (
+                                  <Check className="text-accent-strong size-4" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Cancel renaming ${user.fullName}`}
+                                onClick={cancelRename}
+                              >
+                                <X className="size-4" />
+                              </Button>
+                            </form>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <span className="truncate font-medium">
+                                {user.fullName}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="ml-1"
+                                aria-label={`Rename ${user.fullName}`}
+                                onClick={() => startRename(user)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                            </span>
+                          )}
                           <span className="text-ink-muted block truncate text-xs">
                             {user.email}
                           </span>
+                          {renamingId === user.id && renamedNameError && (
+                            <span className="text-danger mt-1 block text-xs">
+                              {renamedNameError}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </td>
@@ -251,7 +354,9 @@ export function AdminUsersPage() {
                         {ROLE_BADGES[user.role].label}
                       </Badge>
                     </td>
-                    <td className="text-ink-muted px-4 py-3">
+                    {/* Never wrap the date: the Card scrolls horizontally
+                        instead of stacking it onto several lines. */}
+                    <td className="text-ink-muted px-4 py-3 whitespace-nowrap">
                       {formatDateTime(user.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right">

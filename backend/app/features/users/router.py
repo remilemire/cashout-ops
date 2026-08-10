@@ -21,7 +21,7 @@ from app.security.dependencies import require_csrf
 
 from . import service as users_service
 from .model import User
-from .schemas import UserCreate, UserOut
+from .schemas import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(
     prefix="/users",
@@ -74,6 +74,26 @@ async def create_user(
 
 
 UserId = Annotated[UUID, Path(description="User ID.")]
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserOut,
+    dependencies=[Depends(require_admin)],
+    responses=error_responses("FORBIDDEN", "USER_NOT_FOUND", "VALIDATION_FAILED"),
+)
+async def update_user(
+    user_id: UserId,
+    payload: UserUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """Update a user's name (admin only).
+
+    Any account can be renamed, the owner's and the caller's own included:
+    a name carries no privileges.
+    """
+    user = await users_service.update(db, user_id=user_id, payload=payload)
+    return UserOut.model_validate(user)
 
 
 @router.post(

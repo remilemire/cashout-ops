@@ -118,6 +118,129 @@ async def test_create_user_requires_admin(cashier_client: AsyncClient) -> None:
     assert response.json()["code"] == "FORBIDDEN"
 
 
+# ================================
+# ---------- Update user ---------
+# ================================
+
+
+async def test_admin_updates_user_name(
+    admin_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="staff@test.com", full_name="Old Name")
+
+    response = await admin_client.patch(
+        f"/api/users/{user.id}",
+        json={"fullName": "New Name"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == str(user.id)
+    assert body["fullName"] == "New Name"
+    # Persisted, not just echoed back.
+    listed = (await admin_client.get("/api/users")).json()
+    names = {entry["email"]: entry["fullName"] for entry in listed}
+    assert names["staff@test.com"] == "New Name"
+
+
+async def test_admin_updates_own_name(admin_client: AsyncClient) -> None:
+    me = (await admin_client.get("/api/users/me")).json()
+
+    response = await admin_client.patch(
+        f"/api/users/{me['id']}",
+        json={"fullName": "Renamed Admin"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 200, response.text
+    assert (await admin_client.get("/api/users/me")).json()["fullName"] == (
+        "Renamed Admin"
+    )
+
+
+async def test_admin_updates_owner_name(
+    admin_client: AsyncClient, owner_client: AsyncClient
+) -> None:
+    owner = (await owner_client.get("/api/users/me")).json()
+
+    response = await admin_client.patch(
+        f"/api/users/{owner['id']}",
+        json={"fullName": "Renamed Owner"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 200, response.text
+    # A rename is not a role change: the owner keeps their role.
+    body = response.json()
+    assert body["fullName"] == "Renamed Owner"
+    assert body["role"] == "owner"
+
+
+async def test_update_user_requires_admin(
+    cashier_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="staff@test.com")
+
+    response = await cashier_client.patch(
+        f"/api/users/{user.id}",
+        json={"fullName": "New Name"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+async def test_update_unknown_user_not_found(admin_client: AsyncClient) -> None:
+    response = await admin_client.patch(
+        f"/api/users/{uuid4()}",
+        json={"fullName": "New Name"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "USER_NOT_FOUND"
+
+
+async def test_update_user_rejects_blank_name(
+    admin_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="staff@test.com", full_name="Old Name")
+
+    response = await admin_client.patch(
+        f"/api/users/{user.id}",
+        json={"fullName": ""},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION_FAILED"
+    assert [issue["path"] for issue in body["issues"]] == [["fullName"]]
+
+
+async def test_update_user_rejects_role_and_email_fields(
+    admin_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="staff@test.com")
+
+    response = await admin_client.patch(
+        f"/api/users/{user.id}",
+        json={"fullName": "New Name", "role": "admin", "email": "hijack@test.com"},
+        headers=csrf_headers(admin_client),
+    )
+
+    # BaseIn forbids extras: the endpoint renames and nothing else.
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_FAILED"
+
+
+# ================================
+# ---------- Roles ---------------
+# ================================
+
+
 async def test_admin_promotes_user(
     admin_client: AsyncClient, db_session: AsyncSession
 ) -> None:

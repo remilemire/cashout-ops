@@ -20,6 +20,7 @@ vi.mock("@/api/users", async (importOriginal) => {
       ...actual.usersApi,
       list: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       promote: vi.fn(),
       demote: vi.fn(),
       remove: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("@/components/dialog", () => ({
 
 const listUsersMock = vi.mocked(usersApi.list);
 const createMock = vi.mocked(usersApi.create);
+const updateMock = vi.mocked(usersApi.update);
 const promoteMock = vi.mocked(usersApi.promote);
 const demoteMock = vi.mocked(usersApi.demote);
 const removeMock = vi.mocked(usersApi.remove);
@@ -127,6 +129,7 @@ async function submitNewUser(fullName: string, email: string) {
 beforeEach(() => {
   listUsersMock.mockReset();
   createMock.mockReset();
+  updateMock.mockReset();
   promoteMock.mockReset();
   demoteMock.mockReset();
   removeMock.mockReset();
@@ -141,6 +144,7 @@ beforeEach(() => {
     fullName: "New User",
     role: "staff",
   });
+  updateMock.mockResolvedValue({ ...staff, fullName: "Renamed Staff" });
   promoteMock.mockResolvedValue({ ...staff, role: "admin" });
   demoteMock.mockResolvedValue({ ...otherAdmin, role: "staff" });
   removeMock.mockResolvedValue(undefined);
@@ -184,7 +188,7 @@ describe("AdminUsersPage add user", () => {
 });
 
 describe("AdminUsersPage role actions", () => {
-  it("offers promote for staff and demote for admins, never anything for the owner", async () => {
+  it("offers promote for staff and demote for admins, never a role action for the owner", async () => {
     renderPage();
 
     expect(
@@ -198,15 +202,25 @@ describe("AdminUsersPage role actions", () => {
     expect(
       screen.getByRole("button", { name: "Demote Other Admin to staff" }),
     ).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Owner User/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Promote Owner User to admin" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Demote Owner User to staff" }),
+    ).toBeNull();
   });
 
-  it("shows the Owner badge and no actions on the owner's row, even to another admin", async () => {
+  it("shows the Owner badge and no role or delete action on the owner's row, even to another admin", async () => {
     signInAs(admin);
     renderPage();
 
     expect(await screen.findByText("Owner")).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Owner User/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Demote Owner User to staff" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Delete Owner User" }),
+    ).toBeNull();
   });
 
   it("hides the signed-in admin's own demote and delete", async () => {
@@ -262,6 +276,176 @@ describe("AdminUsersPage role actions", () => {
     await waitFor(() => expect(demoteMock).toHaveBeenCalledOnce());
     expect(demoteMock.mock.calls[0]?.[0]).toBe("admin-2");
     expect(promoteMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("AdminUsersPage rename", () => {
+  /** Click a row's pencil and return its now-editable name input. */
+  async function startRename(name: string, email: string) {
+    fireEvent.click(
+      await screen.findByRole("button", { name: `Rename ${name}` }),
+    );
+    return screen.getByLabelText<HTMLInputElement>(`Full name for ${email}`);
+  }
+
+  it("offers the rename toggle on every row, the owner's and the signed-in admin's included", async () => {
+    signInAs(admin);
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", { name: "Rename Owner User" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Rename Admin User" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Rename Staff User" }),
+    ).toBeDefined();
+  });
+
+  it("swaps only the clicked row's name for a prefilled input", async () => {
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+
+    expect(field.value).toBe("Staff User");
+    // The other rows stay plain text with their toggle intact.
+    expect(screen.queryByLabelText("Full name for admin@test.com")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Rename Admin User" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Rename Staff User" }),
+    ).toBeNull();
+  });
+
+  it("saves the new name and refetches the accounts list", async () => {
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "  Renamed Staff  " } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save name for staff@test.com" }),
+    );
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledOnce());
+    expect(updateMock.mock.calls[0]).toEqual([
+      "staff-1",
+      { fullName: "Renamed Staff" },
+    ]);
+    await waitFor(() => expect(listUsersMock).toHaveBeenCalledTimes(2));
+    // Back to plain text once saved.
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Full name for staff@test.com"),
+      ).toBeNull(),
+    );
+  });
+
+  it("discards the edit on cancel", async () => {
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "Discarded" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel renaming Staff User" }),
+    );
+
+    expect(screen.queryByLabelText("Full name for staff@test.com")).toBeNull();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Rename Staff User" }),
+    ).toBeDefined();
+  });
+
+  it("discards the edit on Escape", async () => {
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "Discarded" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+
+    expect(screen.queryByLabelText("Full name for staff@test.com")).toBeNull();
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the session user when the admin renames themselves", async () => {
+    signInAs(admin);
+    updateMock.mockResolvedValue({ ...admin, fullName: "Renamed Admin" });
+    const queryClient = renderPage();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const field = await startRename("Admin User", "admin@test.com");
+    fireEvent.change(field, { target: { value: "Renamed Admin" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save name for admin@test.com" }),
+    );
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ME_KEY }),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: userKeys.list });
+  });
+
+  it("leaves the session user alone when renaming someone else", async () => {
+    signInAs(admin);
+    const queryClient = renderPage();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "Renamed Staff" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save name for staff@test.com" }),
+    );
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: userKeys.list }),
+    );
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ME_KEY });
+  });
+
+  it("shows the field error when the backend rejects the name", async () => {
+    updateMock.mockRejectedValue(
+      new ApiError(422, {
+        kind: "VALIDATION",
+        code: "VALIDATION_FAILED",
+        message: "Validation failed.",
+        issues: [
+          {
+            code: "TOO_LONG",
+            path: ["fullName"],
+            message: "Must be at most 200 characters.",
+          },
+        ],
+      }),
+    );
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "x".repeat(201) } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save name for staff@test.com" }),
+    );
+
+    expect(
+      await screen.findByText("Must be at most 200 characters."),
+    ).toBeDefined();
+    // The row stays in edit mode so the name can be corrected.
+    expect(screen.getByLabelText("Full name for staff@test.com")).toBeDefined();
+    expect(listUsersMock).toHaveBeenCalledOnce();
+  });
+
+  it("never submits a blank name", async () => {
+    renderPage();
+
+    const field = await startRename("Staff User", "staff@test.com");
+    fireEvent.change(field, { target: { value: "   " } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save name for staff@test.com" }),
+    );
+
+    await waitFor(() => expect(updateMock).not.toHaveBeenCalled());
   });
 });
 

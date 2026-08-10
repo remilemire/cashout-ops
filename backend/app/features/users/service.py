@@ -13,7 +13,7 @@ from app.infrastructure.redis import Redis
 
 from . import repository
 from .model import User
-from .schemas import UserCreate
+from .schemas import UserCreate, UserUpdate
 from .types import UserRole
 
 
@@ -37,6 +37,19 @@ async def create(db: AsyncSession, *, payload: UserCreate) -> User:
     )
     await repository.add(db, user)
 
+    return user
+
+
+async def update(db: AsyncSession, *, user_id: UUID, payload: UserUpdate) -> User:
+    """Update a user's profile details.
+
+    Renaming is not a privilege change, so it is allowed on any account —
+    including the owner's and the caller's own.
+    """
+    user = await repository.find_by_id(db, user_id=user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND")
+    user.full_name = payload.full_name
     return user
 
 
@@ -131,6 +144,7 @@ __all__ = [
     "find_by_email",
     "find_by_id",
     "create",
+    "update",
     "bootstrap_owner",
     "delete_by_id",
     "promote_admin",

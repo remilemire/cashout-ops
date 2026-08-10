@@ -278,6 +278,25 @@ export function EmptyState({
 
 // ---------- Forms ----------
 
+/** The bare input; use {@link TextField} unless the label lives elsewhere. */
+export function Input({
+  invalid = false,
+  className,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
+  return (
+    <input
+      className={cx(
+        "bg-surface min-h-11 w-full rounded-lg border px-3 text-sm",
+        "focus:ring-accent/50 outline-none focus:ring-2",
+        invalid ? "border-danger" : "border-line",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
 export function TextField({
   label,
   error,
@@ -290,15 +309,7 @@ export function TextField({
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>
-      <input
-        className={cx(
-          "bg-surface min-h-11 w-full rounded-lg border px-3 text-sm",
-          "focus:ring-accent/50 outline-none focus:ring-2",
-          error ? "border-danger" : "border-line",
-          className,
-        )}
-        {...rest}
-      />
+      <Input invalid={Boolean(error)} className={className} {...rest} />
       {error && <span className="text-danger mt-1 block text-xs">{error}</span>}
     </label>
   );
