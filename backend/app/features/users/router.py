@@ -9,8 +9,14 @@ from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.openapi import error_responses
-from app.features.auth.dependencies import get_current_user, require_admin
+from app.features.auth.dependencies import (
+    get_current_user,
+    require_admin,
+    require_owner,
+)
 from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
 from app.security.dependencies import require_csrf
 
 from . import service as users_service
@@ -107,4 +113,49 @@ async def demote_user(
 ) -> UserOut:
     """Revoke a user's admin access (admin only; idempotent)."""
     user = await users_service.demote_admin(db, user_id=user_id, actor=actor)
+    return UserOut.model_validate(user)
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin)],
+    responses=error_responses(
+        "FORBIDDEN",
+        "USER_NOT_FOUND",
+        "CANNOT_DELETE_OWNER",
+        "CONFLICT",
+        "VALIDATION_FAILED",
+    ),
+)
+async def delete_user(
+    user_id: UserId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> None:
+    """Delete a user and revoke their sessions (admin only).
+
+    The owner cannot be deleted; a user with cashout data conflicts (their
+    submissions still reference them).
+    """
+    await users_service.delete_by_id(db, redis, user_id=user_id)
+
+
+@router.post(
+    "/{user_id}/transfer-ownership",
+    response_model=UserOut,
+    responses=error_responses(
+        "FORBIDDEN",
+        "USER_NOT_FOUND",
+        "TRANSFER_TARGET_NOT_ADMIN",
+        "VALIDATION_FAILED",
+    ),
+)
+async def transfer_ownership(
+    user_id: UserId,
+    actor: Annotated[User, Depends(require_owner)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """Transfer ownership to an admin (owner only); returns the new owner."""
+    user = await users_service.transfer_ownership(db, actor=actor, new_owner_id=user_id)
     return UserOut.model_validate(user)

@@ -34,7 +34,7 @@ starting a container.
 tests/
   conftest.py            env defaults, pytest_plugins, tier auto-markers
   support/
-    api.py               ADMIN_EMAIL, csrf_headers, login
+    api.py               OWNER_EMAIL, csrf_headers, login
     factories.py         direct DB seeding: create_user
     cashout.py           workflow drivers: create_submission, upload_document,
                          poll_analysis, verify_analysis, complete_submission,
@@ -59,6 +59,7 @@ clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis neve
 ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
 email_client + redis_client ──────┘      └─> client / make_client
                                               └─> cashier_client / admin_client
+                                                  / owner_client
 ```
 
 - `app` is a fresh `create_app()` instance per test with the database, Redis,
@@ -68,14 +69,17 @@ email_client + redis_client ──────┘      └─> client / make_cli
   users in one test:
 
   ```python
-  async def test_two_users(make_client):
+  async def test_three_users(make_client):
       alice = await make_client(email="alice@test.com")
-      admin = await make_client(admin=True)
+      admin = await make_client(email="boss@test.com", role=UserRole.ADMIN)
+      owner = await make_client(owner=True)
   ```
 
-  It seeds the user row directly, then signs in through the real passwordless
-  challenge flow (the client carries session + csrf cookies).
-  `cashier_client` / `admin_client` are shorthands built on it.
+  It seeds the user row directly (with the requested role), then signs in
+  through the real passwordless challenge flow (the client carries session +
+  csrf cookies). `owner=True` seeds nothing: it drives the real lazy owner
+  bootstrap for `OWNER_EMAIL`. `cashier_client` / `admin_client` /
+  `owner_client` are shorthands built on it.
 - Isolation between tests is TRUNCATE-after-each-test (`clean_tables`) and
   FLUSHDB-after-each-test (`clean_redis`), not transaction rollback: tests
   really commit.

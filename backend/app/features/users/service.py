@@ -14,6 +14,7 @@ from app.infrastructure.redis import Redis
 from . import repository
 from .model import User
 from .schemas import UserCreate
+from .types import UserRole
 
 
 async def list_users(db: AsyncSession) -> Sequence[User]:
@@ -39,12 +40,12 @@ async def create(db: AsyncSession, *, payload: UserCreate) -> User:
     return user
 
 
-async def bootstrap_admin(db: AsyncSession, *, payload: UserCreate) -> User:
-    """Create the bootstrapped ADMIN_EMAIL account as an admin."""
+async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User:
+    """Create the bootstrapped OWNER_EMAIL account as the owner."""
     user = User(
         email=payload.email,
         full_name=payload.full_name,
-        is_admin=True,
+        role=UserRole.OWNER,
     )
     await repository.add(db, user)
 
@@ -55,6 +56,8 @@ async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
+    if user.role is UserRole.OWNER:
+        raise AppError("CANNOT_DELETE_OWNER")
     await repository.delete(db, user)
     # Best-effort session revocation (the old FK cascade): not atomic with the
     # transaction. If the Redis write is lost, authenticate's failed user
@@ -67,28 +70,59 @@ async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None
 async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
     """Grant a user admin access (idempotent if already an admin).
 
-    An admin cannot change their own admin access.
+    An admin cannot change their own admin access, and the owner's role
+    cannot be changed.
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
-    user.is_admin = True
+    if user.role is UserRole.OWNER:
+        raise AppError("CANNOT_MODIFY_OWNER")
+    user.role = UserRole.ADMIN
     return user
 
 
 async def demote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:
     """Revoke a user's admin access (idempotent if already staff).
 
-    An admin cannot change their own admin access.
+    An admin cannot change their own admin access, and the owner's role
+    cannot be changed.
     """
     if actor.id == user_id:
         raise AppError("CANNOT_MODIFY_OWN_ADMIN")
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
-    user.is_admin = False
+    if user.role is UserRole.OWNER:
+        raise AppError("CANNOT_MODIFY_OWNER")
+    user.role = UserRole.STAFF
+    return user
+
+
+async def transfer_ownership(
+    db: AsyncSession, *, actor: User, new_owner_id: UUID
+) -> User:
+    """Transfer the actor's ownership to an admin, returning the new owner.
+
+    The actor is required here because the operation logically transfers THEIR
+    ownership (the require_owner dependency guarantees they hold it). Only an
+    admin can receive it — this also rejects the actor targeting themselves.
+
+    The demotion is flushed before the promotion: within a single flush the
+    UPDATE order is unspecified, so ix_users_single_owner could see two owners
+    mid-flight and reject a legitimate transfer.
+    """
+    user = await repository.find_by_id(db, user_id=new_owner_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND")
+    if user.role is not UserRole.ADMIN:
+        raise AppError("TRANSFER_TARGET_NOT_ADMIN")
+    actor.role = UserRole.ADMIN
+    await repository.flush(db)
+    user.role = UserRole.OWNER
+    await repository.flush(db)
     return user
 
 
@@ -97,8 +131,9 @@ __all__ = [
     "find_by_email",
     "find_by_id",
     "create",
-    "bootstrap_admin",
+    "bootstrap_owner",
     "delete_by_id",
     "promote_admin",
     "demote_admin",
+    "transfer_ownership",
 ]

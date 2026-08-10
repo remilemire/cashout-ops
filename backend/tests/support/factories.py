@@ -7,6 +7,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.users.model import User
+from app.features.users.types import UserRole
 
 
 async def create_user(
@@ -14,12 +15,12 @@ async def create_user(
     *,
     email: str = "cashier@test.com",
     full_name: str = "Test User",
-    is_admin: bool = False,
+    role: UserRole = UserRole.STAFF,
 ) -> User:
     user = User(
         email=email,
         full_name=full_name,
-        is_admin=is_admin,
+        role=role,
     )
     db.add(user)
     await db.commit()

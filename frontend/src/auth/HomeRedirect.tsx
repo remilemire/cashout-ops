@@ -2,12 +2,13 @@
 
 import { Navigate } from "react-router-dom";
 
+import { isAdminRole } from "@/api/types";
+
 import { useAuth } from "./useAuth";
 
 /** Role-appropriate landing page. */
 export function HomeRedirect() {
   const { user } = useAuth();
-  return (
-    <Navigate to={user?.isAdmin ? "/admin/submissions" : "/cashouts"} replace />
-  );
+  const isAdmin = user !== null && isAdminRole(user.role);
+  return <Navigate to={isAdmin ? "/admin/submissions" : "/cashouts"} replace />;
 }

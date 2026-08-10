@@ -4,6 +4,9 @@ import { createContext, useContext } from "react";
 
 import type { User } from "@/api/types";
 
+/** Query key for the session user; AuthProvider owns the query itself. */
+export const ME_KEY = ["me"] as const;
+
 export interface AuthContextValue {
   /** null = definitely signed out; undefined never escapes isLoading. */
   user: User | null;

@@ -14,6 +14,11 @@ export const usersApi = {
     api<User>(`/users/${id}/promote`, { method: "POST" }),
   /** Revoke a user's admin access (admin only). */
   demote: (id: string) => api<User>(`/users/${id}/demote`, { method: "POST" }),
+  /** Delete a user account (admin only; the owner cannot be deleted). */
+  remove: (id: string) => api<void>(`/users/${id}`, { method: "DELETE" }),
+  /** Make an admin the owner; the caller becomes a regular admin (owner only). */
+  transferOwnership: (id: string) =>
+    api<User>(`/users/${id}/transfer-ownership`, { method: "POST" }),
 };
 
 /** Central react-query keys so invalidation stays consistent. */

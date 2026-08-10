@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
 from app.features.users.model import User
+from app.features.users.types import UserRole
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
@@ -30,9 +31,16 @@ async def get_current_user(
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """Admins and the owner both pass (is_admin covers ADMIN and OWNER)."""
     if not user.is_admin:
         raise AppError("FORBIDDEN", "Admin access required.")
     return user
 
 
-__all__ = ["get_current_user", "require_admin"]
+def require_owner(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if user.role is not UserRole.OWNER:
+        raise AppError("FORBIDDEN", "Owner access required.")
+    return user
+
+
+__all__ = ["get_current_user", "require_admin", "require_owner"]

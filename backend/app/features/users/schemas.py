@@ -8,13 +8,15 @@ from pydantic import EmailStr, Field
 
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 
+from .types import UserRole
+
 
 class UserOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
     email: EmailStr
     full_name: str
-    is_admin: bool
+    role: UserRole
 
 
 class UserCreate(BaseIn):

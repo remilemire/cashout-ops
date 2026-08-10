@@ -62,7 +62,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Cookie-based session auth backed by SHA-256–hashed session tokens stored in Redis with a TTL
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Transactional outbox for deferred work (login-link emails, AI extraction): enqueued inside the request transaction, delivered by lifespan-managed dispatcher workers
-- Admin user management: list users, create staff accounts, and promote/demote admins
+- Admin user management: list users, create staff accounts, promote/demote admins, and delete users — plus a single owner role (bootstrapped account; cannot be demoted or deleted) with owner-to-admin ownership transfer
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
@@ -147,7 +147,7 @@ Backend tooling is [uv](https://docs.astral.sh/uv/), driven through the repo-roo
 
 ```bash
 # 1. Backend
-cp backend/.env.example backend/.env   # then set ADMIN_EMAIL and the selected provider's AI key
+cp backend/.env.example backend/.env   # then set OWNER_EMAIL and the selected provider's AI key
 make backend-install                   # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
@@ -179,8 +179,8 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `EMAIL_FROM`          | no       | `Whiskey District <onboarding@resend.dev>`                     | Sender address for all outbound mail.                                                                 |
 | `APP_BASE_URL`        | no       | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the emailed sign-in links. Production must set its real origin. |
 | `LOGIN_CHALLENGE_TTL_MINUTES` | no | `15`                                                       | How long a login challenge (and with it the emailed link and its one-time code) stays valid.         |
-| `ADMIN_EMAIL`         | no       | `admin@test.com`                                               | First sign-in with this email lazily bootstraps the admin account (see [features/auth/login_challenges/service.py](backend/app/features/auth/login_challenges/service.py)). |
-| `ADMIN_FULL_NAME`     | no       | `Admin`                                                        | Full name given to the bootstrapped `ADMIN_EMAIL` account.                                           |
+| `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/login_challenges/service.py](backend/app/features/auth/login_challenges/service.py)). |
+| `OWNER_FULL_NAME`     | no       | `Owner`                                                        | Full name given to the bootstrapped `OWNER_EMAIL` account.                                           |
 
 The AI model is not env-configurable: each provider's model is fixed in `AI_MODELS` in [core/config.py](backend/app/core/config.py) and resolved for the selected `AI_PROVIDER`.
 
@@ -245,9 +245,9 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 - Login is passwordless: `POST /api/auth/login` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`LOGIN_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code.
 - Visiting the link (`POST /api/auth/login/verify-link`) reveals a one-time code; entering it in the initiating tab (`POST /api/auth/login/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
-- Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `ADMIN_EMAIL` account is bootstrapped lazily on its first sign-in.
+- Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
-- A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
+- A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` / `require_owner` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
 - Session TTL is `SESSION_TTL_DAYS` (default 7). There is no "remember me".
 - Logout clears both cookies and deletes the corresponding Redis session.
@@ -286,8 +286,10 @@ Implemented under the `/api` prefix:
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | GET    | `/api/users`                                  | admin           | 200     | List every user, newest first.                              |
 | POST   | `/api/users`                                  | admin + CSRF    | 201     | Create a staff account (no email sent; the user signs in via the login flow). |
-| POST   | `/api/users/{id}/promote`                     | admin + CSRF    | 200     | Grant a user admin access (idempotent).                     |
-| POST   | `/api/users/{id}/demote`                      | admin + CSRF    | 200     | Revoke a user's admin access (cannot demote yourself).      |
+| POST   | `/api/users/{id}/promote`                     | admin + CSRF    | 200     | Grant a user admin access (idempotent; cannot target the owner). |
+| POST   | `/api/users/{id}/demote`                      | admin + CSRF    | 200     | Revoke a user's admin access (cannot demote yourself or the owner). |
+| DELETE | `/api/users/{id}`                             | admin + CSRF    | 204     | Delete a user and revoke their sessions (the owner cannot be deleted). |
+| POST   | `/api/users/{id}/transfer-ownership`          | owner + CSRF    | 200     | Transfer ownership to an admin; the caller becomes a plain admin. |
 | POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
 | DELETE | `/api/cashout/submissions/{id}`               | owner + CSRF    | 204     | Delete a submission unless reconciled cashout data exists.  |
 | GET    | `/api/cashout/submissions/{id}`               | owner or admin  | 200     | Submission detail with documents (analyses embedded) + data. |
@@ -309,7 +311,7 @@ The three scripts under `backend/scripts/` are the Render deploy hooks:
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
 - `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT`.
 
-The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `ADMIN_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`CONSOLE`), so nobody can sign in.
+The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`CONSOLE`), so nobody can sign in.
 
 ## Conventions
 

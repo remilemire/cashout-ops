@@ -1,13 +1,20 @@
 // frontend/src/features/admin/AdminUsersPage.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldMinus, ShieldPlus, UserPlus, UsersRound } from "lucide-react";
+import {
+  Crown,
+  ShieldMinus,
+  ShieldPlus,
+  Trash2,
+  UserPlus,
+  UsersRound,
+} from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 
 import { ApiError } from "@/api/client";
-import type { User } from "@/api/types";
+import type { User, UserRole } from "@/api/types";
 import { userKeys, usersApi } from "@/api/users";
-import { useAuth } from "@/auth/useAuth";
+import { ME_KEY, useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Badge,
@@ -21,14 +28,60 @@ import {
 } from "@/components/ui";
 import { formatDateTime, initials } from "@/lib/format";
 
-type RoleChange = { user: User; action: "promote" | "demote" };
+type UserAction = {
+  user: User;
+  action: "promote" | "demote" | "delete" | "transfer";
+};
+
+const ROLE_BADGES = {
+  staff: { label: "Staff", tone: "neutral" },
+  admin: { label: "Admin", tone: "accent" },
+  owner: { label: "Owner", tone: "warning" },
+} as const satisfies Record<UserRole, unknown>;
+
+const ACTION_DIALOGS: Record<
+  UserAction["action"],
+  {
+    title: string;
+    confirmLabel: string;
+    confirmTone: "primary" | "danger";
+    body: (user: User) => string;
+  }
+> = {
+  promote: {
+    title: "Promote to admin",
+    confirmLabel: "Promote",
+    confirmTone: "primary",
+    body: (user) => `${user.fullName} will gain full admin access.`,
+  },
+  demote: {
+    title: "Demote to staff",
+    confirmLabel: "Demote",
+    confirmTone: "primary",
+    body: (user) => `${user.fullName} will lose admin access and become staff.`,
+  },
+  delete: {
+    title: "Delete user",
+    confirmLabel: "Delete",
+    confirmTone: "danger",
+    body: (user) =>
+      `${user.fullName}'s account will be permanently deleted. This can't be undone.`,
+  },
+  transfer: {
+    title: "Transfer ownership",
+    confirmLabel: "Transfer",
+    confirmTone: "primary",
+    body: (user) =>
+      `${user.fullName} will become the owner, and you will become a regular admin.`,
+  },
+};
 
 export function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [roleChange, setRoleChange] = useState<RoleChange | null>(null);
+  const [userAction, setUserAction] = useState<UserAction | null>(null);
 
   const usersQuery = useQuery({
     queryKey: userKeys.list,
@@ -46,15 +99,34 @@ export function AdminUsersPage() {
   const promoteUser = useMutation({
     mutationFn: usersApi.promote,
     onSuccess: async () => {
-      setRoleChange(null);
+      setUserAction(null);
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
   });
   const demoteUser = useMutation({
     mutationFn: usersApi.demote,
     onSuccess: async () => {
-      setRoleChange(null);
+      setUserAction(null);
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
+    },
+  });
+  const deleteUser = useMutation({
+    mutationFn: usersApi.remove,
+    onSuccess: async () => {
+      setUserAction(null);
+      await queryClient.invalidateQueries({ queryKey: userKeys.list });
+    },
+  });
+  const transferOwnership = useMutation({
+    mutationFn: usersApi.transferOwnership,
+    onSuccess: async () => {
+      setUserAction(null);
+      // The caller's own role changed too (owner → admin), so refresh the
+      // session user alongside the list to update the nav without a reload.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: userKeys.list }),
+        queryClient.invalidateQueries({ queryKey: ME_KEY }),
+      ]);
     },
   });
 
@@ -129,6 +201,8 @@ export function AdminUsersPage() {
         <ErrorBanner error={usersQuery.error} />
         <ErrorBanner error={promoteUser.error} />
         <ErrorBanner error={demoteUser.error} />
+        <ErrorBanner error={deleteUser.error} />
+        <ErrorBanner error={transferOwnership.error} />
 
         {usersQuery.isLoading ? (
           <SkeletonList count={3} />
@@ -173,38 +247,70 @@ export function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={user.isAdmin ? "accent" : "neutral"}>
-                        {user.isAdmin ? "Admin" : "Staff"}
+                      <Badge tone={ROLE_BADGES[user.role].tone}>
+                        {ROLE_BADGES[user.role].label}
                       </Badge>
                     </td>
                     <td className="text-ink-muted px-4 py-3">
                       {formatDateTime(user.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {user.isAdmin ? (
-                        user.id === currentUser?.id ? null : (
+                      {/* The owner is untouchable, and self-targeted actions
+                          stay hidden (the only ones left here would be
+                          self-demote and self-delete). */}
+                      {user.role !== "owner" && user.id !== currentUser?.id && (
+                        <span className="inline-flex items-center gap-1">
+                          {user.role === "admin" ? (
+                            <>
+                              {currentUser?.role === "owner" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Transfer ownership to ${user.fullName}`}
+                                  onClick={() =>
+                                    setUserAction({
+                                      user,
+                                      action: "transfer",
+                                    })
+                                  }
+                                >
+                                  <Crown className="text-warning size-4" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Demote ${user.fullName} to staff`}
+                                onClick={() =>
+                                  setUserAction({ user, action: "demote" })
+                                }
+                              >
+                                <ShieldMinus className="size-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Promote ${user.fullName} to admin`}
+                              onClick={() =>
+                                setUserAction({ user, action: "promote" })
+                              }
+                            >
+                              <ShieldPlus className="text-accent-strong size-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
-                            aria-label={`Demote ${user.fullName} to staff`}
+                            aria-label={`Delete ${user.fullName}`}
                             onClick={() =>
-                              setRoleChange({ user, action: "demote" })
+                              setUserAction({ user, action: "delete" })
                             }
                           >
-                            <ShieldMinus className="size-4" />
+                            <Trash2 className="text-danger size-4" />
                           </Button>
-                        )
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Promote ${user.fullName} to admin`}
-                          onClick={() =>
-                            setRoleChange({ user, action: "promote" })
-                          }
-                        >
-                          <ShieldPlus className="text-accent-strong size-4" />
-                        </Button>
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -216,26 +322,25 @@ export function AdminUsersPage() {
       </section>
 
       <ConfirmDialog
-        open={roleChange !== null}
-        onClose={() => setRoleChange(null)}
-        title={
-          roleChange?.action === "demote"
-            ? "Demote to staff"
-            : "Promote to admin"
+        open={userAction !== null}
+        onClose={() => setUserAction(null)}
+        title={userAction ? ACTION_DIALOGS[userAction.action].title : ""}
+        confirmLabel={
+          userAction ? ACTION_DIALOGS[userAction.action].confirmLabel : ""
         }
-        confirmLabel={roleChange?.action === "demote" ? "Demote" : "Promote"}
+        confirmTone={
+          userAction ? ACTION_DIALOGS[userAction.action].confirmTone : "primary"
+        }
         onConfirm={() => {
-          if (!roleChange) return;
-          if (roleChange.action === "demote") {
-            demoteUser.mutate(roleChange.user.id);
-          } else {
-            promoteUser.mutate(roleChange.user.id);
-          }
+          if (!userAction) return;
+          const { user, action } = userAction;
+          if (action === "promote") promoteUser.mutate(user.id);
+          else if (action === "demote") demoteUser.mutate(user.id);
+          else if (action === "delete") deleteUser.mutate(user.id);
+          else transferOwnership.mutate(user.id);
         }}
       >
-        {roleChange?.action === "demote"
-          ? `${roleChange.user.fullName} will lose admin access and become staff.`
-          : `${roleChange?.user.fullName} will gain full admin access.`}
+        {userAction && ACTION_DIALOGS[userAction.action].body(userAction.user)}
       </ConfirmDialog>
     </div>
   );

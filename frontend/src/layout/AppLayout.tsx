@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { isAdminRole } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { cx } from "@/lib/cx";
 import { initials } from "@/lib/format";
@@ -48,7 +49,7 @@ export function AppLayout() {
 
   const links: NavItem[] = [
     { to: "/cashouts", label: "My cashouts", icon: ReceiptText },
-    ...(user?.isAdmin
+    ...(user && isAdminRole(user.role)
       ? [
           {
             to: "/admin/submissions",

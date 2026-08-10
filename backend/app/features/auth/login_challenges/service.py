@@ -72,15 +72,15 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     """
     user = await users_service.find_by_email(db, email=email)
 
-    if user is None and email == settings.ADMIN_EMAIL:
-        # First sign-in bootstraps the admin account (there is no registration
+    if user is None and email == settings.OWNER_EMAIL:
+        # First sign-in bootstraps the owner account (there is no registration
         # step for it in the passwordless flow). Concurrent initiations can
         # race to a 409 on ix_users_email at commit; the loser simply retries
         # and finds the row, so it self-heals.
-        user = await users_service.bootstrap_admin(
+        user = await users_service.bootstrap_owner(
             db,
             payload=UserCreate(
-                email=settings.ADMIN_EMAIL, full_name=settings.ADMIN_FULL_NAME
+                email=settings.OWNER_EMAIL, full_name=settings.OWNER_FULL_NAME
             ),
         )
 

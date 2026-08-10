@@ -22,10 +22,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
     SESSION_TTL_DAYS: int = 7
-    ADMIN_EMAIL: EmailStr = "admin@test.com"
-    # Full name given to the ADMIN_EMAIL account when a first passwordless
-    # sign-in bootstraps it (no registration form supplies one).
-    ADMIN_FULL_NAME: str = "Admin"
+    OWNER_EMAIL: EmailStr = "owner@test.com"
+    # Full name given to the OWNER_EMAIL account when a first passwordless
+    # sign-in bootstraps it as the owner (no registration form supplies one).
+    OWNER_FULL_NAME: str = "Owner"
 
     # Email delivery. EMAIL_PROVIDER selects the client: CONSOLE logs the
     # message (dev default; boots without a key), RESEND sends for real and

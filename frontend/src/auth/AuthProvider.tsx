@@ -7,9 +7,7 @@ import { authApi } from "@/api/auth";
 import { ApiError } from "@/api/client";
 import type { User } from "@/api/types";
 
-import { AuthContext, type AuthContextValue } from "./useAuth";
-
-const ME_KEY = ["me"] as const;
+import { AuthContext, ME_KEY, type AuthContextValue } from "./useAuth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();

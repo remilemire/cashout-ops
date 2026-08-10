@@ -2,6 +2,7 @@
 
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import { isAdminRole } from "@/api/types";
 import { FullScreenSpinner } from "@/components/ui";
 
 import { useAuth } from "./useAuth";
@@ -23,6 +24,6 @@ export function RequireAuth() {
 export function RequireAdmin() {
   const { user } = useAuth();
 
-  if (!user?.isAdmin) return <Navigate to="/" replace />;
+  if (!user || !isAdminRole(user.role)) return <Navigate to="/" replace />;
   return <Outlet />;
 }

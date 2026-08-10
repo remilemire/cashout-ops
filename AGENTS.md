@@ -28,7 +28,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
 * `backend/app/documents/` contains generic document classification and extraction behavior.
-* `backend/app/features/` contains feature modules such as auth (with its `sessions/` and `email_verification/` submodules), users, invitations, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_verified_user`, and `require_admin`.
+* `backend/app/features/` contains feature modules such as auth (with its `sessions/` and `email_verification/` submodules), users, invitations, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
 * `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.

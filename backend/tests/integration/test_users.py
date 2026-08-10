@@ -7,9 +7,9 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.users import service as users_service
+from app.features.users.types import UserRole
 from app.infrastructure.redis import Redis
-from tests.support.api import ADMIN_EMAIL, csrf_headers, login
+from tests.support.api import OWNER_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
 from tests.support.fakes import FakeEmailClient
 from tests.support.fixtures.outbox import OutboxDrain
@@ -36,7 +36,7 @@ async def test_admin_lists_users(admin_client: AsyncClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert ADMIN_EMAIL in [user["email"] for user in body]
+    assert "admin@test.com" in [user["email"] for user in body]
 
 
 async def test_list_users_requires_admin(cashier_client: AsyncClient) -> None:
@@ -58,7 +58,7 @@ async def test_admin_creates_user(admin_client: AsyncClient) -> None:
     assert body["email"] == "new@test.com"
     # Inbound/outbound JSON is camelCase.
     assert body["fullName"] == "New Staff"
-    assert body["isAdmin"] is False
+    assert body["role"] == "staff"
     # Creating an account signs nobody in: no auth cookies on the response.
     assert "session_token" not in response.cookies
     assert "csrf_token" not in response.cookies
@@ -130,13 +130,13 @@ async def test_admin_promotes_user(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == str(user.id)
-    assert body["isAdmin"] is True
+    assert body["role"] == "admin"
 
 
 async def test_admin_demotes_user(
     admin_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    user = await create_user(db_session, email="other@test.com", is_admin=True)
+    user = await create_user(db_session, email="other@test.com", role=UserRole.ADMIN)
 
     response = await admin_client.post(
         f"/api/users/{user.id}/demote", headers=csrf_headers(admin_client)
@@ -145,7 +145,7 @@ async def test_admin_demotes_user(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == str(user.id)
-    assert body["isAdmin"] is False
+    assert body["role"] == "staff"
 
 
 async def test_promote_requires_admin(
@@ -164,7 +164,7 @@ async def test_promote_requires_admin(
 async def test_demote_requires_admin(
     cashier_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    user = await create_user(db_session, email="staff@test.com", is_admin=True)
+    user = await create_user(db_session, email="staff@test.com", role=UserRole.ADMIN)
 
     response = await cashier_client.post(
         f"/api/users/{user.id}/demote", headers=csrf_headers(cashier_client)
@@ -187,7 +187,7 @@ async def test_admin_cannot_promote_self(admin_client: AsyncClient) -> None:
 
 async def test_admin_cannot_demote_self(admin_client: AsyncClient) -> None:
     me = (await admin_client.get("/api/users/me")).json()
-    assert me["isAdmin"] is True  # self-demotion is the realistic lockout risk
+    assert me["role"] == "admin"  # self-demotion is the realistic lockout risk
 
     response = await admin_client.post(
         f"/api/users/{me['id']}/demote", headers=csrf_headers(admin_client)
@@ -215,17 +215,48 @@ async def test_demote_unknown_user_not_found(admin_client: AsyncClient) -> None:
     assert response.json()["code"] == "USER_NOT_FOUND"
 
 
-async def test_deleting_user_revokes_their_sessions(
+async def test_promote_owner_is_forbidden(
+    admin_client: AsyncClient, owner_client: AsyncClient
+) -> None:
+    owner = (await owner_client.get("/api/users/me")).json()
+    assert owner["role"] == "owner"
+
+    response = await admin_client.post(
+        f"/api/users/{owner['id']}/promote", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CANNOT_MODIFY_OWNER"
+
+
+async def test_demote_owner_is_forbidden(
+    admin_client: AsyncClient, owner_client: AsyncClient
+) -> None:
+    owner = (await owner_client.get("/api/users/me")).json()
+
+    response = await admin_client.post(
+        f"/api/users/{owner['id']}/demote", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CANNOT_MODIFY_OWNER"
+
+
+# ================================
+# ---------- Delete user ---------
+# ================================
+
+
+async def test_admin_deletes_user_and_revokes_their_sessions(
+    admin_client: AsyncClient,
     client: AsyncClient,
     db_session: AsyncSession,
     redis_client: Redis,
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Seeded directly, then logged in through the API for a real session. No
-    # HTTP route deletes users yet, so the deletion goes through the service;
-    # the revocation is still observed through the deleted user's
-    # previously-valid client.
+    # Seeded directly, then logged in through the API for a real session; the
+    # revocation is observed through the deleted user's previously-valid client.
     user = await create_user(db_session, email="doomed@test.com")
     await login(
         client,
@@ -234,12 +265,119 @@ async def test_deleting_user_revokes_their_sessions(
         email_client=email_client,
     )
     assert (await client.get("/api/users/me")).status_code == 200
-    assert await redis_keys(redis_client, "session:*")
+    assert await redis_keys(redis_client, f"user_sessions:{user.id}")
 
-    await users_service.delete_by_id(db_session, redis_client, user_id=user.id)
-    await db_session.commit()
+    response = await admin_client.delete(
+        f"/api/users/{user.id}", headers=csrf_headers(admin_client)
+    )
 
-    response = await client.get("/api/users/me")
-    assert response.status_code == 401
-    assert await redis_keys(redis_client, "session:*") == []
-    assert await redis_keys(redis_client, "user_sessions:*") == []
+    assert response.status_code == 204, response.text
+    # The deleted user's session is gone; the admin's own session survives.
+    assert (await client.get("/api/users/me")).status_code == 401
+    assert await redis_keys(redis_client, f"user_sessions:{user.id}") == []
+    assert (await admin_client.get("/api/users/me")).status_code == 200
+
+
+async def test_delete_owner_is_forbidden(
+    admin_client: AsyncClient, owner_client: AsyncClient
+) -> None:
+    owner = (await owner_client.get("/api/users/me")).json()
+
+    response = await admin_client.delete(
+        f"/api/users/{owner['id']}", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CANNOT_DELETE_OWNER"
+    # The owner is untouched.
+    assert (await owner_client.get("/api/users/me")).status_code == 200
+
+
+async def test_delete_requires_admin(
+    cashier_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="staff@test.com")
+
+    response = await cashier_client.delete(
+        f"/api/users/{user.id}", headers=csrf_headers(cashier_client)
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+async def test_delete_unknown_user_not_found(admin_client: AsyncClient) -> None:
+    response = await admin_client.delete(
+        f"/api/users/{uuid4()}", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "USER_NOT_FOUND"
+
+
+# ================================
+# ------ Transfer ownership ------
+# ================================
+
+
+async def test_owner_transfers_ownership_to_admin(
+    owner_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    admin = await create_user(db_session, email="heir@test.com", role=UserRole.ADMIN)
+
+    response = await owner_client.post(
+        f"/api/users/{admin.id}/transfer-ownership",
+        headers=csrf_headers(owner_client),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == str(admin.id)
+    assert body["role"] == "owner"
+    # The previous owner is now a plain admin (still authorized to list).
+    users = (await owner_client.get("/api/users")).json()
+    roles = {user["email"]: user["role"] for user in users}
+    assert roles[OWNER_EMAIL] == "admin"
+    assert roles["heir@test.com"] == "owner"
+
+
+async def test_transfer_ownership_requires_owner(
+    admin_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    other = await create_user(db_session, email="other@test.com", role=UserRole.ADMIN)
+
+    response = await admin_client.post(
+        f"/api/users/{other.id}/transfer-ownership",
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+async def test_transfer_ownership_to_staff_conflicts(
+    owner_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    staff = await create_user(db_session, email="staff@test.com")
+
+    response = await owner_client.post(
+        f"/api/users/{staff.id}/transfer-ownership",
+        headers=csrf_headers(owner_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TRANSFER_TARGET_NOT_ADMIN"
+    # The owner keeps their role.
+    assert (await owner_client.get("/api/users/me")).json()["role"] == "owner"
+
+
+async def test_transfer_ownership_to_unknown_user_not_found(
+    owner_client: AsyncClient,
+) -> None:
+    response = await owner_client.post(
+        f"/api/users/{uuid4()}/transfer-ownership",
+        headers=csrf_headers(owner_client),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "USER_NOT_FOUND"

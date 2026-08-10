@@ -14,7 +14,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..api import ADMIN_EMAIL, login
+from app.features.users.types import UserRole
+
+from ..api import OWNER_EMAIL, login
 from ..factories import create_user
 from ..fakes import FakeEmailClient
 
@@ -30,7 +32,8 @@ class ClientFactory(Protocol):
         *,
         email: str | None = None,
         full_name: str = "Test User",
-        admin: bool = False,
+        role: UserRole = UserRole.STAFF,
+        owner: bool = False,
     ) -> AsyncClient: ...
 
 
@@ -51,12 +54,12 @@ async def make_client(
 ) -> AsyncIterator[ClientFactory]:
     """Factory for authenticated clients; call repeatedly for multi-user tests.
 
-    Seeds the user row directly, then signs in through the real passwordless
-    challenge flow so the returned client carries session + csrf cookies.
-    `admin=True` seeds nothing: initiating a login for ADMIN_EMAIL exercises
-    the real lazy admin bootstrap (which names the account ADMIN_FULL_NAME,
-    ignoring `full_name`). Omitting `email` picks a unique address. All
-    clients close at fixture teardown.
+    Seeds the user row directly (with the given `role`), then signs in through
+    the real passwordless challenge flow so the returned client carries
+    session + csrf cookies. `owner=True` seeds nothing: initiating a login for
+    OWNER_EMAIL exercises the real lazy owner bootstrap (which names the
+    account OWNER_FULL_NAME, ignoring `full_name`). Omitting `email` picks a
+    unique address. All clients close at fixture teardown.
     """
     async with contextlib.AsyncExitStack() as stack:
 
@@ -64,14 +67,17 @@ async def make_client(
             *,
             email: str | None = None,
             full_name: str = "Test User",
-            admin: bool = False,
+            role: UserRole = UserRole.STAFF,
+            owner: bool = False,
         ) -> AsyncClient:
             resolved = (
-                ADMIN_EMAIL if admin else (email or f"user-{uuid4().hex[:8]}@test.com")
+                OWNER_EMAIL if owner else (email or f"user-{uuid4().hex[:8]}@test.com")
             )
-            if not admin:
+            if not owner:
                 async with db_sessionmaker() as db:
-                    await create_user(db, email=resolved, full_name=full_name)
+                    await create_user(
+                        db, email=resolved, full_name=full_name, role=role
+                    )
             http_client = await stack.enter_async_context(
                 AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
             )
@@ -93,4 +99,13 @@ async def cashier_client(make_client: ClientFactory) -> AsyncClient:
 
 @pytest_asyncio.fixture
 async def admin_client(make_client: ClientFactory) -> AsyncClient:
-    return await make_client(admin=True, full_name="Admin User")
+    """A seeded role=admin user (NOT the owner), signed in normally."""
+    return await make_client(
+        email="admin@test.com", full_name="Admin User", role=UserRole.ADMIN
+    )
+
+
+@pytest_asyncio.fixture
+async def owner_client(make_client: ClientFactory) -> AsyncClient:
+    """The bootstrapped owner account, created through the real lazy bootstrap."""
+    return await make_client(owner=True)

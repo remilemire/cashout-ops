@@ -5,31 +5,52 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, String, Uuid, func, text
+from sqlalchemy import DateTime, Index, String, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.infrastructure.db.models import Base
+from app.infrastructure.db.models import Base, enum_column
+
+from .types import UserRole
 
 
 class User(Base):
     __tablename__ = "users"
-    # Name the unique index explicitly: users/errors.py maps it to EMAIL_TAKEN,
-    # and a unique-index violation reports the index name.
-    __table_args__ = (Index("ix_users_email", "email", unique=True),)
+    # Name the unique indexes explicitly: users/errors.py maps them (email →
+    # EMAIL_TAKEN, single-owner → OWNER_ALREADY_EXISTS), and a unique-index
+    # violation reports the index name.
+    __table_args__ = (
+        Index("ix_users_email", "email", unique=True),
+        Index(
+            "ix_users_single_owner",
+            "role",
+            unique=True,
+            postgresql_where=text("role = 'owner'"),
+        ),
+    )
 
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     email: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    is_admin: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
-    )
-
-    # Last to match the migrations' column order (metadata orders columns by
-    # declaration, and the inherited Entity columns used to land last).
+    # id/created_at before role to match the migrations' physical column order
+    # (metadata orders columns by declaration; role was appended by the
+    # add-user-role migration after is_admin was dropped).
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
+
+    role: Mapped[UserRole] = mapped_column(
+        enum_column(UserRole, "user_role"),
+        nullable=False,
+        default=UserRole.STAFF,
+        server_default=UserRole.STAFF.value,
+    )
+
+    @property
+    def is_admin(self) -> bool:
+        """Admin-level access: the owner is an admin everywhere except role
+        management (cannot be promoted/demoted/deleted)."""
+        return self.role in (UserRole.ADMIN, UserRole.OWNER)

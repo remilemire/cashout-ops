@@ -14,9 +14,9 @@ if TYPE_CHECKING:
     from .fakes import FakeEmailClient
     from .fixtures.outbox import OutboxDrain
 
-# Matches ADMIN_EMAIL set in conftest; initiating a login for this email
-# lazily bootstraps the admin account.
-ADMIN_EMAIL = "admin@test.com"
+# Matches OWNER_EMAIL set in conftest; initiating a login for this email
+# lazily bootstraps the owner account.
+OWNER_EMAIL = "owner@test.com"
 
 
 def csrf_headers(client: AsyncClient) -> dict[str, str]:

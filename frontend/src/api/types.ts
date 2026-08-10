@@ -27,6 +27,9 @@ export type ErrorCode =
   // users
   | "USER_NOT_FOUND"
   | "EMAIL_TAKEN"
+  | "CANNOT_MODIFY_OWNER"
+  | "CANNOT_DELETE_OWNER"
+  | "TRANSFER_TARGET_NOT_ADMIN"
   // auth
   | "LOGIN_CHALLENGE_INVALID"
   | "INVALID_SESSION"
@@ -62,12 +65,19 @@ export interface ErrorResponse {
 
 // ---------- Users / auth ----------
 
+export type UserRole = "staff" | "admin" | "owner";
+
+/** Owners are admins-plus: every admin capability applies to owners too. */
+export function isAdminRole(role: UserRole): boolean {
+  return role === "admin" || role === "owner";
+}
+
 export interface User {
   id: string;
   createdAt: string;
   email: string;
   fullName: string;
-  isAdmin: boolean;
+  role: UserRole;
 }
 
 export interface UserCreateInput {

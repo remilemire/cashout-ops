@@ -10,7 +10,7 @@ import { ApiError } from "@/api/client";
 import type { User } from "@/api/types";
 
 import { AuthProvider } from "./AuthProvider";
-import { RequireAuth } from "./guards";
+import { RequireAdmin, RequireAuth } from "./guards";
 
 vi.mock("@/api/auth", () => ({
   authApi: {
@@ -29,7 +29,7 @@ const cashier: User = {
   createdAt: "2026-07-17T00:00:00Z",
   email: "cashier@test.com",
   fullName: "Test User",
-  isAdmin: false,
+  role: "staff",
 };
 
 function renderGuarded() {
@@ -45,6 +45,34 @@ function renderGuarded() {
       },
     ],
     { initialEntries: ["/"] },
+  );
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function renderAdminGuarded() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const router = createMemoryRouter(
+    [
+      { path: "/", element: <div>Home page</div> },
+      {
+        element: <RequireAuth />,
+        children: [
+          {
+            element: <RequireAdmin />,
+            children: [{ path: "/admin", element: <div>Admin area</div> }],
+          },
+        ],
+      },
+    ],
+    { initialEntries: ["/admin"] },
   );
   return render(
     <QueryClientProvider client={queryClient}>
@@ -80,5 +108,31 @@ describe("RequireAuth", () => {
     renderGuarded();
 
     expect(await screen.findByText("Private home")).toBeDefined();
+  });
+});
+
+describe("RequireAdmin", () => {
+  it("bounces staff back to their home", async () => {
+    meMock.mockResolvedValue(cashier);
+
+    renderAdminGuarded();
+
+    expect(await screen.findByText("Home page")).toBeDefined();
+  });
+
+  it("renders the admin area for an admin", async () => {
+    meMock.mockResolvedValue({ ...cashier, role: "admin" });
+
+    renderAdminGuarded();
+
+    expect(await screen.findByText("Admin area")).toBeDefined();
+  });
+
+  it("renders the admin area for the owner", async () => {
+    meMock.mockResolvedValue({ ...cashier, role: "owner" });
+
+    renderAdminGuarded();
+
+    expect(await screen.findByText("Admin area")).toBeDefined();
   });
 });

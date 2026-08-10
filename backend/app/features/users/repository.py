@@ -38,4 +38,13 @@ async def delete(db: AsyncSession, user: User) -> None:
     await db.delete(user)
 
 
-__all__ = ["list_all", "find_by_email", "find_by_id", "add", "delete"]
+async def flush(db: AsyncSession) -> None:
+    """Push pending changes to the database without committing.
+
+    Flush placement is behavior: it controls when constraint violations
+    surface (e.g. ordering the two role UPDATEs of an ownership transfer).
+    """
+    await db.flush()
+
+
+__all__ = ["list_all", "find_by_email", "find_by_id", "add", "delete", "flush"]

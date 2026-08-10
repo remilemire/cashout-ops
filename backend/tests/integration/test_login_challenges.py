@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.features.auth.outbox import send_login_link_email_message
-from app.features.users import service as users_service
 from app.features.users.model import User
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
+from tests.support.api import csrf_headers
 from tests.support.factories import create_user
 from tests.support.fakes import FakeEmailClient, LoginLink
 from tests.support.fixtures.outbox import OutboxDrain
@@ -106,15 +106,15 @@ async def test_start_login_unknown_email_is_neutral(
     assert email_client.sent == []
 
 
-async def test_start_login_bootstraps_admin(
+async def test_start_login_bootstraps_owner(
     client: AsyncClient,
     db_session: AsyncSession,
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # No users exist: the first sign-in for ADMIN_EMAIL creates the account.
+    # No users exist: the first sign-in for OWNER_EMAIL creates the account.
     link = await _initiate_and_deliver(
-        client, drain_outbox, email_client, email=settings.ADMIN_EMAIL
+        client, drain_outbox, email_client, email=settings.OWNER_EMAIL
     )
     code = await _obtain_code(client, link)
 
@@ -125,17 +125,17 @@ async def test_start_login_bootstraps_admin(
 
     assert response.status_code == 200, response.text
     me = await client.get("/api/users/me")
-    assert me.json()["isAdmin"] is True
-    assert me.json()["fullName"] == "Admin"
+    assert me.json()["role"] == "owner"
+    assert me.json()["fullName"] == "Owner"
     users = (await db_session.execute(select(User))).scalars().all()
     assert len(users) == 1
 
 
-async def test_start_login_existing_admin_is_not_duplicated(
+async def test_start_login_existing_owner_is_not_duplicated(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    await _initiate(client, email=settings.ADMIN_EMAIL)
-    await _initiate(client, email=settings.ADMIN_EMAIL)
+    await _initiate(client, email=settings.OWNER_EMAIL)
+    await _initiate(client, email=settings.OWNER_EMAIL)
 
     users = (await db_session.execute(select(User))).scalars().all()
     assert len(users) == 1
@@ -267,7 +267,7 @@ async def test_verify_code_signs_in_and_consumes(
     assert body["email"] == CASHIER_EMAIL
     # Inbound/outbound JSON is camelCase.
     assert body["fullName"] == "Test User"
-    assert body["isAdmin"] is False
+    assert body["role"] == "staff"
     assert "session_token" in client.cookies
     assert "csrf_token" in client.cookies
     # A Redis-tracked session was minted; the challenge was consumed.
@@ -323,6 +323,7 @@ async def test_verify_code_wrong_code_is_capped(
 
 async def test_verify_code_after_user_deleted_is_rejected(
     client: AsyncClient,
+    admin_client: AsyncClient,
     db_session: AsyncSession,
     redis_client: Redis,
     email_client: FakeEmailClient,
@@ -332,8 +333,10 @@ async def test_verify_code_after_user_deleted_is_rejected(
     link = await _initiate_and_deliver(client, drain_outbox, email_client)
     code = await _obtain_code(client, link)
     # The account vanishes between link delivery and code submission.
-    await users_service.delete_by_id(db_session, redis_client, user_id=user.id)
-    await db_session.commit()
+    deleted = await admin_client.delete(
+        f"/api/users/{user.id}", headers=csrf_headers(admin_client)
+    )
+    assert deleted.status_code == 204, deleted.text
 
     response = await client.post(
         "/api/auth/login/verify-code",
@@ -342,7 +345,8 @@ async def test_verify_code_after_user_deleted_is_rejected(
 
     assert response.status_code == 401
     assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
-    assert await redis_keys(redis_client, "session:*") == []
+    # No session was minted for the deleted account.
+    assert await redis_keys(redis_client, f"user_sessions:{user.id}") == []
 
 
 async def test_verify_code_expired_challenge_is_rejected(
