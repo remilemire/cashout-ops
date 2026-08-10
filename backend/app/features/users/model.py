@@ -48,9 +48,3 @@ class User(Base):
         default=UserRole.STAFF,
         server_default=UserRole.STAFF.value,
     )
-
-    @property
-    def is_admin(self) -> bool:
-        """Admin-level access: the owner is an admin everywhere except role
-        management (cannot be promoted/demoted/deleted)."""
-        return self.role in (UserRole.ADMIN, UserRole.OWNER)

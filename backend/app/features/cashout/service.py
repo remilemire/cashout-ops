@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.documents import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
+from app.features.users.types import UserRole
 from app.infrastructure.outbox import service as outbox_service
 from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
@@ -99,8 +100,10 @@ async def get_submission(
 async def list_submissions(
     db: AsyncSession, *, user: User
 ) -> Sequence[CashoutSubmission]:
-    """Admins see every submission; cashiers only their own. Newest first."""
-    only_user_id = None if user.is_admin else user.id
+    """Admins (and the owner) see every submission; cashiers only their own.
+    Newest first."""
+    is_admin = user.role in (UserRole.ADMIN, UserRole.OWNER)
+    only_user_id = None if is_admin else user.id
     return await repository.list_submissions(db, only_user_id=only_user_id)
 
 
@@ -403,7 +406,8 @@ async def _get_owned_submission(
 
 
 def _ensure_can_view(submission: CashoutSubmission, user: User) -> None:
-    if not user.is_admin and submission.submitted_by_user_id != user.id:
+    is_admin = user.role in (UserRole.ADMIN, UserRole.OWNER)
+    if not is_admin and submission.submitted_by_user_id != user.id:
         raise AppError(
             "FORBIDDEN", "You do not have access to this cashout submission."
         )

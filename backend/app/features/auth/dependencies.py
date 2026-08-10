@@ -31,8 +31,8 @@ async def get_current_user(
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
-    """Admins and the owner both pass (is_admin covers ADMIN and OWNER)."""
-    if not user.is_admin:
+    """Admins and the owner both pass."""
+    if user.role not in (UserRole.ADMIN, UserRole.OWNER):
         raise AppError("FORBIDDEN", "Admin access required.")
     return user
 
