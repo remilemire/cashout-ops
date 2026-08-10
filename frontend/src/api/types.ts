@@ -31,10 +31,6 @@ export type ErrorCode =
   | "LOGIN_CHALLENGE_INVALID"
   | "INVALID_SESSION"
   | "INVALID_CSRF_TOKEN"
-  // invitations
-  | "INVITATION_NOT_FOUND"
-  | "INVITATION_EXISTS"
-  | "INVITATION_REQUIRED"
   // cashout
   | "SUBMISSION_NOT_FOUND"
   | "DOCUMENT_NOT_FOUND"
@@ -74,6 +70,11 @@ export interface User {
   isAdmin: boolean;
 }
 
+export interface UserCreateInput {
+  email: string;
+  fullName: string;
+}
+
 export interface LoginStartInput {
   email: string;
 }
@@ -96,22 +97,6 @@ export interface LoginCode {
 export interface VerifyLoginCodeInput {
   challengeId: string;
   code: string;
-}
-
-// ---------- Invitations ----------
-
-export interface Invitation {
-  id: string;
-  createdAt: string;
-  email: string;
-  expiresAt: string;
-  acceptedAt: string | null;
-  invitedByUserId: string;
-  acceptedByUserId: string | null;
-}
-
-export interface InvitationCreateInput {
-  email: string;
 }
 
 // ---------- Cashout ----------

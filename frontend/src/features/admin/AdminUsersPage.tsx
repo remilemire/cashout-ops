@@ -1,17 +1,11 @@
 // frontend/src/features/admin/AdminUsersPage.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  MailPlus,
-  ShieldMinus,
-  ShieldPlus,
-  Trash2,
-  UsersRound,
-} from "lucide-react";
+import { ShieldMinus, ShieldPlus, UserPlus, UsersRound } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 
-import { invitationKeys, invitationsApi } from "@/api/invitations";
-import type { Invitation, User } from "@/api/types";
+import { ApiError } from "@/api/client";
+import type { User } from "@/api/types";
 import { userKeys, usersApi } from "@/api/users";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -27,62 +21,26 @@ import {
 } from "@/components/ui";
 import { formatDateTime, initials } from "@/lib/format";
 
-type InvitationStatus = "pending" | "accepted" | "expired";
-
-function invitationStatus(invitation: Invitation): InvitationStatus {
-  if (invitation.acceptedAt) return "accepted";
-  if (new Date(invitation.expiresAt).getTime() < Date.now()) return "expired";
-  return "pending";
-}
-
-function invitationDetail(invitation: Invitation): string {
-  if (invitation.acceptedAt) {
-    return `Accepted ${formatDateTime(invitation.acceptedAt)}`;
-  }
-  const verb =
-    invitationStatus(invitation) === "expired" ? "Expired" : "Expires";
-  return `${verb} ${formatDateTime(invitation.expiresAt)}`;
-}
-
-const INVITATION_BADGES: Record<
-  InvitationStatus,
-  { tone: "info" | "success" | "neutral"; label: string }
-> = {
-  pending: { tone: "info", label: "Pending" },
-  accepted: { tone: "success", label: "Accepted" },
-  expired: { tone: "neutral", label: "Expired" },
-};
-
 type RoleChange = { user: User; action: "promote" | "demote" };
 
 export function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [revoking, setRevoking] = useState<Invitation | null>(null);
   const [roleChange, setRoleChange] = useState<RoleChange | null>(null);
 
   const usersQuery = useQuery({
     queryKey: userKeys.list,
     queryFn: usersApi.list,
   });
-  const invitationsQuery = useQuery({
-    queryKey: invitationKeys.list,
-    queryFn: invitationsApi.list,
-  });
 
-  const createInvitation = useMutation({
-    mutationFn: invitationsApi.create,
+  const createUser = useMutation({
+    mutationFn: usersApi.create,
     onSuccess: async () => {
+      setFullName("");
       setEmail("");
-      await queryClient.invalidateQueries({ queryKey: invitationKeys.list });
-    },
-  });
-  const deleteInvitation = useMutation({
-    mutationFn: invitationsApi.delete,
-    onSuccess: async () => {
-      setRevoking(null);
-      await queryClient.invalidateQueries({ queryKey: invitationKeys.list });
+      await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
   });
   const promoteUser = useMutation({
@@ -100,87 +58,69 @@ export function AdminUsersPage() {
     },
   });
 
-  const onInvite = (event: SyntheticEvent<HTMLFormElement>) => {
+  const onCreate = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = email.trim();
-    if (trimmed) createInvitation.mutate({ email: trimmed });
+    const trimmedName = fullName.trim();
+    const trimmedEmail = email.trim();
+    if (trimmedName && trimmedEmail) {
+      createUser.mutate({ email: trimmedEmail, fullName: trimmedName });
+    }
   };
 
+  const createError = createUser.error;
+  const fullNameError =
+    createError instanceof ApiError
+      ? createError.messageFor("fullName")
+      : undefined;
+  const emailError =
+    createError instanceof ApiError
+      ? createError.messageFor("email")
+      : undefined;
+  const hasFieldError = fullNameError !== undefined || emailError !== undefined;
+
   const users = usersQuery.data ?? [];
-  const invitations = invitationsQuery.data ?? [];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Users"
-        subtitle="Invite staff and manage their accounts."
+        subtitle="Create staff accounts and manage access."
       />
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Invitations</h2>
+        <h2 className="text-sm font-semibold">Add user</h2>
         <Card className="space-y-4">
           <form
-            onSubmit={onInvite}
+            onSubmit={onCreate}
             className="flex flex-col gap-2 sm:flex-row sm:items-end"
           >
             <div className="min-w-0 flex-1">
               <TextField
-                label="Invite by email"
+                label="Full name"
+                required
+                placeholder="Jane Smith"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                error={fullNameError}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <TextField
+                label="Email"
                 type="email"
                 required
                 placeholder="name@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                error={emailError}
               />
             </div>
-            <Button type="submit" loading={createInvitation.isPending}>
-              <MailPlus className="size-4" />
-              Invite
+            <Button type="submit" loading={createUser.isPending}>
+              <UserPlus className="size-4" />
+              Add user
             </Button>
           </form>
-          <ErrorBanner error={createInvitation.error} />
-          <ErrorBanner error={deleteInvitation.error} />
-          <ErrorBanner error={invitationsQuery.error} />
-
-          {invitationsQuery.isLoading ? (
-            <SkeletonList count={2} />
-          ) : invitations.length === 0 ? (
-            <EmptyState
-              icon={<MailPlus className="size-8" strokeWidth={1.5} />}
-              title="No invitations"
-              hint="Only invited emails can register."
-            />
-          ) : (
-            <ul className="divide-line divide-y">
-              {invitations.map((invitation) => {
-                const badge = INVITATION_BADGES[invitationStatus(invitation)];
-                return (
-                  <li
-                    key={invitation.id}
-                    className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {invitation.email}
-                      </p>
-                      <p className="text-ink-muted text-xs">
-                        {invitationDetail(invitation)}
-                      </p>
-                    </div>
-                    <Badge tone={badge.tone}>{badge.label}</Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Delete invitation for ${invitation.email}`}
-                      onClick={() => setRevoking(invitation)}
-                    >
-                      <Trash2 className="text-danger size-4" />
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <ErrorBanner error={hasFieldError ? null : createError} />
         </Card>
       </section>
 
@@ -196,6 +136,7 @@ export function AdminUsersPage() {
           <EmptyState
             icon={<UsersRound className="size-8" strokeWidth={1.5} />}
             title="No users yet"
+            hint="Add a user above to create the first account."
           />
         ) : (
           <Card padded={false} className="overflow-x-auto">
@@ -273,20 +214,6 @@ export function AdminUsersPage() {
           </Card>
         )}
       </section>
-
-      <ConfirmDialog
-        open={revoking !== null}
-        onClose={() => setRevoking(null)}
-        title="Delete invitation"
-        confirmLabel="Delete"
-        confirmTone="danger"
-        onConfirm={() => {
-          if (revoking) deleteInvitation.mutate(revoking.id);
-        }}
-      >
-        {revoking?.email} will no longer be able to register with this
-        invitation.
-      </ConfirmDialog>
 
       <ConfirmDialog
         open={roleChange !== null}

@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { invitationsApi } from "@/api/invitations";
+import { ApiError } from "@/api/client";
 import type { User } from "@/api/types";
 import { usersApi } from "@/api/users";
 import { useAuth } from "@/auth/useAuth";
@@ -19,21 +19,9 @@ vi.mock("@/api/users", async (importOriginal) => {
     usersApi: {
       ...actual.usersApi,
       list: vi.fn(),
+      create: vi.fn(),
       promote: vi.fn(),
       demote: vi.fn(),
-    },
-  };
-});
-
-vi.mock("@/api/invitations", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/invitations")>();
-  return {
-    ...actual,
-    invitationsApi: {
-      ...actual.invitationsApi,
-      list: vi.fn(),
-      create: vi.fn(),
-      delete: vi.fn(),
     },
   };
 });
@@ -59,9 +47,9 @@ vi.mock("@/components/dialog", () => ({
 }));
 
 const listUsersMock = vi.mocked(usersApi.list);
+const createMock = vi.mocked(usersApi.create);
 const promoteMock = vi.mocked(usersApi.promote);
 const demoteMock = vi.mocked(usersApi.demote);
-const listInvitationsMock = vi.mocked(invitationsApi.list);
 const useAuthMock = vi.mocked(useAuth);
 
 const admin: User = {
@@ -100,22 +88,73 @@ function renderPage() {
   );
 }
 
+async function submitNewUser(fullName: string, email: string) {
+  fireEvent.change(await screen.findByLabelText("Full name"), {
+    target: { value: fullName },
+  });
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: email },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add user" }));
+}
+
 beforeEach(() => {
   listUsersMock.mockReset();
+  createMock.mockReset();
   promoteMock.mockReset();
   demoteMock.mockReset();
-  listInvitationsMock.mockReset();
   useAuthMock.mockReset();
 
   listUsersMock.mockResolvedValue([admin, staff, otherAdmin]);
+  createMock.mockResolvedValue({
+    id: "staff-2",
+    createdAt: "2026-08-09T00:00:00Z",
+    email: "new@test.com",
+    fullName: "New User",
+    isAdmin: false,
+  });
   promoteMock.mockResolvedValue({ ...staff, isAdmin: true });
   demoteMock.mockResolvedValue({ ...otherAdmin, isAdmin: false });
-  listInvitationsMock.mockResolvedValue([]);
   useAuthMock.mockReturnValue({
     user: admin,
     isLoading: false,
     completeSignIn: vi.fn(),
     logout: vi.fn(async () => undefined),
+  });
+});
+
+describe("AdminUsersPage add user", () => {
+  it("creates the user and refetches the accounts list", async () => {
+    renderPage();
+
+    await submitNewUser("New User", "new@test.com");
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledOnce());
+    expect(createMock.mock.calls[0]?.[0]).toEqual({
+      email: "new@test.com",
+      fullName: "New User",
+    });
+    await waitFor(() => expect(listUsersMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText<HTMLInputElement>("Email").value).toBe("");
+    expect(screen.getByLabelText<HTMLInputElement>("Full name").value).toBe("");
+  });
+
+  it("shows the error banner when the email is already taken", async () => {
+    createMock.mockRejectedValue(
+      new ApiError(409, {
+        kind: "CONFLICT",
+        code: "EMAIL_TAKEN",
+        message: "This email is already in use.",
+      }),
+    );
+    renderPage();
+
+    await submitNewUser("New User", "taken@test.com");
+
+    expect(
+      await screen.findByText("This email is already in use."),
+    ).toBeDefined();
+    expect(listUsersMock).toHaveBeenCalledOnce();
   });
 });
 
