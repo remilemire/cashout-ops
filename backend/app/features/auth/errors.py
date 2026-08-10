@@ -20,7 +20,10 @@ type AuthOwnErrorCode = Literal["INVALID_CSRF_TOKEN"]
 type AuthErrorCode = AuthOwnErrorCode | SessionErrorCode | LoginChallengeErrorCode
 
 _auth_own_error_catalog: ErrorCatalog[AuthOwnErrorCode] = {
-    "INVALID_CSRF_TOKEN": {"kind": "FORBIDDEN", "message": "Invalid CSRF token."},
+    "INVALID_CSRF_TOKEN": {
+        "kind": "FORBIDDEN",
+        "message": "Your session security check failed. Refresh the page and try again.",
+    },
 }
 
 auth_error_catalog: ErrorCatalog[AuthErrorCode] = {

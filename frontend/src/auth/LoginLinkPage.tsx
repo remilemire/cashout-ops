@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { authApi } from "@/api/auth";
 import { Card, Spinner } from "@/components/ui";
 
-import { AuthShell } from "./LoginPage";
+import { AuthShell } from "./AuthShell";
 
 /**
  * Landing page for the emailed magic link (`/login/link?challenge=…&token=…`),
@@ -54,7 +54,7 @@ export function LoginLinkPage() {
         ) : (
           <div className="space-y-3">
             <h1 className="text-lg font-semibold">Your sign-in code</h1>
-            <p className="text-3xl font-bold tracking-widest tabular-nums">
+            <p className="bg-surface-2 border-line rounded-lg border py-3 pl-[0.3em] text-3xl font-bold tracking-[0.3em] tabular-nums">
               {linkQuery.data.code}
             </p>
             <p className="text-ink-muted text-sm">

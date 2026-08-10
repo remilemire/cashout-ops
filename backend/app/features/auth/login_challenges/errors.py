@@ -14,8 +14,7 @@ type LoginChallengeErrorCode = Literal["LOGIN_CHALLENGE_INVALID"]
 login_challenge_error_catalog: ErrorCatalog[LoginChallengeErrorCode] = {
     "LOGIN_CHALLENGE_INVALID": {
         "kind": "UNAUTHORIZED",
-        "message": "This sign-in request is invalid or has expired. "
-        "Return to the login page and try again.",
+        "message": "That sign-in link or code is invalid or has expired.",
     },
 }
 

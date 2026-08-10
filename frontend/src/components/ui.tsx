@@ -231,12 +231,20 @@ export function SkeletonList({ count = 3 }: { count?: number }) {
   );
 }
 
-export function ErrorBanner({ error }: { error: unknown }) {
+export function ErrorBanner({
+  error,
+  message: override,
+}: {
+  error: unknown;
+  /** Contextual copy shown instead of the error's own message. */
+  message?: string | undefined;
+}) {
   if (!error) return null;
   const message =
-    error instanceof ApiError
+    override ??
+    (error instanceof ApiError
       ? error.message
-      : "Something went wrong. Please try again.";
+      : "Something went wrong. Please try again.");
   return (
     <div className="border-danger/30 bg-danger/10 text-danger flex items-start gap-2 rounded-lg border px-3 py-2 text-sm">
       <AlertCircle className="mt-0.5 size-4 shrink-0" />

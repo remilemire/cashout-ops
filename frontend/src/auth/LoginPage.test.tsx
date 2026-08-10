@@ -1,14 +1,13 @@
 // frontend/src/auth/LoginPage.test.tsx
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authApi } from "@/api/auth";
 import { ApiError } from "@/api/client";
-import type { User } from "@/api/types";
 
 import { AuthProvider } from "./AuthProvider";
 import { LoginPage } from "./LoginPage";
@@ -24,33 +23,19 @@ vi.mock("@/api/auth", () => ({
 }));
 
 const meMock = vi.mocked(authApi.me);
-const startLoginMock = vi.mocked(authApi.startLogin);
-const verifyLoginCodeMock = vi.mocked(authApi.verifyLoginCode);
 
-const cashier: User = {
-  id: "user-1",
-  createdAt: "2026-07-17T00:00:00Z",
-  email: "cashier@test.com",
-  fullName: "Test User",
-  isAdmin: false,
-};
-
-const challengeInvalid = new ApiError(401, {
-  kind: "UNAUTHORIZED",
-  code: "LOGIN_CHALLENGE_INVALID",
-  message: "This sign-in code is invalid or has expired.",
-});
-
-function renderPage() {
+function renderPage(initialState?: { from?: string }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
     [
       { path: "/login", element: <LoginPage /> },
-      { path: "/", element: <div>Private home</div> },
+      { path: "/login/email", element: <div>Email login page</div> },
     ],
-    { initialEntries: ["/login"] },
+    {
+      initialEntries: [{ pathname: "/login", state: initialState ?? null }],
+    },
   );
   render(
     <QueryClientProvider client={queryClient}>
@@ -59,28 +44,11 @@ function renderPage() {
       </AuthProvider>
     </QueryClientProvider>,
   );
-}
-
-/** Submit the email form and land on the check-your-email phase. */
-async function startChallenge(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(await screen.findByLabelText("Email"), "cashier@test.com");
-  await user.click(
-    screen.getByRole("button", { name: "Email me a sign-in link" }),
-  );
-  await screen.findByText("Check your email");
-}
-
-async function typeCode(user: ReturnType<typeof userEvent.setup>) {
-  const inputs = screen.getAllByLabelText(/^Digit \d$/);
-  for (const [index, digit] of [..."123456"].entries()) {
-    await user.type(inputs[index]!, digit);
-  }
+  return router;
 }
 
 beforeEach(() => {
   meMock.mockReset();
-  startLoginMock.mockReset();
-  verifyLoginCodeMock.mockReset();
   meMock.mockRejectedValue(
     new ApiError(401, {
       kind: "UNAUTHORIZED",
@@ -88,55 +56,27 @@ beforeEach(() => {
       message: "Authentication required.",
     }),
   );
-  startLoginMock.mockResolvedValue({ challengeId: "challenge-1" });
-  verifyLoginCodeMock.mockResolvedValue(cashier);
 });
 
 describe("LoginPage", () => {
-  it("starts a challenge for the email and shows the check-your-email phase", async () => {
-    const user = userEvent.setup();
+  it("offers email sign-in as a method", async () => {
     renderPage();
-
-    await startChallenge(user);
-
-    expect(startLoginMock).toHaveBeenCalledExactlyOnceWith({
-      email: "cashier@test.com",
-    });
-    expect(screen.getByText("cashier@test.com")).toBeDefined();
-    expect(screen.getAllByLabelText(/^Digit \d$/)).toHaveLength(6);
-  });
-
-  it("verifies a full code automatically and signs in", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await startChallenge(user);
-    await typeCode(user);
-
-    await waitFor(() =>
-      expect(verifyLoginCodeMock).toHaveBeenCalledExactlyOnceWith({
-        challengeId: "challenge-1",
-        code: "123456",
-      }),
-    );
-    expect(await screen.findByText("Private home")).toBeDefined();
-  });
-
-  it("shows the failure and offers a fresh start when the challenge is rejected", async () => {
-    const user = userEvent.setup();
-    verifyLoginCodeMock.mockRejectedValue(challengeInvalid);
-    renderPage();
-
-    await startChallenge(user);
-    await typeCode(user);
 
     expect(
-      await screen.findByText("This sign-in code is invalid or has expired."),
+      await screen.findByRole("button", { name: "Continue with email" }),
     ).toBeDefined();
+  });
 
-    await user.click(screen.getByRole("button", { name: "Start over" }));
+  it("navigates to the email flow, forwarding the redirect-back state", async () => {
+    const user = userEvent.setup();
+    const router = renderPage({ from: "/cashouts" });
 
-    expect(screen.getByLabelText("Email")).toBeDefined();
-    expect(screen.queryByText("Check your email")).toBeNull();
+    await user.click(
+      await screen.findByRole("button", { name: "Continue with email" }),
+    );
+
+    expect(await screen.findByText("Email login page")).toBeDefined();
+    expect(router.state.location.pathname).toBe("/login/email");
+    expect(router.state.location.state).toEqual({ from: "/cashouts" });
   });
 });

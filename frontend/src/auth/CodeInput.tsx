@@ -100,11 +100,7 @@ export function CodeInput({
   };
 
   return (
-    <div
-      role="group"
-      aria-label="Sign-in code"
-      className="flex justify-between gap-2"
-    >
+    <div role="group" aria-label="Sign-in code" className="flex gap-2">
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -124,7 +120,7 @@ export function CodeInput({
           onPaste={(event) => onDigitPaste(index, event)}
           onFocus={(event) => event.currentTarget.select()}
           className={cx(
-            "bg-surface size-11 min-w-0 flex-1 rounded-lg border text-center text-lg font-semibold",
+            "bg-surface h-12 min-w-0 flex-1 rounded-lg border text-center text-lg font-semibold",
             "focus:ring-accent/50 outline-none focus:ring-2 disabled:opacity-50",
             error ? "border-danger" : "border-line",
           )}
