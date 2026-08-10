@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import NotRequired, ReadOnly, TypedDict
 
-from ..app_error import AppError
+from app.errors.app_error import AppError
+
 from .issues import ValidationIssueCode, ValidationIssueContext
 
 

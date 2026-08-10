@@ -9,9 +9,9 @@ from app.documents import (
     DocumentRef,
     FieldIssue,
 )
+from app.features.cashout.types import CashoutDocumentClassification
 from app.integrations.ai import AIProvider
 
-from ..types import CashoutDocumentClassification
 from .registry import CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
 

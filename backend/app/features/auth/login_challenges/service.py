@@ -20,6 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.errors import AppError
+from app.features.auth.outbox import (
+    SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
+    send_login_link_email_message,
+)
+from app.features.auth.sessions import service as sessions_service
+from app.features.auth.types import UserWithSessionToken
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
 from app.infrastructure.outbox import service as outbox_service
@@ -27,12 +33,6 @@ from app.infrastructure.redis import Redis
 from app.integrations.email import EmailClient
 from app.security.crypto import generate_secret_token, hash_secret_token
 
-from ..outbox import (
-    SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
-    send_login_link_email_message,
-)
-from ..sessions import service as sessions_service
-from ..types import UserWithSessionToken
 from . import store
 from .store import StoredLoginChallenge
 
