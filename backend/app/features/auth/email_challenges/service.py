@@ -11,56 +11,35 @@ exist solely in the email and on the link landing page.
 
 from __future__ import annotations
 
-import logging
 import secrets
-from importlib.resources import files
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.errors import AppError
-from app.features.auth.outbox import (
-    SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
-    send_login_link_email_message,
-)
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
 from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
-from app.integrations.email import EmailClient
-from app.security.crypto import generate_secret_token, hash_secret_token
+from app.security.crypto import hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
+from .outbox import SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS, send_login_link_email_message
 
 if TYPE_CHECKING:
     from app.features.users.model import User
-
-logger = logging.getLogger(__name__)
 
 # Six numeric digits (leading zeros allowed).
 CODE_DIGITS = 6
 # Wrong-code guesses allowed before the challenge is destroyed.
 MAX_CODE_ATTEMPTS = 5
-_SUBJECT = "Your Whiskey District sign-in link"
-# The email body template ships with this feature; render it with the link.
-_TEMPLATE = (
-    files("app.features.auth.email_challenges")
-    .joinpath("templates", "login_link.html")
-    .read_text(encoding="utf-8")
-)
 
 
 def _generate_code() -> str:
     return f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
-
-
-def _render_html(*, link: str, ttl_minutes: int) -> str:
-    return _TEMPLATE.replace("{{link}}", link).replace(
-        "{{ttl_minutes}}", str(ttl_minutes)
-    )
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
@@ -103,52 +82,6 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     )
 
     return challenge_id
-
-
-async def send_login_link_email(
-    sessionmaker: async_sessionmaker[AsyncSession],
-    redis: Redis,
-    *,
-    email_client: EmailClient,
-    challenge_id: str,
-    user_id: UUID,
-) -> None:
-    """Outbox job: mint the link token and email the magic sign-in link.
-
-    Runs from the outbox handler once the initiating request has committed,
-    so it owns its session and transaction. The token hash is written to the
-    challenge BEFORE the send: a retry regenerates and overwrites it, so the
-    most recently emailed link is always the live one, and a crash between
-    the write and the send never leaves an emailed-but-unstored token.
-    """
-    ttl_minutes = settings.EMAIL_CHALLENGE_TTL_MINUTES
-
-    async with sessionmaker() as db:
-        user = await users_service.find_by_id(db, user_id=user_id)
-        if user is None:
-            logger.info("Login link skipped: user %s no longer exists", user_id)
-            return
-        recipient = user.email
-
-    challenge = await store.find(redis, challenge_id=challenge_id)
-    if challenge is None:
-        # Expired (or consumed) before delivery — stale work, not an error.
-        logger.info("Login link skipped: challenge %s no longer exists", challenge_id)
-        return
-
-    token = generate_secret_token()
-    challenge.token_hash = hash_secret_token(token)
-    if not await store.update(redis, challenge_id=challenge_id, challenge=challenge):
-        return  # expired mid-flight
-
-    base_url = settings.APP_BASE_URL.rstrip("/")
-    link = f"{base_url}/login/link?challenge={challenge_id}&token={token}"
-
-    await email_client.send(
-        to=recipient,
-        subject=_SUBJECT,
-        html=_render_html(link=link, ttl_minutes=ttl_minutes),
-    )
 
 
 async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
@@ -212,4 +145,4 @@ async def consume_code(
     return user
 
 
-__all__ = ["initiate", "send_login_link_email", "verify_link", "consume_code"]
+__all__ = ["initiate", "verify_link", "consume_code"]

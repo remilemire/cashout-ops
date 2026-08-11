@@ -1,97 +1,26 @@
 # backend/app/features/auth/outbox.py
 
-"""Outbox message definitions and handlers for the auth feature.
+"""Aggregated outbox surface for the auth feature.
 
-Login initiation enqueues `auth.send_login_link_email` in its request
-transaction; at dispatch the handler mints the link token and emails the
-magic sign-in link.
+Message definitions and handlers live with their owning sub-features; this
+module only collects and re-exports them for the outbox catalog and the
+composition root.
 """
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING
-from uuid import UUID
-
-from pydantic import BaseModel
-
 from app.infrastructure.outbox.contracts import OutboxMessageDefinition
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-    from app.infrastructure.redis import Redis
-    from app.integrations.email import EmailClient
-
-logger = logging.getLogger(__name__)
-
-
-class SendLoginLinkEmail(BaseModel):
-    challenge_id: str
-    user_id: UUID
-
-
-send_login_link_email_message = OutboxMessageDefinition(
-    "auth.send_login_link_email", SendLoginLinkEmail
+from .email_challenges.outbox import (
+    SendLoginLinkEmailOutboxHandler,
+    send_login_link_email_message,
 )
-
-# Sign-in link emails give up quickly (about a minute at the default backoff)
-# instead of retrying for an hour: the user is sitting on the login screen
-# and can always start a fresh challenge.
-SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS = 5
 
 auth_outbox_message_definitions: list[OutboxMessageDefinition] = [
     send_login_link_email_message,
 ]
 
-
-class SendLoginLinkEmailOutboxHandler:
-    """Mints the link token and emails the magic sign-in link.
-
-    The payload carries only ids — the token is generated inside
-    `send_login_link_email` at delivery time, so no secret ever lands in the
-    outbox table.
-    """
-
-    message = send_login_link_email_message
-
-    def __init__(
-        self,
-        sessionmaker: async_sessionmaker[AsyncSession],
-        redis: Redis,
-        email_client: EmailClient,
-    ) -> None:
-        self._sessionmaker = sessionmaker
-        self._redis = redis
-        self._email_client = email_client
-
-    async def handle(self, payload: SendLoginLinkEmail) -> None:
-        # Imported at call time: the outbox catalog imports this module, and
-        # the email-challenges service imports the outbox to enqueue — a
-        # module-level service import would close that cycle.
-        from .email_challenges.service import send_login_link_email
-
-        await send_login_link_email(
-            self._sessionmaker,
-            self._redis,
-            email_client=self._email_client,
-            challenge_id=payload.challenge_id,
-            user_id=payload.user_id,
-        )
-
-    async def on_dead_letter(self, payload: SendLoginLinkEmail) -> None:
-        # The user can always start a fresh login, so losing the message only
-        # needs to be visible, not repaired.
-        logger.error(
-            "Login link outbox message dead-lettered for challenge %s (user %s)",
-            payload.challenge_id,
-            payload.user_id,
-        )
-
-
 __all__ = [
-    "SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS",
-    "SendLoginLinkEmail",
     "SendLoginLinkEmailOutboxHandler",
     "auth_outbox_message_definitions",
     "send_login_link_email_message",
