@@ -8,14 +8,11 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.openapi import error_responses
-from app.features.auth.shared.sessions.cookies import set_session_cookie
-from app.features.auth.types import UserWithSessionToken
+from app.features.auth.shared import access
 from app.features.users.schemas import UserOut
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.crypto import generate_secret_token
-from app.security.csrf import set_csrf_cookie
 
 from . import service as email_challenges_service
 from .schemas import (
@@ -90,17 +87,8 @@ async def verify_code(
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable)
     cookies. Consumes the challenge — it is single use.
     """
-    result = await email_challenges_service.verify_code(
+    user = await email_challenges_service.consume_code(
         db, redis, challenge_id=payload.challenge_id, code=payload.code
     )
-    return _authenticated_response(response, result)
-
-
-def _authenticated_response(
-    response: Response, result: UserWithSessionToken
-) -> UserOut:
-    # Completes sign-in at the HTTP boundary: sets the session and CSRF
-    # cookies alongside the authenticated user payload.
-    set_session_cookie(response, result.session_token)
-    set_csrf_cookie(response, generate_secret_token())
-    return UserOut.model_validate(result.user)
+    await access.grant(redis, response, user_id=user.id)
+    return UserOut.model_validate(user)

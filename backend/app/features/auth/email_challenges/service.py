@@ -4,7 +4,7 @@
 
 Initiation stores a Redis challenge and emails a magic sign-in link;
 visiting the link reveals a 6-digit code; entering the code in the
-initiating tab consumes the challenge and mints a session. Only SHA-256
+initiating tab consumes the challenge. Only SHA-256
 hashes of the link token and the code reach the store — the plaintexts
 exist solely in the email and on the link landing page.
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import secrets
 from importlib.resources import files
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,8 +25,6 @@ from app.features.auth.outbox import (
     SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
     send_login_link_email_message,
 )
-from app.features.auth.shared.sessions import service as sessions_service
-from app.features.auth.types import UserWithSessionToken
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
 from app.infrastructure.outbox import service as outbox_service
@@ -35,6 +34,9 @@ from app.security.crypto import generate_secret_token, hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
+
+if TYPE_CHECKING:
+    from app.features.users.model import User
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +176,11 @@ async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
     return code
 
 
-async def verify_code(
+async def consume_code(
     db: AsyncSession, redis: Redis, *, challenge_id: str, code: str
-) -> UserWithSessionToken:
-    """Complete login: consume the challenge and mint a session.
+) -> User:
+    """Consume the challenge and return its user; the router completes
+    sign-in via `access.grant`.
 
     Every failure mode raises the one unified error so the response shape
     cannot reveal whether a challenge, code, or account exists.
@@ -206,8 +209,7 @@ async def verify_code(
         # Deleted-user backstop: the account vanished after initiation.
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
-    issued = await sessions_service.create(redis, user_id=user.id)
-    return UserWithSessionToken(user=user, session_token=issued.token)
+    return user
 
 
-__all__ = ["initiate", "send_login_link_email", "verify_link", "verify_code"]
+__all__ = ["initiate", "send_login_link_email", "verify_link", "consume_code"]

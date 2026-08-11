@@ -6,16 +6,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from app.features.auth.shared.sessions.cookies import (
-    clear_session_cookie,
-    get_session_cookie,
-)
+from app.features.auth.shared.sessions.cookies import get_session_cookie
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.csrf import clear_csrf_cookie
 
-from . import service as auth_service
 from .email_challenges.router import router as email_challenges_router
+from .shared import access
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,9 +30,6 @@ async def logout(
     Best-effort and unauthenticated: a missing or already-invalid session still
     clears the cookies and returns 204 rather than erroring.
     """
-    session_token = get_session_cookie(request)
-    if session_token is not None:
-        await auth_service.logout(redis, session_token=session_token)
-
-    clear_session_cookie(response)
-    clear_csrf_cookie(response)
+    await access.revoke(
+        redis, response, session_token=get_session_cookie(request)
+    )

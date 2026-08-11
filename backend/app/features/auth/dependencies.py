@@ -4,30 +4,30 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
-from app.features.auth.shared.sessions.cookies import get_session_cookie
+from app.features.auth.shared.sessions.dependencies import get_current_session
+from app.features.auth.shared.sessions.model import Session
+from app.features.users import service as users_service
 from app.features.users.model import User
 from app.features.users.types import UserRole
 from app.infrastructure.db.dependencies import get_db
-from app.infrastructure.redis import Redis
-from app.infrastructure.redis.dependencies import get_redis
-
-from . import service as auth_service
 
 
 async def get_current_user(
-    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    session: Annotated[Session, Depends(get_current_session)],
 ) -> User:
-    session_token = get_session_cookie(request)
-    if session_token is None:
-        raise AppError("UNAUTHENTICATED")
+    user = await users_service.find_by_id(db, user_id=session.user_id)
 
-    return await auth_service.authenticate(db, redis, session_token=session_token)
+    if user is None:
+        # The user row is gone (e.g. the account was deleted); the session is
+        # dead even if its Redis key still lingers.
+        raise AppError("INVALID_SESSION")
+
+    return user
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
