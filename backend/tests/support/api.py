@@ -39,21 +39,21 @@ async def login(
     verifies the link for the one-time code, and completes with the code;
     the client then carries session + csrf cookies.
     """
-    start = await client.post("/api/auth/login", json={"email": email})
+    start = await client.post("/api/auth/email-challenges", json={"email": email})
     assert start.status_code == 202, start.text
 
     await drain_outbox()
     link = email_client.latest_link(to=email)
 
     verified_link = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={"challengeId": link.challenge_id, "token": link.token},
     )
     assert verified_link.status_code == 200, verified_link.text
     code = verified_link.json()["code"]
 
     verified_code = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
     assert verified_code.status_code == 200, verified_code.text

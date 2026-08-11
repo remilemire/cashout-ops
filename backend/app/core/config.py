@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     # default targets the Vite server; production must set its real origin.
     APP_BASE_URL: str = "http://localhost:5173"
 
-    # Login challenges. A sign-in link is emailed on login; the challenge (and
+    # Email challenges. A sign-in link is emailed on login; the challenge (and
     # with it the link and its one-time code) expires this long after initiation.
-    LOGIN_CHALLENGE_TTL_MINUTES: int = 15
+    EMAIL_CHALLENGE_TTL_MINUTES: int = 15
 
     # Outbox dispatch. Workers poll outbox_messages every POLL_INTERVAL; a
     # claim is protected for CLAIM_TTL before a crashed worker's row becomes

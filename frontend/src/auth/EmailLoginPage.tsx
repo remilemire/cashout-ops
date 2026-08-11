@@ -74,7 +74,7 @@ export function EmailLoginPage() {
   // The server's unified challenge error covers mistyped, superseded, and
   // expired codes alike; on this screen a gentler nudge fits all of them.
   const codeErrorMessage =
-    error instanceof ApiError && error.code === "LOGIN_CHALLENGE_INVALID"
+    error instanceof ApiError && error.code === "EMAIL_CHALLENGE_INVALID"
       ? "That code didn't work. Double-check it, or start over to get a new link."
       : undefined;
 

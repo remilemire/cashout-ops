@@ -1,4 +1,4 @@
-# backend/app/features/auth/sessions/service.py
+# backend/app/features/auth/shared/sessions/service.py
 
 """Session orchestration and token crypto.
 

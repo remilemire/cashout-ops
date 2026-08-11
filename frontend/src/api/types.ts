@@ -31,7 +31,7 @@ export type ErrorCode =
   | "CANNOT_DELETE_OWNER"
   | "TRANSFER_TARGET_NOT_ADMIN"
   // auth
-  | "LOGIN_CHALLENGE_INVALID"
+  | "EMAIL_CHALLENGE_INVALID"
   | "INVALID_SESSION"
   | "INVALID_CSRF_TOKEN"
   // cashout

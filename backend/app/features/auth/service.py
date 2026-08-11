@@ -10,7 +10,7 @@ from app.errors import AppError
 from app.features.users import service as users_service
 from app.infrastructure.redis import Redis
 
-from .sessions import service as sessions_service
+from .shared.sessions import service as sessions_service
 
 if TYPE_CHECKING:
     from app.features.users.model import User

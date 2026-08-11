@@ -1,6 +1,6 @@
-# backend/app/features/auth/login_challenges/service.py
+# backend/app/features/auth/email_challenges/service.py
 
-"""Login-challenge orchestration (passwordless sign-in).
+"""Email-challenge orchestration (passwordless sign-in).
 
 Initiation stores a Redis challenge and emails a magic sign-in link;
 visiting the link reveals a 6-digit code; entering the code in the
@@ -24,7 +24,7 @@ from app.features.auth.outbox import (
     SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
     send_login_link_email_message,
 )
-from app.features.auth.sessions import service as sessions_service
+from app.features.auth.shared.sessions import service as sessions_service
 from app.features.auth.types import UserWithSessionToken
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreate
@@ -34,7 +34,7 @@ from app.integrations.email import EmailClient
 from app.security.crypto import generate_secret_token, hash_secret_token
 
 from . import store
-from .store import StoredLoginChallenge
+from .model import StoredEmailChallenge
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ MAX_CODE_ATTEMPTS = 5
 _SUBJECT = "Your Whiskey District sign-in link"
 # The email body template ships with this feature; render it with the link.
 _TEMPLATE = (
-    files("app.features.auth.login_challenges")
+    files("app.features.auth.email_challenges")
     .joinpath("templates", "login_link.html")
     .read_text(encoding="utf-8")
 )
@@ -62,7 +62,7 @@ def _render_html(*, link: str, ttl_minutes: int) -> str:
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
-    """Start a login challenge for the email, returning the challenge id.
+    """Start an email challenge for the address, returning the challenge id.
 
     Always succeeds: an unknown address gets a decoy id — neutral response,
     nothing stored, no email — indistinguishable from a real challenge, so
@@ -85,13 +85,13 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
         )
 
     if user is None:
-        return str(uuid4())
+        return str(uuid4())  # decoy id
 
     challenge_id = str(uuid4())
     await store.save(
         redis,
         challenge_id=challenge_id,
-        challenge=StoredLoginChallenge(user_id=user.id),
+        challenge=StoredEmailChallenge(user_id=user.id),
     )
     await outbox_service.enqueue(
         db,
@@ -119,7 +119,7 @@ async def send_login_link_email(
     most recently emailed link is always the live one, and a crash between
     the write and the send never leaves an emailed-but-unstored token.
     """
-    ttl_minutes = settings.LOGIN_CHALLENGE_TTL_MINUTES
+    ttl_minutes = settings.EMAIL_CHALLENGE_TTL_MINUTES
 
     async with sessionmaker() as db:
         user = await users_service.find_by_id(db, user_id=user_id)
@@ -153,9 +153,9 @@ async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
     """Confirm the emailed link and return a fresh one-time code.
 
     Repeatable and non-consuming: re-verifying supersedes the previous code
-    (only the code's hash is stored), while `attempts` is preserved — the
-    guess cap counts guesses from the initiating tab and must not reset on a
-    re-click. Sign-in completes via `verify_code`.
+    (only the code's hash is stored), while `code_attempts` is preserved —
+    the guess cap counts guesses from the initiating tab and must not reset
+    on a re-click. Sign-in completes via `verify_code`.
     """
     challenge = await store.find(redis, challenge_id=challenge_id)
 
@@ -164,12 +164,12 @@ async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
         or challenge.token_hash is None
         or not secrets.compare_digest(challenge.token_hash, hash_secret_token(token))
     ):
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     code = _generate_code()
     challenge.code_hash = hash_secret_token(code)
     if not await store.update(redis, challenge_id=challenge_id, challenge=challenge):
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     return code
 
@@ -185,26 +185,26 @@ async def verify_code(
     challenge = await store.find(redis, challenge_id=challenge_id)
 
     if challenge is None or challenge.code_hash is None:
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     if not secrets.compare_digest(challenge.code_hash, hash_secret_token(code)):
-        challenge.attempts += 1
-        if challenge.attempts >= MAX_CODE_ATTEMPTS:
+        challenge.code_attempts += 1
+        if challenge.code_attempts >= MAX_CODE_ATTEMPTS:
             # Out of guesses: destroy the challenge outright.
             await store.delete(redis, challenge_id=challenge_id)
         else:
             await store.update(redis, challenge_id=challenge_id, challenge=challenge)
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     # The checked delete IS the consumption: losing the race means another
     # request already signed in with this challenge.
     if not await store.delete(redis, challenge_id=challenge_id):
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     user = await users_service.find_by_id(db, user_id=challenge.user_id)
     if user is None:
         # Deleted-user backstop: the account vanished after initiation.
-        raise AppError("LOGIN_CHALLENGE_INVALID")
+        raise AppError("EMAIL_CHALLENGE_INVALID")
 
     session_token = await sessions_service.create(redis, user_id=user.id)
     return UserWithSessionToken(user=user, session_token=session_token)

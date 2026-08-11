@@ -15,12 +15,12 @@ from app.security.cookies import (
 )
 
 from . import service as auth_service
-from .login_challenges.router import router as login_challenges_router
+from .email_challenges.router import router as email_challenges_router
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Passwordless login lives under /auth (e.g. /auth/login/verify-code).
-router.include_router(login_challenges_router)
+# Passwordless login lives under /auth (e.g. /auth/email-challenges/verify-code).
+router.include_router(email_challenges_router)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

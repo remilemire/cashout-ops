@@ -67,9 +67,9 @@ class SendLoginLinkEmailOutboxHandler:
 
     async def handle(self, payload: SendLoginLinkEmail) -> None:
         # Imported at call time: the outbox catalog imports this module, and
-        # the login-challenges service imports the outbox to enqueue — a
+        # the email-challenges service imports the outbox to enqueue — a
         # module-level service import would close that cycle.
-        from .login_challenges.service import send_login_link_email
+        from .email_challenges.service import send_login_link_email
 
         await send_login_link_email(
             self._sessionmaker,

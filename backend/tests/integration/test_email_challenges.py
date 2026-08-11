@@ -1,4 +1,4 @@
-# backend/tests/integration/test_login_challenges.py
+# backend/tests/integration/test_email_challenges.py
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ CASHIER_EMAIL = "cashier@test.com"
 
 
 async def _initiate(client: AsyncClient, *, email: str = CASHIER_EMAIL) -> str:
-    response = await client.post("/api/auth/login", json={"email": email})
+    response = await client.post("/api/auth/email-challenges", json={"email": email})
     assert response.status_code == 202, response.text
     return response.json()["challengeId"]
 
@@ -43,7 +43,7 @@ async def _initiate_and_deliver(
 
 async def _obtain_code(client: AsyncClient, link: LoginLink) -> str:
     response = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={"challengeId": link.challenge_id, "token": link.token},
     )
     assert response.status_code == 200, response.text
@@ -64,7 +64,7 @@ async def test_start_login_returns_challenge_and_emails_link(
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
 
-    response = await client.post("/api/auth/login", json={"email": CASHIER_EMAIL})
+    response = await client.post("/api/auth/email-challenges", json={"email": CASHIER_EMAIL})
 
     assert response.status_code == 202, response.text
     challenge_id = response.json()["challengeId"]
@@ -81,8 +81,8 @@ async def test_start_login_returns_challenge_and_emails_link(
     assert "token=" in email.html
 
     # Exactly one stored challenge, holding the token's hash — never the token.
-    [key] = await redis_keys(redis_client, "login_challenge:*")
-    assert key == f"login_challenge:{challenge_id}"
+    [key] = await redis_keys(redis_client, "email_challenge:*")
+    assert key == f"email_challenge:{challenge_id}"
     link = email_client.latest_link(to=CASHIER_EMAIL)
     raw = await redis_client.get(key)
     assert raw is not None
@@ -95,14 +95,14 @@ async def test_start_login_unknown_email_is_neutral(
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    response = await client.post("/api/auth/login", json={"email": "nobody@test.com"})
+    response = await client.post("/api/auth/email-challenges", json={"email": "nobody@test.com"})
 
     # A well-formed decoy id, indistinguishable from a real challenge —
     # nothing stored, nothing enqueued, no email.
     assert response.status_code == 202, response.text
     assert re.fullmatch(r"[0-9a-f-]{36}", response.json()["challengeId"])
     assert await drain_outbox() == 0
-    assert await redis_keys(redis_client, "login_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge:*") == []
     assert email_client.sent == []
 
 
@@ -119,7 +119,7 @@ async def test_start_login_bootstraps_owner(
     code = await _obtain_code(client, link)
 
     response = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
 
@@ -157,14 +157,14 @@ async def test_verify_link_returns_code_without_consuming(
     link = await _initiate_and_deliver(client, drain_outbox, email_client)
 
     response = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={"challengeId": link.challenge_id, "token": link.token},
     )
 
     assert response.status_code == 200, response.text
     assert re.fullmatch(r"\d{6}", response.json()["code"])
     # Non-consuming: the challenge survives for the verify-code step.
-    assert await redis_keys(redis_client, "login_challenge:*")
+    assert await redis_keys(redis_client, "email_challenge:*")
 
 
 async def test_verify_link_rejects_bad_token(
@@ -177,17 +177,17 @@ async def test_verify_link_rejects_bad_token(
     link = await _initiate_and_deliver(client, drain_outbox, email_client)
 
     response = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={"challengeId": link.challenge_id, "token": "not-the-token"},
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_link_rejects_unknown_challenge(client: AsyncClient) -> None:
     response = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={
             "challengeId": "00000000-0000-0000-0000-000000000000",
             "token": "any-token",
@@ -195,7 +195,7 @@ async def test_verify_link_rejects_unknown_challenge(client: AsyncClient) -> Non
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_link_before_delivery_is_rejected(
@@ -206,12 +206,12 @@ async def test_verify_link_before_delivery_is_rejected(
     challenge_id = await _initiate(client)
 
     response = await client.post(
-        "/api/auth/login/verify-link",
+        "/api/auth/email-challenges/verify-link",
         json={"challengeId": challenge_id, "token": "any-token"},
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_link_twice_supersedes_code(
@@ -229,13 +229,13 @@ async def test_verify_link_twice_supersedes_code(
 
     # Only the newest code's hash is stored: the first no longer verifies.
     stale = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": first_code},
     )
     assert stale.status_code == 401
-    assert stale.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert stale.json()["code"] == "EMAIL_CHALLENGE_INVALID"
     ok = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": second_code},
     )
     assert ok.status_code == 200, ok.text
@@ -258,7 +258,7 @@ async def test_verify_code_signs_in_and_consumes(
     code = await _obtain_code(client, link)
 
     response = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
 
@@ -272,15 +272,15 @@ async def test_verify_code_signs_in_and_consumes(
     assert "csrf_token" in client.cookies
     # A Redis-tracked session was minted; the challenge was consumed.
     assert await redis_keys(redis_client, "session:*")
-    assert await redis_keys(redis_client, "login_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge:*") == []
 
     # Single use: replaying the same code fails.
     replay = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
     assert replay.status_code == 401
-    assert replay.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_code_wrong_code_is_capped(
@@ -298,24 +298,24 @@ async def test_verify_code_wrong_code_is_capped(
     # Four wrong guesses each fail but leave the challenge alive.
     for _ in range(4):
         response = await client.post(
-            "/api/auth/login/verify-code",
+            "/api/auth/email-challenges/verify-code",
             json={"challengeId": link.challenge_id, "code": wrong_code},
         )
         assert response.status_code == 401
-        assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
-        assert await redis_keys(redis_client, "login_challenge:*")
+        assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+        assert await redis_keys(redis_client, "email_challenge:*")
 
     # The fifth exhausts the cap and destroys the challenge outright.
     fifth = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": wrong_code},
     )
     assert fifth.status_code == 401
-    assert await redis_keys(redis_client, "login_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge:*") == []
 
     # Even the correct code is dead now.
     final = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
     assert final.status_code == 401
@@ -337,16 +337,18 @@ async def test_verify_code_after_user_deleted_is_rejected(
         f"/api/users/{user.id}", headers=csrf_headers(admin_client)
     )
     assert deleted.status_code == 204, deleted.text
+    sessions_before = await redis_keys(redis_client, "session:*")
 
     response = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
-    # No session was minted for the deleted account.
-    assert await redis_keys(redis_client, f"user_sessions:{user.id}") == []
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+    # No session was minted for the deleted account (only the admin's own
+    # pre-existing session remains).
+    assert await redis_keys(redis_client, "session:*") == sessions_before
 
 
 async def test_verify_code_expired_challenge_is_rejected(
@@ -361,16 +363,16 @@ async def test_verify_code_expired_challenge_is_rejected(
     code = await _obtain_code(client, link)
     # Expiry is enforced by the Redis TTL, so an expired challenge IS a missing
     # key; deleting the key is exactly what expiry looks like to the service.
-    [key] = await redis_keys(redis_client, "login_challenge:*")
+    [key] = await redis_keys(redis_client, "email_challenge:*")
     await redis_client.delete(key)
 
     response = await client.post(
-        "/api/auth/login/verify-code",
+        "/api/auth/email-challenges/verify-code",
         json={"challengeId": link.challenge_id, "code": code},
     )
 
     assert response.status_code == 401
-    assert response.json()["code"] == "LOGIN_CHALLENGE_INVALID"
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 # ================================

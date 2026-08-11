@@ -8,12 +8,10 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.users.types import UserRole
-from app.infrastructure.redis import Redis
 from tests.support.api import OWNER_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
 from tests.support.fakes import FakeEmailClient
 from tests.support.fixtures.outbox import OutboxDrain
-from tests.support.fixtures.redis import redis_keys
 
 
 async def test_me_returns_current_user(cashier_client: AsyncClient) -> None:
@@ -370,16 +368,16 @@ async def test_demote_owner_is_forbidden(
 # ================================
 
 
-async def test_admin_deletes_user_and_revokes_their_sessions(
+async def test_deleted_user_loses_access(
     admin_client: AsyncClient,
     client: AsyncClient,
     db_session: AsyncSession,
-    redis_client: Redis,
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Seeded directly, then logged in through the API for a real session; the
-    # revocation is observed through the deleted user's previously-valid client.
+    # Seeded directly, then logged in through the API for a real session.
+    # Deletion does not revoke sessions; the deleted-user lookup during
+    # authentication is the backstop that turns the lingering session away.
     user = await create_user(db_session, email="doomed@test.com")
     await login(
         client,
@@ -388,16 +386,15 @@ async def test_admin_deletes_user_and_revokes_their_sessions(
         email_client=email_client,
     )
     assert (await client.get("/api/users/me")).status_code == 200
-    assert await redis_keys(redis_client, f"user_sessions:{user.id}")
 
     response = await admin_client.delete(
         f"/api/users/{user.id}", headers=csrf_headers(admin_client)
     )
 
     assert response.status_code == 204, response.text
-    # The deleted user's session is gone; the admin's own session survives.
+    # The deleted user's session no longer authenticates (the user row is
+    # gone, even though the Redis key may linger); the admin's own survives.
     assert (await client.get("/api/users/me")).status_code == 401
-    assert await redis_keys(redis_client, f"user_sessions:{user.id}") == []
     assert (await admin_client.get("/api/users/me")).status_code == 200
 
 

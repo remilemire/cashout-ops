@@ -37,7 +37,7 @@ const cashier: User = {
 
 const challengeInvalid = new ApiError(401, {
   kind: "UNAUTHORIZED",
-  code: "LOGIN_CHALLENGE_INVALID",
+  code: "EMAIL_CHALLENGE_INVALID",
   message: "This sign-in code is invalid or has expired.",
 });
 

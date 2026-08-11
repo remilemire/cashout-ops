@@ -108,7 +108,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
 │       ├── documents/                 # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth (sessions, login_challenges, dependencies: get_current_user/require_admin), users, cashout
+│       ├── features/                  # auth (sessions, email_challenges, dependencies: get_current_user/require_admin), users, cashout
 │       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
@@ -167,7 +167,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
-| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and login challenges; verified with a `PING` at startup.                               |
+| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
 | `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
@@ -178,8 +178,8 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `RESEND_API_KEY`      | see notes | —                                                             | Required only when `EMAIL_PROVIDER=RESEND` (validated at startup).                                    |
 | `EMAIL_FROM`          | no       | `Whiskey District <onboarding@resend.dev>`                     | Sender address for all outbound mail.                                                                 |
 | `APP_BASE_URL`        | no       | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the emailed sign-in links. Production must set its real origin. |
-| `LOGIN_CHALLENGE_TTL_MINUTES` | no | `15`                                                       | How long a login challenge (and with it the emailed link and its one-time code) stays valid.         |
-| `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/login_challenges/service.py](backend/app/features/auth/login_challenges/service.py)). |
+| `EMAIL_CHALLENGE_TTL_MINUTES` | no | `15`                                                       | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
+| `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
 | `OWNER_FULL_NAME`     | no       | `Owner`                                                        | Full name given to the bootstrapped `OWNER_EMAIL` account.                                           |
 
 The AI model is not env-configurable: each provider's model is fixed in `AI_MODELS` in [core/config.py](backend/app/core/config.py) and resolved for the selected `AI_PROVIDER`.
@@ -243,8 +243,8 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 ## Authentication and sessions
 
-- Login is passwordless: `POST /api/auth/login` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`LOGIN_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code.
-- Visiting the link (`POST /api/auth/login/verify-link`) reveals a one-time code; entering it in the initiating tab (`POST /api/auth/login/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
+- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`EMAIL_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code.
+- Visiting the link (`POST /api/auth/email-challenges/verify-link`) reveals a one-time code; entering it in the initiating tab (`POST /api/auth/email-challenges/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
 - Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` / `require_owner` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
@@ -268,7 +268,7 @@ All errors come back as a stable JSON shape so the frontend can render them unif
 ```
 
 - `kind` is a broad `SCREAMING_CASE` discriminator that also fixes the HTTP status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `VALIDATION`, `INTERNAL`, `SERVICE_UNAVAILABLE` → 400/401/403/404/409/422/500/503 via `kind_to_status`).
-- `code` is the specific `ErrorCode` — a base code (`INTERNAL`, `BAD_REQUEST`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `ROUTE_NOT_FOUND`, `CONFLICT`, `SERVICE_UNAVAILABLE`) or a feature code (e.g. `EMAIL_TAKEN`, `USER_NOT_FOUND`, `LOGIN_CHALLENGE_INVALID`). The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its `kind` and default client `message`; each route documents its actual error statuses in OpenAPI via `error_responses(*codes)` ([errors/openapi.py](backend/app/errors/openapi.py)).
+- `code` is the specific `ErrorCode` — a base code (`INTERNAL`, `BAD_REQUEST`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `ROUTE_NOT_FOUND`, `CONFLICT`, `SERVICE_UNAVAILABLE`) or a feature code (e.g. `EMAIL_TAKEN`, `USER_NOT_FOUND`, `EMAIL_CHALLENGE_INVALID`). The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its `kind` and default client `message`; each route documents its actual error statuses in OpenAPI via `error_responses(*codes)` ([errors/openapi.py](backend/app/errors/openapi.py)).
 - `issues` is present only for validation failures (`VALIDATION`): one entry per field with a `ValidationIssueCode` (`MISSING_FIELD`, `EXTRA_FIELD`, `TOO_SMALL`, …), a `path` array, and a human `message`. Pydantic errors are translated in [errors/translators.py](backend/app/errors/translators.py).
 - `IntegrityError` is auto-mapped, first by constraint name (to a feature code) then by Postgres SQLSTATE (unique/FK/restrict → `CONFLICT`, check/not-null → `VALIDATION_FAILED`) in [errors/translators.py](backend/app/errors/translators.py).
 - An `AppError`'s internal `message` never reaches the client (it goes to logs/tracebacks only); the response `message` is always the catalog default. Uncaught exceptions are funneled to a generic `INTERNAL` error — no stack traces are leaked.
@@ -279,16 +279,16 @@ Implemented under the `/api` prefix:
 
 | Method | Path                                          | Auth            | Success | Notes                                                       |
 | ------ | --------------------------------------------- | --------------- | ------- | ----------------------------------------------------------- |
-| POST   | `/api/auth/login`                             | none            | 202     | Start a passwordless challenge; always returns a `challengeId` (a real account gets a sign-in link by email). |
-| POST   | `/api/auth/login/verify-link`                 | none            | 200     | Verify the emailed link; returns the one-time code to display. |
-| POST   | `/api/auth/login/verify-code`                 | none            | 200     | Complete login in the initiating tab; sets `session_token` + `csrf_token` cookies. |
+| POST   | `/api/auth/email-challenges`                  | none            | 202     | Start a passwordless challenge; always returns a `challengeId` (a real account gets a sign-in link by email). |
+| POST   | `/api/auth/email-challenges/verify-link`      | none            | 200     | Verify the emailed link; returns the one-time code to display. |
+| POST   | `/api/auth/email-challenges/verify-code`      | none            | 200     | Complete login in the initiating tab; sets `session_token` + `csrf_token` cookies. |
 | POST   | `/api/auth/logout`                            | none            | 204     | Clears both cookies and deletes the Redis session (best-effort). |
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | GET    | `/api/users`                                  | admin           | 200     | List every user, newest first.                              |
 | POST   | `/api/users`                                  | admin + CSRF    | 201     | Create a staff account (no email sent; the user signs in via the login flow). |
 | POST   | `/api/users/{id}/promote`                     | admin + CSRF    | 200     | Grant a user admin access (idempotent; cannot target the owner). |
 | POST   | `/api/users/{id}/demote`                      | admin + CSRF    | 200     | Revoke a user's admin access (cannot demote yourself or the owner). |
-| DELETE | `/api/users/{id}`                             | admin + CSRF    | 204     | Delete a user and revoke their sessions (the owner cannot be deleted). |
+| DELETE | `/api/users/{id}`                             | admin + CSRF    | 204     | Delete a user (the owner cannot be deleted). |
 | POST   | `/api/users/{id}/transfer-ownership`          | owner + CSRF    | 200     | Transfer ownership to an admin; the caller becomes a plain admin. |
 | POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
 | DELETE | `/api/cashout/submissions/{id}`               | owner + CSRF    | 204     | Delete a submission unless reconciled cashout data exists.  |

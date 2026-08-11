@@ -58,7 +58,7 @@ describe("LoginLinkPage", () => {
     verifyLoginLinkMock.mockRejectedValue(
       new ApiError(401, {
         kind: "UNAUTHORIZED",
-        code: "LOGIN_CHALLENGE_INVALID",
+        code: "EMAIL_CHALLENGE_INVALID",
         message: "This sign-in link is invalid or has expired.",
       }),
     );

@@ -1,4 +1,4 @@
-# backend/app/features/auth/login_challenges/router.py
+# backend/app/features/auth/email_challenges/router.py
 
 from __future__ import annotations
 
@@ -16,30 +16,30 @@ from app.infrastructure.redis.dependencies import get_redis
 from app.security.cookies import set_csrf_cookie, set_session_cookie
 from app.security.crypto import generate_secret_token
 
-from . import service as login_challenges_service
+from . import service as email_challenges_service
 from .schemas import (
-    LoginChallengeStart,
-    LoginChallengeStartOut,
-    LoginChallengeVerifyCode,
-    LoginChallengeVerifyLink,
-    LoginChallengeVerifyLinkOut,
+    EmailChallengeStart,
+    EmailChallengeStartOut,
+    EmailChallengeVerifyCode,
+    EmailChallengeVerifyLink,
+    EmailChallengeVerifyLinkOut,
 )
 
 # No auth or CSRF dependencies: these routes run before any session exists.
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/email-challenges", tags=["auth"])
 
 
 @router.post(
-    "/login",
-    response_model=LoginChallengeStartOut,
+    "",
+    response_model=EmailChallengeStartOut,
     status_code=status.HTTP_202_ACCEPTED,
     responses=error_responses("VALIDATION_FAILED"),
 )
 async def start_login(
-    payload: LoginChallengeStart,
+    payload: EmailChallengeStart,
     db: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
-) -> LoginChallengeStartOut:
+) -> EmailChallengeStartOut:
     """Start a passwordless login by emailing a sign-in link.
 
     Always returns 202 with a challengeId; whether an email was actually sent
@@ -47,40 +47,40 @@ async def start_login(
     For a real account the link is emailed once the request commits, via the
     transactional outbox.
     """
-    challenge_id = await login_challenges_service.initiate(
+    challenge_id = await email_challenges_service.initiate(
         db, redis, email=payload.email
     )
-    return LoginChallengeStartOut(challenge_id=challenge_id)
+    return EmailChallengeStartOut(challenge_id=challenge_id)
 
 
 @router.post(
-    "/login/verify-link",
-    response_model=LoginChallengeVerifyLinkOut,
-    responses=error_responses("LOGIN_CHALLENGE_INVALID", "VALIDATION_FAILED"),
+    "/verify-link",
+    response_model=EmailChallengeVerifyLinkOut,
+    responses=error_responses("EMAIL_CHALLENGE_INVALID", "VALIDATION_FAILED"),
 )
 async def verify_link(
-    payload: LoginChallengeVerifyLink,
+    payload: EmailChallengeVerifyLink,
     redis: Annotated[Redis, Depends(get_redis)],
-) -> LoginChallengeVerifyLinkOut:
+) -> EmailChallengeVerifyLinkOut:
     """Verify the emailed link and return the one-time code to display.
 
     Repeatable — each call supersedes the previous code — and does not
-    consume the challenge; sign-in completes via `/login/verify-code`.
+    consume the challenge; sign-in completes via `/email-challenges/verify-code`.
     """
-    code = await login_challenges_service.verify_link(
+    code = await email_challenges_service.verify_link(
         redis, challenge_id=payload.challenge_id, token=payload.token
     )
-    return LoginChallengeVerifyLinkOut(code=code)
+    return EmailChallengeVerifyLinkOut(code=code)
 
 
 @router.post(
-    "/login/verify-code",
+    "/verify-code",
     response_model=UserOut,
-    responses=error_responses("LOGIN_CHALLENGE_INVALID", "VALIDATION_FAILED"),
+    responses=error_responses("EMAIL_CHALLENGE_INVALID", "VALIDATION_FAILED"),
 )
 async def verify_code(
     response: Response,
-    payload: LoginChallengeVerifyCode,
+    payload: EmailChallengeVerifyCode,
     db: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> UserOut:
@@ -89,7 +89,7 @@ async def verify_code(
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable)
     cookies. Consumes the challenge — it is single use.
     """
-    result = await login_challenges_service.verify_code(
+    result = await email_challenges_service.verify_code(
         db, redis, challenge_id=payload.challenge_id, code=payload.code
     )
     return _authenticated_response(response, result)
@@ -98,8 +98,8 @@ async def verify_code(
 def _authenticated_response(
     response: Response, result: UserWithSessionToken
 ) -> UserOut:
-    # Private copy of auth.router's helper: importing it from there would be
-    # circular (auth.router includes this router).
+    # Completes sign-in at the HTTP boundary: sets the session and CSRF
+    # cookies alongside the authenticated user payload.
     set_session_cookie(response, result.session_token)
     set_csrf_cookie(response, generate_secret_token())
     return UserOut.model_validate(result.user)
