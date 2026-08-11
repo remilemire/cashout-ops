@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 
 
 async def authenticate(db: AsyncSession, redis: Redis, *, session_token: str) -> User:
-    user_id = await sessions_service.find_user_id(redis, token=session_token)
+    session = await sessions_service.resolve_session(redis, token=session_token)
 
-    if user_id is None:
+    if session is None:
         raise AppError("INVALID_SESSION")
 
-    user = await users_service.find_by_id(db, user_id=user_id)
+    user = await users_service.find_by_id(db, user_id=session.user_id)
 
     if user is None:
         # The user row is gone (e.g. the account was deleted); the session is

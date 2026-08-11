@@ -206,8 +206,8 @@ async def verify_code(
         # Deleted-user backstop: the account vanished after initiation.
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
-    session_token = await sessions_service.create(redis, user_id=user.id)
-    return UserWithSessionToken(user=user, session_token=session_token)
+    issued = await sessions_service.create(redis, user_id=user.id)
+    return UserWithSessionToken(user=user, session_token=issued.token)
 
 
 __all__ = ["initiate", "send_login_link_email", "verify_link", "verify_code"]

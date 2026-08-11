@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from fastapi import Request, Response
 
-from app.core.config import settings
 from app.core.cookies import delete_cookie, set_cookie
+from app.features.auth.shared.sessions.model import SESSION_TTL
 
 SESSION_COOKIE = "session_token"
-SESSION_TTL = timedelta(days=settings.SESSION_TTL_DAYS)
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -27,7 +24,6 @@ def clear_session_cookie(response: Response) -> None:
 
 __all__ = [
     "SESSION_COOKIE",
-    "SESSION_TTL",
     "set_session_cookie",
     "get_session_cookie",
     "clear_session_cookie",
