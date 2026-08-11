@@ -62,8 +62,8 @@ async def verify_link(
 ) -> EmailChallengeVerifyLinkOut:
     """Verify the emailed link and return the one-time code to display.
 
-    Repeatable — each call supersedes the previous code — and does not
-    consume the challenge; sign-in completes via `/email-challenges/verify-code`.
+    Single-use — a second click of the emailed link fails — while the
+    challenge survives; sign-in completes via `/email-challenges/verify-code`.
     """
     code = await email_challenges_service.verify_link(
         redis, challenge_id=payload.challenge_id, token=payload.token

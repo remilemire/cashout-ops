@@ -68,6 +68,17 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     if user is None:
         return str(uuid4())  # decoy id
 
+    # One active challenge per user: starting a new sign-in invalidates the
+    # previous link and code. The Redis delete is not transactional with the
+    # request, which is acceptable — worst case a rolled-back initiate
+    # destroyed a previous challenge the user had already abandoned by
+    # re-initiating.
+    previous_challenge_id = await store.find_challenge_id_for_user(
+        redis, user_id=user.id
+    )
+    if previous_challenge_id is not None:
+        await store.delete(redis, challenge_id=previous_challenge_id)
+
     challenge_id = str(uuid4())
     await store.save(
         redis,
@@ -87,10 +98,11 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
 async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
     """Confirm the emailed link and return a fresh one-time code.
 
-    Repeatable and non-consuming: re-verifying supersedes the previous code
-    (only the code's hash is stored), while `code_attempts` is preserved —
-    the guess cap counts guesses from the initiating tab and must not reset
-    on a re-click. Sign-in completes via `verify_code`.
+    The link is single-use: verifying clears `token_hash` in the same write
+    that stores the code's hash, so a second verify with the same token is
+    rejected. The challenge itself survives — `consume_code` still needs it —
+    and `code_attempts` is untouched, so the guess cap keeps counting guesses
+    from the initiating tab. Sign-in completes via `verify_code`.
     """
     challenge = await store.find(redis, challenge_id=challenge_id)
 
@@ -103,6 +115,9 @@ async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
 
     code = _generate_code()
     challenge.code_hash = hash_secret_token(code)
+    # Verifying consumes the link: with the hash cleared, a replayed link
+    # hits the `token_hash is None` branch above.
+    challenge.token_hash = None
     if not await store.update(redis, challenge_id=challenge_id, challenge=challenge):
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
@@ -128,6 +143,9 @@ async def consume_code(
         if challenge.code_attempts >= MAX_CODE_ATTEMPTS:
             # Out of guesses: destroy the challenge outright.
             await store.delete(redis, challenge_id=challenge_id)
+            await store.clear_user_pointer(
+                redis, user_id=challenge.user_id, challenge_id=challenge_id
+            )
         else:
             await store.update(redis, challenge_id=challenge_id, challenge=challenge)
         raise AppError("EMAIL_CHALLENGE_INVALID")
@@ -136,6 +154,9 @@ async def consume_code(
     # request already signed in with this challenge.
     if not await store.delete(redis, challenge_id=challenge_id):
         raise AppError("EMAIL_CHALLENGE_INVALID")
+    await store.clear_user_pointer(
+        redis, user_id=challenge.user_id, challenge_id=challenge_id
+    )
 
     user = await users_service.find_by_id(db, user_id=challenge.user_id)
     if user is None:

@@ -141,12 +141,43 @@ async def test_start_login_existing_owner_is_not_duplicated(
     assert len(users) == 1
 
 
+async def test_second_initiate_invalidates_previous_challenge(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    redis_client: Redis,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    await create_user(db_session, email=CASHIER_EMAIL)
+
+    link1 = await _initiate_and_deliver(client, drain_outbox, email_client)
+    link2 = await _initiate_and_deliver(client, drain_outbox, email_client)
+
+    # One active challenge per user: the second initiate destroyed the first.
+    [key] = await redis_keys(redis_client, "email_challenge:*")
+    assert key == f"email_challenge:{link2.challenge_id}"
+    stale = await client.post(
+        "/api/auth/email-challenges/verify-link",
+        json={"challengeId": link1.challenge_id, "token": link1.token},
+    )
+    assert stale.status_code == 401
+    assert stale.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+
+    # The newest link still completes the full sign-in.
+    code = await _obtain_code(client, link2)
+    ok = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": link2.challenge_id, "code": code},
+    )
+    assert ok.status_code == 200, ok.text
+
+
 # ================================
 # ---------- Verify link ---------
 # ================================
 
 
-async def test_verify_link_returns_code_without_consuming(
+async def test_verify_link_returns_code_and_challenge_survives(
     client: AsyncClient,
     db_session: AsyncSession,
     redis_client: Redis,
@@ -163,8 +194,14 @@ async def test_verify_link_returns_code_without_consuming(
 
     assert response.status_code == 200, response.text
     assert re.fullmatch(r"\d{6}", response.json()["code"])
-    # Non-consuming: the challenge survives for the verify-code step.
+    # The challenge survives for the verify-code step, but the link is spent.
     assert await redis_keys(redis_client, "email_challenge:*")
+    replay = await client.post(
+        "/api/auth/email-challenges/verify-link",
+        json={"challengeId": link.challenge_id, "token": link.token},
+    )
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_link_rejects_bad_token(
@@ -214,7 +251,7 @@ async def test_verify_link_before_delivery_is_rejected(
     assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
-async def test_verify_link_twice_supersedes_code(
+async def test_verify_link_is_single_use(
     client: AsyncClient,
     db_session: AsyncSession,
     email_client: FakeEmailClient,
@@ -222,21 +259,20 @@ async def test_verify_link_twice_supersedes_code(
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
     link = await _initiate_and_deliver(client, drain_outbox, email_client)
+    code = await _obtain_code(client, link)
 
-    first_code = await _obtain_code(client, link)
-    second_code = await _obtain_code(client, link)
-    assert first_code != second_code
-
-    # Only the newest code's hash is stored: the first no longer verifies.
-    stale = await client.post(
-        "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": first_code},
+    # A second click of the same link is rejected outright.
+    replay = await client.post(
+        "/api/auth/email-challenges/verify-link",
+        json={"challengeId": link.challenge_id, "token": link.token},
     )
-    assert stale.status_code == 401
-    assert stale.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+
+    # The code from the first (and only) verification still signs in.
     ok = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": second_code},
+        json={"challengeId": link.challenge_id, "code": code},
     )
     assert ok.status_code == 200, ok.text
 
@@ -270,9 +306,11 @@ async def test_verify_code_signs_in_and_consumes(
     assert body["role"] == "staff"
     assert "session_token" in client.cookies
     assert "csrf_token" in client.cookies
-    # A Redis-tracked session was minted; the challenge was consumed.
+    # A Redis-tracked session was minted; the challenge was consumed, and no
+    # stale per-user pointer outlived it.
     assert await redis_keys(redis_client, "session:*")
     assert await redis_keys(redis_client, "email_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge_user:*") == []
 
     # Single use: replaying the same code fails.
     replay = await client.post(
@@ -312,6 +350,7 @@ async def test_verify_code_wrong_code_is_capped(
     )
     assert fifth.status_code == 401
     assert await redis_keys(redis_client, "email_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge_user:*") == []
 
     # Even the correct code is dead now.
     final = await client.post(

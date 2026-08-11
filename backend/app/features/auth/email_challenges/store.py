@@ -6,6 +6,9 @@
   :class:`StoredEmailChallenge` and expires after
   ``EMAIL_CHALLENGE_TTL_MINUTES`` — Redis TTLs enforce expiry, so a missing
   key covers both "never issued" and "expired".
+- ``email_challenge_user:{user_id}`` points at the user's current challenge
+  id, written alongside the challenge with the same TTL — it lets initiation
+  find and destroy a user's previous challenge.
 - Updates use ``XX`` + ``KEEPTTL``, so a write can neither resurrect an
   expired challenge nor extend one beyond its initiation-time TTL.
 """
@@ -13,6 +16,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -26,14 +30,16 @@ def _challenge_key(challenge_id: str) -> str:
     return f"email_challenge:{challenge_id}"
 
 
+def _user_pointer_key(user_id: UUID | str) -> str:
+    return f"email_challenge_user:{user_id}"
+
+
 async def save(
     redis: Redis, *, challenge_id: str, challenge: StoredEmailChallenge
 ) -> None:
-    await redis.set(
-        _challenge_key(challenge_id),
-        challenge.model_dump_json(),
-        ex=timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES),
-    )
+    ttl = timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES)
+    await redis.set(_challenge_key(challenge_id), challenge.model_dump_json(), ex=ttl)
+    await redis.set(_user_pointer_key(challenge.user_id), challenge_id, ex=ttl)
 
 
 async def find(redis: Redis, *, challenge_id: str) -> StoredEmailChallenge | None:
@@ -77,4 +83,33 @@ async def delete(redis: Redis, *, challenge_id: str) -> bool:
     return await redis.delete(_challenge_key(challenge_id)) > 0
 
 
-__all__ = ["save", "find", "update", "delete"]
+async def find_challenge_id_for_user(redis: Redis, *, user_id: UUID) -> str | None:
+    """The id of the user's current challenge, or None if absent/expired."""
+    value = await redis.get(_user_pointer_key(user_id))
+
+    return None if value is None else str(value)
+
+
+async def clear_user_pointer(
+    redis: Redis, *, user_id: UUID, challenge_id: str
+) -> None:
+    """Remove the user's pointer if it still points at ``challenge_id``.
+
+    The GET+DEL pair can race a concurrent initiate (which rewrites the
+    pointer between the two commands), but the race is benign: at worst a
+    pointer or an orphaned challenge lingers until its ≤15-minute TTL.
+    """
+    value = await redis.get(_user_pointer_key(user_id))
+
+    if value is not None and str(value) == challenge_id:
+        await redis.delete(_user_pointer_key(user_id))
+
+
+__all__ = [
+    "save",
+    "find",
+    "update",
+    "delete",
+    "find_challenge_id_for_user",
+    "clear_user_pointer",
+]

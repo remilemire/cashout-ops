@@ -15,7 +15,7 @@ export const authApi = {
   /** Begin a passwordless login; always 202, even for unknown emails. */
   startLogin: (input: LoginStartInput) =>
     api<LoginStart>("/auth/email-challenges", { method: "POST", json: input }),
-  /** Redeem the emailed magic link for the 6-digit code (repeatable). */
+  /** Redeem the emailed magic link for the 6-digit code (single-use). */
   verifyLoginLink: (input: VerifyLoginLinkInput) =>
     api<LoginCode>("/auth/email-challenges/verify-link", {
       method: "POST",
