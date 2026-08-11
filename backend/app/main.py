@@ -9,9 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.errors import AppError
-from app.errors.handlers import init_error_handlers
-from app.errors.openapi import error_responses
+from app.errors import AppError, error_responses, init_error_handlers
 from app.lifespan import lifespan
 
 DESCRIPTION = """\

@@ -8,8 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import AppError
-from app.errors.openapi import error_responses
+from app.errors import AppError, error_responses
 from app.features.auth.dependencies import get_current_user, require_admin
 from app.features.users.model import User
 from app.infrastructure.db.dependencies import get_db
