@@ -64,7 +64,9 @@ async def test_start_login_returns_challenge_and_emails_link(
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
 
-    response = await client.post("/api/auth/email-challenges", json={"email": CASHIER_EMAIL})
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": CASHIER_EMAIL}
+    )
 
     assert response.status_code == 202, response.text
     challenge_id = response.json()["challengeId"]
@@ -95,7 +97,9 @@ async def test_start_login_unknown_email_is_neutral(
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    response = await client.post("/api/auth/email-challenges", json={"email": "nobody@test.com"})
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": "nobody@test.com"}
+    )
 
     # A well-formed decoy id, indistinguishable from a real challenge —
     # nothing stored, nothing enqueued, no email.

@@ -30,6 +30,4 @@ async def logout(
     Best-effort and unauthenticated: a missing or already-invalid session still
     clears the cookies and returns 204 rather than erroring.
     """
-    await access.revoke(
-        redis, response, session_token=get_session_cookie(request)
-    )
+    await access.revoke(redis, response, session_token=get_session_cookie(request))

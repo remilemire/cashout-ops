@@ -21,9 +21,7 @@ def _session_key(token_hash: str) -> str:
 
 
 async def save(redis: Redis, *, token_hash: str, session: Session) -> None:
-    await redis.set(
-        _session_key(token_hash), session.model_dump_json(), ex=SESSION_TTL
-    )
+    await redis.set(_session_key(token_hash), session.model_dump_json(), ex=SESSION_TTL)
 
 
 async def find(redis: Redis, *, token_hash: str) -> Session | None:

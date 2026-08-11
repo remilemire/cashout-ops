@@ -8,7 +8,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
-from app.infrastructure.redis import Redis
 
 from . import repository
 from .model import User
@@ -64,7 +63,7 @@ async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User:
     return user
 
 
-async def delete_by_id(db: AsyncSession, redis: Redis, *, user_id: UUID) -> None:
+async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")

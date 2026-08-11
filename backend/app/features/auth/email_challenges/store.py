@@ -90,9 +90,7 @@ async def find_challenge_id_for_user(redis: Redis, *, user_id: UUID) -> str | No
     return None if value is None else str(value)
 
 
-async def clear_user_pointer(
-    redis: Redis, *, user_id: UUID, challenge_id: str
-) -> None:
+async def clear_user_pointer(redis: Redis, *, user_id: UUID, challenge_id: str) -> None:
     """Remove the user's pointer if it still points at ``challenge_id``.
 
     The GET+DEL pair can race a concurrent initiate (which rewrites the

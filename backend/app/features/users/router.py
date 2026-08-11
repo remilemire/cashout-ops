@@ -15,8 +15,6 @@ from app.features.auth.dependencies import (
     require_owner,
 )
 from app.infrastructure.db.dependencies import get_db
-from app.infrastructure.redis import Redis
-from app.infrastructure.redis.dependencies import get_redis
 from app.security.dependencies import require_csrf
 
 from . import service as users_service
@@ -151,14 +149,14 @@ async def demote_user(
 async def delete_user(
     user_id: UserId,
     db: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[Redis, Depends(get_redis)],
 ) -> None:
-    """Delete a user and revoke their sessions (admin only).
+    """Delete a user (admin only). Their sessions are not revoked; the
+    deleted-user lookup during authentication turns them away.
 
     The owner cannot be deleted; a user with cashout data conflicts (their
     submissions still reference them).
     """
-    await users_service.delete_by_id(db, redis, user_id=user_id)
+    await users_service.delete_by_id(db, user_id=user_id)
 
 
 @router.post(
