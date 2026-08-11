@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-# Runtime import would recurse: codes.py imports the feature error modules,
-# which import app.errors.contracts and thereby initialize this package.
 if TYPE_CHECKING:
     from .codes import ErrorCode
 
