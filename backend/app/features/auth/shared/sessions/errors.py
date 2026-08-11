@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.errors.contracts import ErrorCatalog
+from app.core.errors import ErrorDefinition, ErrorDefinitionList
 
-type SessionErrorCode = Literal["INVALID_SESSION"]
+type ErrorCode = Literal["INVALID_SESSION"]
 
-session_error_catalog: ErrorCatalog[SessionErrorCode] = {
-    "INVALID_SESSION": {
-        "kind": "UNAUTHORIZED",
-        "message": "Invalid or expired session.",
-    },
-}
+error_definition_list: ErrorDefinitionList[ErrorCode] = [
+    ErrorDefinition(
+        code="INVALID_SESSION",
+        kind="UNAUTHORIZED",
+        message="Invalid or expired session.",
+    )
+]
 
-__all__ = ["SessionErrorCode", "session_error_catalog"]
+__all__ = ["ErrorCode", "error_definition_list"]

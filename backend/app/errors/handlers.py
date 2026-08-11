@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .app_error import AppError
-from .catalog import error_catalog, kind_to_status
+from .catalog import error_catalog, kind_status_map
 from .codes import ErrorCode
 from .schemas import ErrorResponseSchema, ValidationIssueSchema
 from .translators import translate_integrity_error, translate_validation_error
@@ -78,7 +78,7 @@ def _to_response(error: AppError) -> JSONResponse:
     # Error handlers return JSONResponse directly, so there's no router
     # response_model to serialize the body for us — do it here.
     return JSONResponse(
-        status_code=kind_to_status[entry["kind"]],
+        status_code=kind_status_map[entry["kind"]],
         content=body.model_dump(by_alias=True, exclude_none=True, mode="json"),
     )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .catalog import error_catalog, kind_to_status
+from .catalog import error_catalog, kind_status_map
 from .codes import ErrorCode
 from .schemas import ErrorResponseSchema, ValidationIssueSchema
 from .validation import validation_issue_catalog
@@ -19,7 +19,7 @@ def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
     """
     by_status: dict[int, list[ErrorCode]] = {}
     for code in codes:
-        status = kind_to_status[error_catalog[code]["kind"]]
+        status = kind_status_map[error_catalog[code]["kind"]]
         by_status.setdefault(status, []).append(code)
 
     return {

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from app.features.cashout.errors import cashout_constraint_to_code
-from app.features.users.errors import user_constraint_to_code
+from app.core.errors import ConstraintCodeMap
+from app.features.cashout.errors import (
+    constraint_code_map as cashout_constraint_code_map,
+)
+from app.features.users.errors import constraint_code_map as user_constraint_code_map
 
 from .codes import ErrorCode
-from .contracts import ConstraintToCode
 
-constraint_to_code: ConstraintToCode[ErrorCode] = {
-    **user_constraint_to_code,
-    **cashout_constraint_to_code,
+constraint_code_map: ConstraintCodeMap[ErrorCode] = {
+    **user_constraint_code_map,
+    **cashout_constraint_code_map,
 }
 
-__all__ = ["constraint_to_code"]
+__all__ = ["constraint_code_map"]

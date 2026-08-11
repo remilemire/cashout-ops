@@ -33,7 +33,7 @@ async def test_translate_real_postgres_restrict_violation_maps_constraint(
             delete(CashoutSubmission).where(CashoutSubmission.id == submission.id)
         )
 
-    # The violated constraint is registered in `constraint_to_code`, so the
+    # The violated constraint is registered in `constraint_code_map`, so the
     # translation lands on the cashout feature's code.
     translated = translate_integrity_error(caught.value)
     await db_session.rollback()
@@ -49,7 +49,7 @@ async def test_translate_real_postgres_single_owner_violation_maps_constraint(
     with pytest.raises(IntegrityError) as caught:
         await create_user(db_session, email="usurper@test.com", role=UserRole.OWNER)
 
-    # ix_users_single_owner is registered in `constraint_to_code`, so the
+    # ix_users_single_owner is registered in `constraint_code_map`, so the
     # translation lands on the users feature's code.
     translated = translate_integrity_error(caught.value)
     await db_session.rollback()

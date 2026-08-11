@@ -4,39 +4,42 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.errors.contracts import ErrorCatalog
+from app.core.errors import ErrorDefinition, ErrorDefinitionList
 
 from .email_challenges.errors import (
-    EmailChallengeErrorCode,
-    email_challenge_error_catalog,
+    ErrorCode as EmailChallengeErrorCode,
 )
-from .shared.sessions.errors import SessionErrorCode, session_error_catalog
+from .email_challenges.errors import (
+    error_definition_list as email_challenge_error_definition_list,
+)
+from .shared.sessions.errors import ErrorCode as SessionErrorCode
+from .shared.sessions.errors import (
+    error_definition_list as session_error_definition_list,
+)
 
 # Codes owned directly by auth (CSRF). Session and email-challenge codes live
 # in their subfeatures and are folded in below, so auth exposes a single error
 # surface for the whole feature.
-type AuthOwnErrorCode = Literal["INVALID_CSRF_TOKEN"]
+type _AuthErrorCode = Literal["INVALID_CSRF_TOKEN"]
 
-type AuthErrorCode = AuthOwnErrorCode | SessionErrorCode | EmailChallengeErrorCode
 
-_auth_own_error_catalog: ErrorCatalog[AuthOwnErrorCode] = {
-    "INVALID_CSRF_TOKEN": {
-        "kind": "FORBIDDEN",
-        "message": "Your session security check failed. Refresh the page and try again.",
-    },
-}
+_auth_error_definition_list: ErrorDefinitionList[_AuthErrorCode] = [
+    ErrorDefinition(
+        code="INVALID_CSRF_TOKEN",
+        kind="FORBIDDEN",
+        message="Your session security check failed. Refresh the page and try again.",
+    )
+]
 
-auth_error_catalog: ErrorCatalog[AuthErrorCode] = {
-    **_auth_own_error_catalog,
-    **session_error_catalog,
-    **email_challenge_error_catalog,
-}
+type ErrorCode = _AuthErrorCode | SessionErrorCode | EmailChallengeErrorCode
+
+error_definition_list: ErrorDefinitionList[ErrorCode] = [
+    *_auth_error_definition_list,
+    *session_error_definition_list,
+    *email_challenge_error_definition_list,
+]
 
 __all__ = [
-    "AuthErrorCode",
-    "SessionErrorCode",
-    "EmailChallengeErrorCode",
-    "auth_error_catalog",
-    "session_error_catalog",
-    "email_challenge_error_catalog",
+    "ErrorCode",
+    "error_definition_list",
 ]

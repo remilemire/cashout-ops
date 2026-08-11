@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from app.core.errors import ErrorKind
 from app.core.schemas import BaseOut
 
 from .codes import ErrorCode
-from .contracts import ErrorKind
 from .validation import ValidationIssueCode
 
 

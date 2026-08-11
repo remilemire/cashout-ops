@@ -86,3 +86,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
+
+__all__ = ["settings"]

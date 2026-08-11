@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.features.auth.errors import AuthErrorCode
-from app.features.cashout.errors import CashoutErrorCode
-from app.features.users.errors import UserErrorCode
+from app.features.auth.errors import ErrorCode as AuthErrorCode
+from app.features.cashout.errors import ErrorCode as CashoutErrorCode
+from app.features.users.errors import ErrorCode as UserErrorCode
 
 # Cross-cutting codes raised outside any feature (translators, dependencies,
 # the SPA catch-all). Features add specific codes on top; there is no generic

@@ -13,7 +13,7 @@ from app.lib.casing import snake_to_camel
 
 from .app_error import AppError
 from .codes import ErrorCode
-from .constraints import constraint_to_code
+from .constraints import constraint_code_map
 from .validation import (
     ValidationError,
     ValidationIssueCode,
@@ -29,12 +29,12 @@ from .validation import (
 def translate_integrity_error(error: IntegrityError) -> AppError:
     """Map a database integrity violation to its cataloged app error.
 
-    A constraint registered in `constraint_to_code` yields its feature's code;
+    A constraint registered in `constraint_code_map` yields its feature's code;
     anything else falls back by SQLSTATE class, so an unmapped violation still
     gets a sensible status.
     """
     constraint = _diag(error, "constraint_name")
-    if constraint is not None and (code := constraint_to_code.get(constraint)):
+    if constraint is not None and (code := constraint_code_map.get(constraint)):
         return AppError(code, str(error.orig))
 
     sqlstate = getattr(error.orig, "sqlstate", None) or _diag(error, "sqlstate")
