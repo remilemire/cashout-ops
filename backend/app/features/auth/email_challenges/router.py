@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.openapi import error_responses
+from app.features.auth.shared.sessions.cookies import set_session_cookie
 from app.features.auth.types import UserWithSessionToken
 from app.features.users.schemas import UserOut
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.cookies import set_csrf_cookie, set_session_cookie
 from app.security.crypto import generate_secret_token
+from app.security.csrf import set_csrf_cookie
 
 from . import service as email_challenges_service
 from .schemas import (

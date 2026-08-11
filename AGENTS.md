@@ -24,7 +24,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/core/` contains configuration, cookies, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency) and the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
-* `backend/app/security/` contains password hashing, session and CSRF cookie helpers, secret-token cryptography, and the `require_csrf` dependency.
+* `backend/app/security/` contains password hashing, CSRF cookie helpers, secret-token cryptography, and the `require_csrf` dependency. Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
 * `backend/app/documents/` contains generic document classification and extraction behavior.

@@ -8,7 +8,7 @@ from fastapi import Request
 
 from app.errors import AppError
 
-from .cookies import get_csrf_cookie, get_csrf_header
+from .csrf import get_csrf_cookie, get_csrf_header
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 

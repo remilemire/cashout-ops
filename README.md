@@ -104,7 +104,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── core/                      # config, cookies, schemas
 │       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis)
 │       ├── lib/                       # pure helpers: casing, documents
-│       ├── security/                  # password hashing, session/CSRF cookies, token crypto, require_csrf
+│       ├── security/                  # password hashing, CSRF cookies, token crypto, require_csrf
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
 │       ├── documents/                 # DocumentAIClient (generic classify + extract)

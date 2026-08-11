@@ -6,13 +6,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from app.infrastructure.redis import Redis
-from app.infrastructure.redis.dependencies import get_redis
-from app.security.cookies import (
-    clear_csrf_cookie,
+from app.features.auth.shared.sessions.cookies import (
     clear_session_cookie,
     get_session_cookie,
 )
+from app.infrastructure.redis import Redis
+from app.infrastructure.redis.dependencies import get_redis
+from app.security.csrf import clear_csrf_cookie
 
 from . import service as auth_service
 from .email_challenges.router import router as email_challenges_router

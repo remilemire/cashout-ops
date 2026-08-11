@@ -8,12 +8,12 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
+from app.features.auth.shared.sessions.cookies import get_session_cookie
 from app.features.users.model import User
 from app.features.users.types import UserRole
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.cookies import get_session_cookie
 
 from . import service as auth_service
 
