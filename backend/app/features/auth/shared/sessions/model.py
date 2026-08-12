@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-
-from app.core.config import settings
-
-# Single source for the session lifetime: the store's Redis TTL, the cookie
-# max-age, and `expires_at` all derive from it.
-SESSION_TTL = timedelta(days=settings.auth.SESSION_TTL_DAYS)
 
 
 class Session(BaseModel):
@@ -26,4 +20,4 @@ class Session(BaseModel):
     expires_at: datetime
 
 
-__all__ = ["SESSION_TTL", "Session"]
+__all__ = ["Session"]

@@ -9,14 +9,15 @@ and hashes them (SHA-256), so only token hashes ever reach the store.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from app.core.config import settings
 from app.infrastructure.redis import Redis
 from app.security.crypto import generate_secret_token, hash_secret_token
 
 from . import store
-from .model import SESSION_TTL, Session
+from .model import Session
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,9 @@ async def create(redis: Redis, *, user_id: UUID) -> IssuedSession:
     token = generate_secret_token()
     issued_at = datetime.now(UTC)
     session = Session(
-        user_id=user_id, issued_at=issued_at, expires_at=issued_at + SESSION_TTL
+        user_id=user_id,
+        issued_at=issued_at,
+        expires_at=issued_at + timedelta(days=settings.auth.SESSION_TTL_DAYS),
     )
 
     await store.save(redis, token_hash=hash_secret_token(token), session=session)
