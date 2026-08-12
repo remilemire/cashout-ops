@@ -24,15 +24,15 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/core/` contains configuration, cookies, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency) and the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
-* `backend/app/security/` contains password hashing, CSRF cookie helpers, secret-token cryptography, and the `require_csrf` dependency. Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
+* `backend/app/security/` contains CSRF cookie helpers, secret-token cryptography, the `require_csrf` dependency, and the Redis fixed-window rate limiter (`rate_limit/`: `enforce` plus the `rate_limit_ip` dependency factory; feature-keyed limit dependencies live beside their feature). Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
 * `backend/app/document_ai/` contains generic document classification and extraction behavior.
-* `backend/app/features/` contains feature modules such as auth (with its `shared/sessions/` and `email_challenges/` submodules), users, invitations, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
+* `backend/app/features/` contains feature modules such as auth (with its `shared/sessions/` and `email_challenges/` submodules), users, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
 * `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
-* `frontend/src/auth/` contains authentication state, guards, login, registration, and email-verification gating.
+* `frontend/src/auth/` contains authentication state, guards, and the passwordless login pages (email entry, sign-in link landing, code entry).
 * `frontend/src/features/cashout/` contains the cashier submission workflow.
 * `frontend/src/features/admin/` contains admin submission and data-table workflows.
 * `frontend/src/components/ui.tsx` contains shared UI primitives.
@@ -108,7 +108,7 @@ Routers should not:
 * Contain application workflows.
 * Contain database business logic.
 * Perform AI extraction directly.
-* Send verification emails directly.
+* Send login-link emails directly.
 * Duplicate logic that belongs in a service.
 
 ### Services
@@ -118,7 +118,7 @@ Services own application behavior and workflows.
 * Routers should delegate application operations to service functions.
 * A service may call another service when the workflow requires it.
 * Do not pass the authenticated actor into a service unless the actor is logically required by the operation itself.
-* Authentication, admin protection, and verified-user enforcement normally belong in FastAPI dependencies rather than being reproduced inside services.
+* Authentication, admin protection, and rate limiting normally belong in FastAPI dependencies rather than being reproduced inside services.
 * Do not couple services to FastAPI request or response objects.
 * Services construct and mutate ORM entities, but delegate every session interaction to their feature's repository.
 
@@ -140,7 +140,7 @@ FastAPI dependencies own request-bound concerns such as:
 * Database session access.
 * Authentication.
 * Admin authorization.
-* Verified-user enforcement.
+* Rate limiting.
 * CSRF validation.
 * Access to configured external clients.
 
@@ -152,14 +152,14 @@ Do not move request-bound authorization checks into services merely to make a ro
 * Store application-wide resources on `app.state`.
 * Access those resources through dependencies.
 * Keep provider-specific implementation details inside `integrations/`.
-* Keep generic document classification and extraction behavior inside `documents/`.
+* Keep generic document classification and extraction behavior inside `document_ai/`.
 * Keep cashout-specific extraction behavior inside the cashout feature.
 
 ## Transactions and Deferred Work
 
 Deferred work runs through the transactional outbox (`backend/app/infrastructure/outbox/`): `enqueue` persists a message inside the caller's transaction, and dispatcher workers started by the app lifespan deliver it through the owning feature's registered handler (`features/<feature>/outbox.py`).
 
-* AI extraction and verification email delivery both run through the outbox.
+* AI extraction and login-link email delivery both run through the outbox.
 * Do not introduce another deferred-work mechanism without explicit instruction.
 * Do not send emails or start AI extraction before the required database transaction has committed.
 * Keep HTTP routers unaware of the low-level delivery mechanism.
@@ -195,7 +195,7 @@ Migration history is currently managed pragmatically rather than as a permanentl
 
 * Follow the structure and conventions of adjacent frontend code.
 * Reuse the existing fetch client and shared API error handling in `frontend/src/api/`.
-* Keep authentication and route protection within the existing auth provider, guards, and verification gate.
+* Keep authentication and route protection within the existing auth provider and guards.
 * Keep cashier functionality in `frontend/src/features/cashout/`.
 * Keep admin functionality in `frontend/src/features/admin/`.
 * Reuse shared primitives from `frontend/src/components/ui.tsx` before creating duplicate components.
@@ -234,7 +234,7 @@ When changing an API contract:
 ## Security
 
 * Never commit secrets, credentials, tokens, private keys, or production data.
-* Do not weaken authentication, admin authorization, email-verification enforcement, CSRF protection, or validation to simplify an implementation.
+* Do not weaken authentication, admin authorization, rate limiting, CSRF protection, or validation to simplify an implementation.
 * Treat all request data and uploaded documents as untrusted input.
 * Do not expose provider errors or sensitive internal details in API responses.
 * Call out security-sensitive assumptions and behavior changes.
