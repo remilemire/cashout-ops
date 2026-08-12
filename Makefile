@@ -10,7 +10,7 @@ DOCKER_DATABASE_URL := postgresql+psycopg://postgres:dev@localhost:5432/cashout_
 	build start \
 	backend-install backend-dev backend-format backend-lint backend-typecheck backend-test backend-test-unit backend-test-integration backend-check backend-migrate backend-revision \
 	frontend-install frontend-dev frontend-build frontend-lint frontend-typecheck frontend-format frontend-test \
-	up down reset logs
+	up down reset logs clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -119,3 +119,16 @@ reset: ## Delete Postgres + Redis data and restart (asks for confirmation)
 
 logs: ## Tail Postgres + Redis logs
 	docker compose logs -f
+
+## ── Housekeeping ───────────────────────────────────────────────────
+
+# Regenerated caches only. .git, backend/.venv and frontend/node_modules are
+# pruned so installed dependencies keep their own caches, and nothing the
+# environment needs (.env, backend/storage, backend/static, lockfiles) is
+# matched. Vite's cache is the one exception inside node_modules: it is
+# rebuilt on the next dev/test run.
+clean: ## Delete Python, tooling, and build caches
+	find . \( -name .git -o -name .venv -o -name node_modules \) -prune -o \
+		\( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name .mypy_cache -o -name '*.egg-info' \) \
+		-prune -exec rm -rf {} +
+	rm -rf frontend/node_modules/.vite

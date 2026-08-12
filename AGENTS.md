@@ -51,6 +51,7 @@ Run repository-wide commands from the repository root.
 * Test everything: `make test`
 * Run all checks: `make check`
 * Apply database migrations: `make migrate`
+* Delete generated caches: `make clean` (leaves `.env`, `backend/storage`, `backend/static`, `backend/.venv`, and `frontend/node_modules` intact)
 
 ### Backend
 
