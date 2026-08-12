@@ -61,3 +61,6 @@ def drain_outbox(
         backoff_cap_s=900.0,
     )
     return OutboxDrain(dispatcher)
+
+
+__all__ = ["OutboxDrain", "drain_outbox"]

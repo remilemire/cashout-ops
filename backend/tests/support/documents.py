@@ -20,3 +20,11 @@ SAMPLE_PNG_BYTES = base64.b64decode(
 # (filename, bytes, mime) tuples in the shape httpx's `files=` expects.
 SAMPLE_PDF_UPLOAD = ("receipt.pdf", SAMPLE_PDF_BYTES, "application/pdf")
 SAMPLE_PNG_UPLOAD = ("receipt.png", SAMPLE_PNG_BYTES, "image/png")
+
+
+__all__ = [
+    "SAMPLE_PDF_BYTES",
+    "SAMPLE_PDF_UPLOAD",
+    "SAMPLE_PNG_BYTES",
+    "SAMPLE_PNG_UPLOAD",
+]

@@ -26,3 +26,6 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+__all__ = ["create_user"]

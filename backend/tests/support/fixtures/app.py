@@ -52,3 +52,6 @@ def app(
     application.dependency_overrides[get_email_client] = lambda: email_client
     application.dependency_overrides[get_redis] = lambda: redis_client
     return application
+
+
+__all__ = ["app"]

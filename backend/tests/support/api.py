@@ -57,3 +57,6 @@ async def login(
         json={"challengeId": link.challenge_id, "code": code},
     )
     assert verified_code.status_code == 200, verified_code.text
+
+
+__all__ = ["OWNER_EMAIL", "csrf_headers", "login"]

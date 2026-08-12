@@ -33,3 +33,6 @@ class FakeDocumentStorage(DocumentStorageClient):
 
     async def delete(self, storage_key: str) -> None:
         self.objects.pop(validate_storage_key(storage_key), None)
+
+
+__all__ = ["FakeDocumentStorage"]

@@ -52,3 +52,6 @@ class FakeEmailClient(EmailClient):
             if challenge is not None and token is not None:
                 return LoginLink(challenge_id=challenge.group(1), token=token.group(1))
         raise AssertionError(f"no sign-in link emailed (to={to!r})")
+
+
+__all__ = ["FakeEmailClient", "LoginLink", "SentEmail"]

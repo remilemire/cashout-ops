@@ -68,3 +68,6 @@ class FakeAIClient(AIClient):
                 f"FakeAIClient has no configured response for {response_model!r}"
             )
         return cast(ResponseModelT, result)
+
+
+__all__ = ["FakeAIClient"]

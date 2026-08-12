@@ -47,3 +47,6 @@ class FakeAnthropic:
         exc: Exception | None = None,
     ) -> None:
         self.messages = FakeMessages(response=response, exc=exc)
+
+
+__all__ = ["FakeAnthropic", "FakeMessages", "FakeParsedMessage"]

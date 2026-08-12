@@ -66,3 +66,6 @@ class FakeOpenAI:
         self.chat = _FakeChat(
             completions=FakeCompletions(parsed=parsed, refusal=refusal, exc=exc)
         )
+
+
+__all__ = ["FakeCompletion", "FakeCompletions", "FakeMessage", "FakeOpenAI"]

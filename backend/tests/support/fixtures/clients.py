@@ -110,3 +110,13 @@ async def admin_client(make_client: ClientFactory) -> AsyncClient:
 async def owner_client(make_client: ClientFactory) -> AsyncClient:
     """The bootstrapped owner account, created through the real lazy bootstrap."""
     return await make_client(owner=True)
+
+
+__all__ = [
+    "ClientFactory",
+    "admin_client",
+    "cashier_client",
+    "client",
+    "make_client",
+    "owner_client",
+]

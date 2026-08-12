@@ -65,3 +65,12 @@ class FakeGemini:
         exc: Exception | None = None,
     ) -> None:
         self.aio = _FakeAio(models=FakeModels(response=response, exc=exc))
+
+
+__all__ = [
+    "FakeCandidate",
+    "FakeGemini",
+    "FakeGeminiResponse",
+    "FakeModels",
+    "FakePromptFeedback",
+]
