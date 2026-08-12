@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from httpx import AsyncClient
@@ -361,6 +362,48 @@ async def test_verify_code_wrong_code_is_capped(
         json={"challengeId": link.challenge_id, "code": code},
     )
     assert final.status_code == 401
+
+
+async def test_verify_code_attempt_cap_holds_under_concurrency(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    redis_client: Redis,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    await create_user(db_session, email=CASHIER_EMAIL)
+    link = await _initiate_and_deliver(client, drain_outbox, email_client)
+    code = await _obtain_code(client, link)
+    wrong_code = "000000" if code != "000000" else "000001"
+
+    # Ten wrong guesses race in parallel. The attempt counter is a
+    # server-atomic INCR, so at most MAX_CODE_ATTEMPTS of them ever reach the
+    # code comparison — a racy counter would let every request read attempts=0
+    # and leave the challenge alive.
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/api/auth/email-challenges/verify-code",
+                json={"challengeId": link.challenge_id, "code": wrong_code},
+            )
+            for _ in range(10)
+        )
+    )
+
+    for response in responses:
+        assert response.status_code == 401
+        assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+    # The cap was exhausted, so the challenge was destroyed outright.
+    assert await redis_keys(redis_client, "email_challenge:*") == []
+    assert await redis_keys(redis_client, "email_challenge_user:*") == []
+
+    # Even the correct code is dead now.
+    final = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": link.challenge_id, "code": code},
+    )
+    assert final.status_code == 401
+    assert final.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
 
 async def test_verify_code_after_user_deleted_is_rejected(

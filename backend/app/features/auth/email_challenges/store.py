@@ -9,6 +9,9 @@
 - ``email_challenge_user:{user_id}`` points at the user's current challenge
   id, written alongside the challenge with the same TTL — it lets initiation
   find and destroy a user's previous challenge.
+- ``email_challenge_attempts:{challenge_id}`` is a server-atomic counter of
+  code attempts with the same TTL; keeping it outside the challenge JSON is
+  what makes the guess cap hold under concurrent requests.
 - Updates use ``XX`` + ``KEEPTTL``, so a write can neither resurrect an
   expired challenge nor extend one beyond its initiation-time TTL.
 """
@@ -32,6 +35,10 @@ def _challenge_key(challenge_id: str) -> str:
 
 def _user_pointer_key(user_id: UUID | str) -> str:
     return f"email_challenge_user:{user_id}"
+
+
+def _attempts_key(challenge_id: str) -> str:
+    return f"email_challenge_attempts:{challenge_id}"
 
 
 async def save(
@@ -83,6 +90,25 @@ async def delete(redis: Redis, *, challenge_id: str) -> bool:
     return await redis.delete(_challenge_key(challenge_id)) > 0
 
 
+async def count_code_attempt(redis: Redis, *, challenge_id: str) -> int:
+    """Atomically record a code attempt; returns this attempt's 1-based number.
+
+    INCR is atomic on the server, so the guess cap holds under concurrency —
+    a counter kept inside the challenge JSON was a GET/SET read-modify-write
+    that racing requests could all read at 0. EXPIRE NX arms the TTL on the
+    first attempt and heals an orphaned counter if a crash lands between the
+    two commands. The counter can outlive a consumed or destroyed challenge
+    by up to one TTL, which is harmless: challenge ids are never reused.
+    """
+    key = _attempts_key(challenge_id)
+    count = await redis.incr(key)
+    await redis.expire(  # pyright: ignore[reportUnknownMemberType]
+        key, timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES), nx=True
+    )
+
+    return int(count)
+
+
 async def find_challenge_id_for_user(redis: Redis, *, user_id: UUID) -> str | None:
     """The id of the user's current challenge, or None if absent/expired."""
     value = await redis.get(_user_pointer_key(user_id))
@@ -108,6 +134,7 @@ __all__ = [
     "find",
     "update",
     "delete",
+    "count_code_attempt",
     "find_challenge_id_for_user",
     "clear_user_pointer",
 ]

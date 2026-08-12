@@ -34,7 +34,8 @@ if TYPE_CHECKING:
 
 # Six numeric digits (leading zeros allowed).
 CODE_DIGITS = 6
-# Wrong-code guesses allowed before the challenge is destroyed.
+# Code submissions allowed per challenge, counted by an atomic Redis counter
+# (`store.count_code_attempt`); a wrong guess at the cap destroys the challenge.
 MAX_CODE_ATTEMPTS = 5
 
 
@@ -101,8 +102,8 @@ async def consume_link(redis: Redis, *, challenge_id: str, token: str) -> str:
     The link is single-use: verifying clears `token_hash` in the same write
     that stores the code's hash, so a second verify with the same token is
     rejected. The challenge itself survives — `consume_code` still needs it —
-    and `code_attempts` is untouched, so the guess cap keeps counting guesses
-    from the initiating tab. Sign-in completes via `verify_code`.
+    and the atomic attempt counter keyed by the challenge id keeps counting
+    guesses from the initiating tab. Sign-in completes via `verify_code`.
     """
     challenge = await store.find(redis, challenge_id=challenge_id)
 
@@ -138,16 +139,19 @@ async def consume_code(
     if challenge is None or challenge.code_hash is None:
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
+    attempt = await store.count_code_attempt(redis, challenge_id=challenge_id)
+    if attempt > MAX_CODE_ATTEMPTS:
+        # Budget checked before the compare: at most MAX_CODE_ATTEMPTS requests
+        # ever reach compare_digest, even when guesses race concurrently.
+        raise AppError("EMAIL_CHALLENGE_INVALID")
+
     if not secrets.compare_digest(challenge.code_hash, hash_secret_token(code)):
-        challenge.code_attempts += 1
-        if challenge.code_attempts >= MAX_CODE_ATTEMPTS:
+        if attempt >= MAX_CODE_ATTEMPTS:
             # Out of guesses: destroy the challenge outright.
             await store.delete(redis, challenge_id=challenge_id)
             await store.clear_user_pointer(
                 redis, user_id=challenge.user_id, challenge_id=challenge_id
             )
-        else:
-            await store.update(redis, challenge_id=challenge_id, challenge=challenge)
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
     # The checked delete IS the consumption: losing the race means another

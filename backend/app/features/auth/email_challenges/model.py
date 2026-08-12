@@ -10,14 +10,14 @@ from pydantic import BaseModel
 class StoredEmailChallenge(BaseModel):
     """A pending email challenge as persisted in Redis.
 
-    ``code_attempts`` counts wrong-code guesses from the initiating tab;
-    reaching the cap destroys the challenge outright.
+    Code attempts are not tracked here: the guess cap lives in a separate
+    atomic Redis counter (see ``store.count_code_attempt``), because a
+    counter inside this JSON would be a racy read-modify-write.
     """
 
     user_id: UUID
     token_hash: str | None = None
     code_hash: str | None = None
-    code_attempts: int = 0
 
 
 __all__ = ["StoredEmailChallenge"]
