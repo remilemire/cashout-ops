@@ -22,7 +22,7 @@ from app.features.users.errors import (
 # Cross-cutting codes raised outside any feature (translators, dependencies,
 # the SPA catch-all). Features add specific codes on top; there is no generic
 # NOT_FOUND — missing entities use their feature's *_NOT_FOUND code.
-type BaseErrorCode = Literal[
+type _BaseErrorCode = Literal[
     "INTERNAL",
     "BAD_REQUEST",
     "VALIDATION_FAILED",
@@ -33,7 +33,7 @@ type BaseErrorCode = Literal[
     "SERVICE_UNAVAILABLE",
 ]
 
-type ErrorCode = BaseErrorCode | UserErrorCode | AuthErrorCode | CashoutErrorCode
+type ErrorCode = _BaseErrorCode | UserErrorCode | AuthErrorCode | CashoutErrorCode
 
 
 class ErrorCatalogEntry(TypedDict):
@@ -44,7 +44,7 @@ class ErrorCatalogEntry(TypedDict):
 type ErrorCatalog = Mapping[ErrorCode, ErrorCatalogEntry]
 
 
-_base_error_definition_list: ErrorDefinitionList[BaseErrorCode] = [
+_base_error_definition_list: ErrorDefinitionList[_BaseErrorCode] = [
     ErrorDefinition(code="INTERNAL", kind="INTERNAL", message="Something went wrong."),
     ErrorDefinition(
         code="BAD_REQUEST",
