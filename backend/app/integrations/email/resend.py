@@ -6,7 +6,7 @@ import asyncio
 
 import resend
 
-from .client import EmailDeliveryError
+from .errors import EmailDeliveryError
 
 
 class ResendEmailClient:
