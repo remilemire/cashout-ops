@@ -8,13 +8,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.errors import AppError, error_responses
 from app.features.auth.dependencies import get_current_user, require_admin
 from app.features.users.model import User
 from app.infrastructure.db.dependencies import get_db
 from app.integrations.storage import DocumentStorageClient
 from app.integrations.storage.dependencies import get_document_storage
-from app.lib.documents import DocumentContentType
+from app.lib.documents import DocumentContentType, read_document
 from app.security.dependencies import require_csrf
 
 from . import service as cashout_service
@@ -185,15 +186,24 @@ async def upload_document(
 ) -> CashoutDocumentAnalysisOut:
     """Upload an end-of-shift document and start its extraction.
 
-    Accepts JPEG, PNG, WebP, or PDF up to 20 MB; a file already uploaded to
-    this submission (same checksum) is rejected. The AI extraction runs in the
-    background: this returns the analysis in `EXTRACTING`; poll
-    `GET /cashout/analyses/{id}` until it reaches `NEEDS_VERIFICATION` or
-    `FAILED` (retry via the extract endpoint).
+    Accepts JPEG, PNG, WebP, or PDF within the configured size limit
+    (`MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
+    checksum) is rejected. The AI extraction runs in the background: this
+    returns the analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
+    until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the extract
+    endpoint).
+
+    The content type is checked before the body is read, and the body itself is
+    read only up to the limit (plus the byte that proves it was exceeded); the
+    service rejects it from there.
     """
+    # Resolved first so an unsupported type is rejected without reading the
+    # document: keyword arguments evaluate in order, so this cannot be inlined
+    # below `data` without reading the body of a file we are about to refuse.
+    content_type = _to_content_type(file.content_type)
     payload = DocumentUpload(
-        data=await file.read(),
-        content_type=_to_content_type(file.content_type),
+        data=await read_document(file, limit=settings.MAX_DOCUMENT_SIZE_BYTES),
+        content_type=content_type,
         original_filename=file.filename or "upload",
     )
     analysis = await cashout_service.upload_document(

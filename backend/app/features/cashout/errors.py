@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app.core.config import settings
 from app.core.errors import ConstraintCodeMap, ErrorDefinition, ErrorDefinitionList
 
 type ErrorCode = Literal[
@@ -76,7 +77,7 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
     ErrorDefinition(
         code="DOCUMENT_TOO_LARGE",
         kind="BAD_REQUEST",
-        message="Document exceeds the 20 MB size limit.",
+        message=f"Document exceeds the {settings.MAX_DOCUMENT_SIZE_MB} MB size limit.",
     ),
     ErrorDefinition(
         code="DOCUMENT_DUPLICATE",

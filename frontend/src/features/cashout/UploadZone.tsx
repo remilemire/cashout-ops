@@ -78,7 +78,7 @@ export function UploadZone({
       <p className="mt-2 text-sm font-medium">Add a document</p>
       <p className="text-ink-muted mt-0.5 text-xs">
         Shift report, terminal report, receipt, tip-out sheet, or cash summary.
-        JPEG, PNG, WebP, or PDF — max 20 MB.
+        JPEG, PNG, WebP, or PDF.
       </p>
 
       <div className="mt-3 flex flex-col justify-center gap-2 sm:flex-row">

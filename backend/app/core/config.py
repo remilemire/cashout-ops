@@ -73,11 +73,21 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
     DOCUMENT_STORAGE_DIR: Path = Path("storage/documents")
+    # Upload ceiling for a single document, in megabytes. The upload endpoint
+    # stops reading a request body once it passes this, and the service rejects
+    # the upload (DOCUMENT_TOO_LARGE). Configured in MB because that is how the
+    # limit is communicated to users; code reads MAX_DOCUMENT_SIZE_BYTES.
+    MAX_DOCUMENT_SIZE_MB: int = 20
 
     @computed_field
     @property
     def DEBUG(self) -> bool:
         return self.ENVIRONMENT == "dev"
+
+    @computed_field
+    @property
+    def MAX_DOCUMENT_SIZE_BYTES(self) -> int:
+        return self.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
 
     @computed_field
     @property

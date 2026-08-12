@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import settings
 from app.documents import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
@@ -35,8 +36,6 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
-
-MAX_DOCUMENT_SIZE = 20 * 1024 * 1024
 
 # The flow, per document: the cashier uploads it and immediately gets back an
 # EXTRACTING analysis; the AI extraction runs in a background task and the
@@ -164,7 +163,10 @@ async def upload_document(
             "SUBMISSION_COMPLETED", "Documents cannot be added after completion."
         )
 
-    if len(payload.data) > MAX_DOCUMENT_SIZE:
+    # The router already stops reading past the limit, so this normally sees
+    # the single byte of overshoot; it stays as the authoritative check for
+    # callers that assembled the payload some other way.
+    if len(payload.data) > settings.MAX_DOCUMENT_SIZE_BYTES:
         raise AppError("DOCUMENT_TOO_LARGE")
 
     document = CashoutDocument(

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
 
+from app.core.config import settings
 from app.documents import DocumentClassification
 from app.features.cashout.types import (
     CashoutDocumentClassification,
@@ -355,6 +357,29 @@ async def test_upload_rejects_unsupported_content_type(
 
     assert response.status_code == 400
     assert response.json()["code"] == "UNSUPPORTED_DOCUMENT_TYPE"
+
+
+async def test_upload_rejects_oversized_document(
+    cashier_client: AsyncClient,
+    storage: FakeDocumentStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Shrink the configured limit rather than posting a full-size body.
+    monkeypatch.setattr(settings, "MAX_DOCUMENT_SIZE_MB", 1)
+    submission_id = await create_submission(cashier_client)
+    stored_before = len(storage.objects)
+    oversized = SAMPLE_PDF_BYTES + b"\0" * settings.MAX_DOCUMENT_SIZE_BYTES
+
+    response = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/documents",
+        files={"file": ("oversized.pdf", oversized, "application/pdf")},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "DOCUMENT_TOO_LARGE"
+    # Rejected before its bytes were written to storage.
+    assert len(storage.objects) == stored_before
 
 
 async def test_upload_rejects_duplicate_document(
