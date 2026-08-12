@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.errors import error_responses
 from app.features.auth.shared import access
 from app.features.users.schemas import UserOut
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.rate_limit import rate_limit_ip
 
 from . import service as email_challenges_service
-from .dependencies import rate_limit_initiate_email, rate_limit_verify_link_challenge
+from .dependencies import (
+    rate_limit_initiate_email,
+    rate_limit_initiate_ip,
+    rate_limit_verify_code_ip,
+    rate_limit_verify_link_challenge,
+    rate_limit_verify_link_ip,
+)
 from .schemas import (
     EmailChallengeStart,
     EmailChallengeStartOut,
@@ -28,13 +31,9 @@ from .schemas import (
 )
 
 # No auth or CSRF dependencies: these routes run before any session exists.
-# Rate limits are attached per route: a per-identifier limit (email address
-# or challenge id) stops targeted abuse of one account or challenge, while a
-# per-IP cap bounds total volume from a single source. The rate_limit_ip
-# factory captures the settings value at import (documented behavior).
+# Rate limits are attached per route via the feature's guard dependencies;
+# see .dependencies for why each flow pairs per-identifier and per-IP caps.
 router = APIRouter(prefix="/email-challenges", tags=["auth"])
-
-_HOUR = timedelta(hours=1)
 
 
 @router.post(
@@ -44,13 +43,7 @@ _HOUR = timedelta(hours=1)
     responses=error_responses("VALIDATION_FAILED", "RATE_LIMITED"),
     dependencies=[
         Depends(rate_limit_initiate_email),
-        Depends(
-            rate_limit_ip(
-                "auth_initiate_ip",
-                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
-                window=_HOUR,
-            )
-        ),
+        Depends(rate_limit_initiate_ip),
     ],
 )
 async def start_login(
@@ -79,13 +72,7 @@ async def start_login(
     ),
     dependencies=[
         Depends(rate_limit_verify_link_challenge),
-        Depends(
-            rate_limit_ip(
-                "auth_verify_link_ip",
-                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
-                window=_HOUR,
-            )
-        ),
+        Depends(rate_limit_verify_link_ip),
     ],
 )
 async def verify_link(
@@ -111,15 +98,7 @@ async def verify_link(
     responses=error_responses(
         "EMAIL_CHALLENGE_INVALID", "VALIDATION_FAILED", "RATE_LIMITED"
     ),
-    dependencies=[
-        Depends(
-            rate_limit_ip(
-                "auth_verify_code_ip",
-                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
-                window=_HOUR,
-            )
-        ),
-    ],
+    dependencies=[Depends(rate_limit_verify_code_ip)],
 )
 async def verify_code(
     response: Response,

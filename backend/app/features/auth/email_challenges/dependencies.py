@@ -3,10 +3,10 @@
 """Pre-session rate-limit guards for the passwordless sign-in flow.
 
 These routes run before any session exists, so the usual authenticated
-per-user limits do not apply. Each guard keys the fixed-window counter on
-the identifier the request itself supplies (email address or challenge id),
-throttling targeted abuse of a single account or challenge; the routes pair
-them with per-IP caps declared in the router.
+per-user limits do not apply. The per-identifier guards key the fixed-window
+counter on the identifier the request itself supplies (email address or
+challenge id), throttling targeted abuse of a single account or challenge;
+the per-IP guards bound total volume from a single source.
 """
 
 from __future__ import annotations
@@ -14,13 +14,13 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from app.core.config import settings
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 from app.security.crypto import hash_secret_token
-from app.security.rate_limit import enforce
+from app.security.rate_limit import client_ip, enforce
 
 from .schemas import EmailChallengeStart, EmailChallengeVerifyLink
 
@@ -68,8 +68,53 @@ async def rate_limit_verify_link_challenge(
     )
 
 
+async def rate_limit_initiate_ip(
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> None:
+    """Cap challenge initiations per client IP."""
+    await enforce(
+        redis,
+        scope="auth_initiate_ip",
+        identifier=client_ip(request),
+        limit=settings.rate_limit.AUTH_IP_PER_HOUR,
+        window=_HOUR,
+    )
+
+
+async def rate_limit_verify_link_ip(
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> None:
+    """Cap link verifications per client IP."""
+    await enforce(
+        redis,
+        scope="auth_verify_link_ip",
+        identifier=client_ip(request),
+        limit=settings.rate_limit.AUTH_IP_PER_HOUR,
+        window=_HOUR,
+    )
+
+
+async def rate_limit_verify_code_ip(
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> None:
+    """Cap code verifications per client IP."""
+    await enforce(
+        redis,
+        scope="auth_verify_code_ip",
+        identifier=client_ip(request),
+        limit=settings.rate_limit.AUTH_IP_PER_HOUR,
+        window=_HOUR,
+    )
+
+
 __all__ = [
     "MAX_LINK_ATTEMPTS",
     "rate_limit_initiate_email",
+    "rate_limit_initiate_ip",
+    "rate_limit_verify_code_ip",
     "rate_limit_verify_link_challenge",
+    "rate_limit_verify_link_ip",
 ]

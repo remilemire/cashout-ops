@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from .dependencies import enforce, rate_limit_ip
+from .dependencies import client_ip, enforce
 
-__all__ = ["enforce", "rate_limit_ip"]
+__all__ = ["client_ip", "enforce"]

@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Request
 
 from app.errors import RateLimitedError
 from app.infrastructure.redis import Redis
-from app.infrastructure.redis.dependencies import get_redis
 
 from . import store
 
@@ -27,7 +24,8 @@ async def enforce(
         raise RateLimitedError(hit.retry_after_seconds)
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
+    """The client IP to key per-IP rate limits on."""
     # In production the service runs behind Render's proxy and gunicorn passes
     # --forwarded-allow-ips, so uvicorn has already rewritten request.client
     # from X-Forwarded-For to the real client (see scripts/start.bash).
@@ -36,27 +34,4 @@ def _client_ip(request: Request) -> str:
     return "unknown" if request.client is None else request.client.host
 
 
-def rate_limit_ip(
-    scope: str, *, limit: int, window: timedelta
-) -> Callable[[Request, Redis], Awaitable[None]]:
-    """A FastAPI dependency enforcing a per-client-IP limit on ``scope``.
-
-    The limit is captured when the router module imports — env-configured
-    like every other setting, not monkeypatch-able in tests.
-    """
-
-    async def dependency(
-        request: Request, redis: Annotated[Redis, Depends(get_redis)]
-    ) -> None:
-        await enforce(
-            redis,
-            scope=scope,
-            identifier=_client_ip(request),
-            limit=limit,
-            window=window,
-        )
-
-    return dependency
-
-
-__all__ = ["enforce", "rate_limit_ip"]
+__all__ = ["client_ip", "enforce"]
