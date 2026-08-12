@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -11,10 +11,15 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.core.outbox import OutboxHandler
 
 from .catalog import outbox_message_catalog
-from .contracts import OutboxHandler, OutboxHandlerRegistry
 from .dispatcher import OutboxDispatcher
+
+# Keyed by plain `str`, not the cataloged message type: the dispatcher looks up
+# types read back from the database, which on a deploy skew can name a message
+# this build no longer serves.
+type OutboxHandlerRegistry = Mapping[str, OutboxHandler[Any]]
 
 
 @dataclass(frozen=True)
@@ -73,4 +78,9 @@ async def outbox_lifespan(worker_pool: OutboxWorkerPool) -> AsyncGenerator[None]
         await asyncio.gather(*(dispatcher.end() for dispatcher in dispatchers))
 
 
-__all__ = ["OutboxWorkerPool", "create_outbox_handler_registry", "outbox_lifespan"]
+__all__ = [
+    "OutboxHandlerRegistry",
+    "OutboxWorkerPool",
+    "create_outbox_handler_registry",
+    "outbox_lifespan",
+]

@@ -6,14 +6,20 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from .contracts import OutboxHandler, OutboxHandlerRegistry
+from app.core.outbox import OutboxHandler
+
 from .messages import repository
+
+# Runtime import would recurse: lifespan.py constructs OutboxDispatcher, so it
+# imports this module. The registry type is only ever an annotation here.
+if TYPE_CHECKING:
+    from .lifespan import OutboxHandlerRegistry
 
 logger = logging.getLogger(__name__)
 

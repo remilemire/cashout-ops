@@ -27,7 +27,6 @@ from .models import (
     CashoutDocumentAnalysis,
     CashoutSubmission,
 )
-from .outbox import run_extraction_message
 from .schemas import CashoutAnalysisVerify
 from .types import (
     CashoutSubmissionStatus,
@@ -184,7 +183,7 @@ async def upload_document(
     analysis = await _reset_analysis(db, document=document, processor=processor)
     await outbox_service.enqueue(
         db,
-        type=run_extraction_message.type,
+        type="cashout.run_extraction",
         payload={"document_id": str(document.id)},
     )
     return analysis
@@ -251,7 +250,7 @@ async def extract_document(
     analysis = await _reset_analysis(db, document=document, processor=processor)
     await outbox_service.enqueue(
         db,
-        type=run_extraction_message.type,
+        type="cashout.run_extraction",
         payload={"document_id": str(document_id)},
     )
     return analysis

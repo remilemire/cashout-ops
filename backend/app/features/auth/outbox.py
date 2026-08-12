@@ -9,19 +9,24 @@ composition root.
 
 from __future__ import annotations
 
-from app.infrastructure.outbox.contracts import OutboxMessageDefinition
+from app.core.outbox import OutboxMessageDefinitionList
 
 from .email_challenges.outbox import (
-    SendLoginLinkEmailOutboxHandler,
-    send_login_link_email_message,
+    OutboxMessageType as EmailChallengeOutboxMessageType,
+)
+from .email_challenges.outbox import SendLoginLinkEmailOutboxHandler
+from .email_challenges.outbox import (
+    outbox_message_definitions as email_challenge_outbox_message_definitions,
 )
 
-auth_outbox_message_definitions: list[OutboxMessageDefinition] = [
-    send_login_link_email_message,
+type OutboxMessageType = EmailChallengeOutboxMessageType
+
+outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
+    *email_challenge_outbox_message_definitions,
 ]
 
 __all__ = [
+    "OutboxMessageType",
     "SendLoginLinkEmailOutboxHandler",
-    "auth_outbox_message_definitions",
-    "send_login_link_email_message",
+    "outbox_message_definitions",
 ]

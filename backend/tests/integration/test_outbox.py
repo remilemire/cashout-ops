@@ -6,17 +6,17 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.infrastructure.outbox.contracts import (
-    OutboxHandlerRegistry,
-    OutboxMessageDefinition,
-)
+from app.core.outbox import OutboxMessageDefinition
+from app.infrastructure.outbox.catalog import OutboxMessageType
 from app.infrastructure.outbox.dispatcher import OutboxDispatcher
+from app.infrastructure.outbox.lifespan import OutboxHandlerRegistry
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.outbox.messages.service import insert_outbox_message
 from app.infrastructure.outbox.service import enqueue
@@ -115,8 +115,14 @@ async def test_enqueue_validates_and_persists_the_message(
 
 
 async def test_enqueue_rejects_an_unknown_type(db_session: AsyncSession) -> None:
+    # The cataloged Literal now rules this out statically, so the cast is what
+    # a stale caller looks like; the runtime guard still has to hold.
     with pytest.raises(LookupError, match="Unknown outbox message type"):
-        await enqueue(db_session, type="test.not_cataloged", payload={})
+        await enqueue(
+            db_session,
+            type=cast("OutboxMessageType", "test.not_cataloged"),
+            payload={},
+        )
 
 
 async def test_enqueue_rejects_a_payload_that_fails_validation(

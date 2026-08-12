@@ -9,12 +9,12 @@ request transaction; the handler runs the AI extraction at dispatch.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.infrastructure.outbox.contracts import OutboxMessageDefinition
+from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,23 +24,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+type OutboxMessageType = Literal["cashout.run_extraction"]
+
+
 class RunExtraction(BaseModel):
     document_id: UUID
 
 
-run_extraction_message = OutboxMessageDefinition(
-    "cashout.run_extraction", RunExtraction
+_run_extraction_message: OutboxMessageDefinition[OutboxMessageType, RunExtraction] = (
+    OutboxMessageDefinition("cashout.run_extraction", RunExtraction)
 )
 
-cashout_outbox_message_definitions: list[OutboxMessageDefinition] = [
-    run_extraction_message
+outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
+    _run_extraction_message
 ]
 
 
 class RunExtractionOutboxHandler:
     """Runs the AI extraction for an uploaded document."""
 
-    message = run_extraction_message
+    message = _run_extraction_message
 
     def __init__(
         self,
@@ -72,8 +75,7 @@ class RunExtractionOutboxHandler:
 
 
 __all__ = [
-    "RunExtraction",
+    "OutboxMessageType",
     "RunExtractionOutboxHandler",
-    "cashout_outbox_message_definitions",
-    "run_extraction_message",
+    "outbox_message_definitions",
 ]

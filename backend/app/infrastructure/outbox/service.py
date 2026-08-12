@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .catalog import outbox_message_catalog
+from .catalog import OutboxMessageType, outbox_message_catalog
 from .messages.model import OutboxMessage
 from .messages.service import insert_outbox_message
 
@@ -16,7 +16,7 @@ from .messages.service import insert_outbox_message
 async def enqueue(
     db: AsyncSession,
     *,
-    type: str,
+    type: OutboxMessageType,
     payload: Mapping[str, Any],
     max_attempts: int | None = None,
 ) -> OutboxMessage:

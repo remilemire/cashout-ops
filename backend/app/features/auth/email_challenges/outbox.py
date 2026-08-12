@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import logging
 from importlib.resources import files
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
 from app.features.users import service as users_service
-from app.infrastructure.outbox.contracts import OutboxMessageDefinition
 from app.security.crypto import generate_secret_token, hash_secret_token
 
 from . import store
@@ -40,14 +40,21 @@ _TEMPLATE = (
 )
 
 
+type OutboxMessageType = Literal["auth.send_login_link_email"]
+
+
 class SendLoginLinkEmail(BaseModel):
     challenge_id: str
     user_id: UUID
 
 
-send_login_link_email_message = OutboxMessageDefinition(
-    "auth.send_login_link_email", SendLoginLinkEmail
-)
+_send_login_link_email_message: OutboxMessageDefinition[
+    OutboxMessageType, SendLoginLinkEmail
+] = OutboxMessageDefinition("auth.send_login_link_email", SendLoginLinkEmail)
+
+outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
+    _send_login_link_email_message
+]
 
 # Sign-in link emails give up quickly (about a minute at the default backoff)
 # instead of retrying for an hour: the user is sitting on the login screen
@@ -115,7 +122,7 @@ class SendLoginLinkEmailOutboxHandler:
     the outbox table.
     """
 
-    message = send_login_link_email_message
+    message = _send_login_link_email_message
 
     def __init__(
         self,
@@ -148,7 +155,7 @@ class SendLoginLinkEmailOutboxHandler:
 
 __all__ = [
     "SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS",
-    "SendLoginLinkEmail",
+    "OutboxMessageType",
     "SendLoginLinkEmailOutboxHandler",
-    "send_login_link_email_message",
+    "outbox_message_definitions",
 ]

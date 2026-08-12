@@ -27,7 +27,7 @@ from app.security.crypto import hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
-from .outbox import SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS, send_login_link_email_message
+from .outbox import SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS
 
 if TYPE_CHECKING:
     from app.features.users.model import User
@@ -87,7 +87,7 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     )
     await outbox_service.enqueue(
         db,
-        type=send_login_link_email_message.type,
+        type="auth.send_login_link_email",
         payload={"challenge_id": challenge_id, "user_id": str(user.id)},
         max_attempts=SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
     )

@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
-from app.features.auth.outbox import send_login_link_email_message
 from app.features.users.model import User
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
@@ -441,7 +440,7 @@ async def test_send_failure_is_recorded_for_retry(
     assert email_client.sent == []
     async with db_sessionmaker() as db:
         stmt = select(OutboxMessage).where(
-            OutboxMessage.type == send_login_link_email_message.type,
+            OutboxMessage.type == "auth.send_login_link_email",
             OutboxMessage.completed_at.is_(None),
         )
         message = (await db.execute(stmt)).scalar_one()

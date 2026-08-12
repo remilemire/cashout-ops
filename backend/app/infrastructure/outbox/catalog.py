@@ -2,27 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
-from app.features.auth.outbox import auth_outbox_message_definitions
-from app.features.cashout.outbox import cashout_outbox_message_definitions
+from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
+from app.features.auth.outbox import OutboxMessageType as AuthOutboxMessageType
+from app.features.auth.outbox import (
+    outbox_message_definitions as auth_outbox_message_definitions,
+)
+from app.features.cashout.outbox import OutboxMessageType as CashoutOutboxMessageType
+from app.features.cashout.outbox import (
+    outbox_message_definitions as cashout_outbox_message_definitions,
+)
 
-from .contracts import OutboxMessageDefinition
+type OutboxMessageType = AuthOutboxMessageType | CashoutOutboxMessageType
 
-outbox_message_definitions: list[OutboxMessageDefinition] = [
+type OutboxMessageCatalog = Mapping[
+    OutboxMessageType, OutboxMessageDefinition[OutboxMessageType]
+]
+
+_outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
     *auth_outbox_message_definitions,
     *cashout_outbox_message_definitions,
 ]
 
-type OutboxMessageCatalog = Mapping[str, OutboxMessageDefinition]
-
 
 def _build_catalog(
-    definitions: Sequence[OutboxMessageDefinition],
+    definitions: OutboxMessageDefinitionList[OutboxMessageType],
 ) -> OutboxMessageCatalog:
     # Boot-time guard: a type claimed by two features would otherwise be
     # silently last-writer-wins.
-    catalog: dict[str, OutboxMessageDefinition] = {}
+    catalog: dict[OutboxMessageType, OutboxMessageDefinition[OutboxMessageType]] = {}
     for definition in definitions:
         if definition.type in catalog:
             raise Exception(
@@ -33,7 +42,7 @@ def _build_catalog(
 
 
 outbox_message_catalog: OutboxMessageCatalog = _build_catalog(
-    outbox_message_definitions
+    _outbox_message_definitions
 )
 
-__all__ = ["outbox_message_catalog"]
+__all__ = ["OutboxMessageType", "outbox_message_catalog"]
