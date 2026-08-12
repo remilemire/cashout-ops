@@ -183,7 +183,7 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | `ai.*` | see notes | — | Unprefixed (vendor convention). Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
 | `STORAGE_PROVIDER`    | `storage.PROVIDER` | no | `LOCAL`                                                    | `LOCAL` writes documents under `STORAGE_LOCAL_DIR`; `S3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
 | `STORAGE_LOCAL_DIR`   | `storage.LOCAL_DIR` | see notes | —                                                     | Where uploaded documents are written by the local storage client. Required when `STORAGE_PROVIDER=LOCAL` (the default). |
-| `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=S3`. Credentials are not configured here — they come from the standard AWS chain (env vars, profile, instance role). |
+| `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=S3`. Credentials are not configured here — see the note below the table. |
 | `S3_REGION`           | `storage.S3_REGION` | see notes | —                                                     | AWS region for the S3 client. Required when `STORAGE_PROVIDER=S3`.                                   |
 | `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
 | `RATE_LIMIT_AUTH_IP_PER_HOUR` | `rate_limit.AUTH_IP_PER_HOUR` | no | `20`                                          | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
@@ -198,6 +198,11 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `OUTBOX_BACKOFF_CAP_SECONDS` | `outbox.BACKOFF_CAP_SECONDS` | no | `900.0`                                        | Ceiling on that exponential backoff.                                                                 |
 
 The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config/ai.py](backend/app/core/config/ai.py) inverts that map to resolve `settings.ai.PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
+
+**AWS credentials are not among these variables.** `S3_BUCKET` and `S3_REGION` say *where* to store documents; boto3 resolves *who* is storing them through its own credential chain, and nothing in `Settings` models or passes a key. That means the credentials must reach the process the way the chain expects:
+
+- **Locally**, configure the chain itself — `aws configure` (writing `~/.aws/credentials`) or `AWS_PROFILE` pointing at an existing profile. Putting `AWS_ACCESS_KEY_ID` in `backend/.env` does **not** work: that file is parsed into `Settings` by pydantic-settings and never exported to the process environment, so boto3 never sees it. A real `export` in your shell does work, since that is a genuine environment variable.
+- **In hosted environments**, supply them through the platform's secret or environment-variable system (on Render, the service's environment settings). Deployments on AWS itself can skip static keys entirely and let the chain pick up an instance role, task role, or IRSA.
 
 The frontend currently reads no environment variables.
 
