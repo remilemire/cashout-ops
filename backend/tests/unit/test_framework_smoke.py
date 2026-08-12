@@ -13,7 +13,7 @@ from typing import cast
 
 import pytest
 
-from app.documents import DocumentClassification
+from app.document_ai import DocumentClassification
 from app.features.cashout.extraction.schemas import ManualNoteData
 from app.features.cashout.types import CashoutDocumentClassification
 from app.integrations.ai.anthropic import AnthropicAIClient

@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.documents import DocumentAIClient
+from app.document_ai import DocumentAIClient
 from app.features.auth.outbox import SendLoginLinkEmailOutboxHandler
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.outbox import RunExtractionOutboxHandler

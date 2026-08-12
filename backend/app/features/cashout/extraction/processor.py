@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.documents import (
+from app.document_ai import (
     DocumentAIClient,
     DocumentRef,
     FieldIssue,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.documents import DocumentAIClient
+from app.document_ai import DocumentAIClient
 from app.features.cashout.extraction import CashoutDocumentProcessor
 
 from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient

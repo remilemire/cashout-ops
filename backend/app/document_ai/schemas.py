@@ -1,4 +1,4 @@
-# backend/app/documents/schemas.py
+# backend/app/document_ai/schemas.py
 
 from __future__ import annotations
 

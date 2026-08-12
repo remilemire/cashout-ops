@@ -27,7 +27,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/security/` contains password hashing, CSRF cookie helpers, secret-token cryptography, and the `require_csrf` dependency. Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
-* `backend/app/documents/` contains generic document classification and extraction behavior.
+* `backend/app/document_ai/` contains generic document classification and extraction behavior.
 * `backend/app/features/` contains feature modules such as auth (with its `shared/sessions/` and `email_challenges/` submodules), users, invitations, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
 * `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.

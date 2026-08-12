@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.documents import DocumentClassification
+from app.document_ai import DocumentClassification
 from app.features.cashout.types import (
     CashoutDocumentClassification,
     CashoutSubmissionStatus,

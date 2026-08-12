@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from app.documents import (
+from app.document_ai import (
     DocumentAIClient,
     DocumentAnalysis,
     DocumentClassification,

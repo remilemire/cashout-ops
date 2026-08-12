@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
-from app.documents import DocumentRef
+from app.document_ai import DocumentRef
 from app.errors import AppError
 from app.features.users.model import User
 from app.features.users.types import UserRole

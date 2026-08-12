@@ -1,4 +1,4 @@
-# backend/app/documents/types.py
+# backend/app/document_ai/types.py
 
 from __future__ import annotations
 

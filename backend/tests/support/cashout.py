@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient
 
-from app.documents import DocumentAnalysis, DocumentClassification, FieldIssue
+from app.document_ai import DocumentAnalysis, DocumentClassification, FieldIssue
 from app.features.cashout.extraction.schemas import ManualNoteData
 from app.features.cashout.types import CashoutDocumentClassification
 

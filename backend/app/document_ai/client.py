@@ -1,4 +1,4 @@
-# backend/app/documents/client.py
+# backend/app/document_ai/client.py
 
 from __future__ import annotations
 
