@@ -21,8 +21,8 @@ The repository is the source of truth. Inspect existing implementations and near
 
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
 * `backend/app/lifespan.py` is the composition root for the database engine, Redis client, and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
-* `backend/app/core/` contains configuration, cookies, and shared schemas.
-* `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency) and the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency).
+* `backend/app/core/` contains configuration, the AI model catalog (`ai.py`: `AI_PROVIDER_MODELS`, which `AI_MODEL` is validated against), cookies, logging, and shared schemas.
+* `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency), the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency), and the transactional outbox (`outbox/`: dispatcher, worker pool, messages).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
 * `backend/app/security/` contains CSRF cookie helpers, secret-token cryptography, the `require_csrf` dependency, and the Redis fixed-window rate limiter (`rate_limit/`: `enforce` plus the `rate_limit_ip` dependency factory; feature-keyed limit dependencies live beside their feature). Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
@@ -34,8 +34,8 @@ The repository is the source of truth. Inspect existing implementations and near
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
 * `frontend/src/auth/` contains authentication state, guards, and the passwordless login pages (email entry, sign-in link landing, code entry).
 * `frontend/src/features/cashout/` contains the cashier submission workflow.
-* `frontend/src/features/admin/` contains admin submission and data-table workflows.
-* `frontend/src/components/ui.tsx` contains shared UI primitives.
+* `frontend/src/features/admin/` contains the admin submission, cashout-data, and user-management workflows.
+* `frontend/src/components/` contains shared UI primitives (`ui.tsx`) alongside the dialog and confirm-dialog components.
 * `frontend/src/styles/global.css` owns centralized light and dark theme tokens.
 
 ## Commands

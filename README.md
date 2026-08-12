@@ -4,7 +4,7 @@ Internal operations tool that replaces Whiskey District's paper-based end-of-shi
 
 Live deployment: <https://cashout-ops.onrender.com>
 
-> **Status:** early build. Authentication (passwordless email sign-in links), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a first-pass React SPA over the cashier and admin flows. The per-document extraction schemas still hold placeholder fields, and reporting plus frontend polish are still to come — tracked in the [Planned scope](#planned-scope) section below.
+> **Status:** early build. Authentication (passwordless email sign-in links), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The per-document extraction schemas still hold placeholder fields, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
 
 ---
 
@@ -51,6 +51,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Frontend    | React 19, TypeScript, Vite, TanStack Query, React Router |
 | Styling     | Tailwind CSS v4                                         |
 | Lint/format | Ruff (Python), ESLint + Prettier (TS/React)             |
+| Testing     | pytest + testcontainers (backend), Vitest + Testing Library (frontend) |
 | Prod server | Gunicorn + Uvicorn workers                              |
 | Doc AI      | Anthropic / OpenAI / Gemini (vision + structured output) |
 | Hosting     | Render                                                  |
@@ -62,14 +63,14 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Cookie-based session auth backed by SHA-256–hashed session tokens stored in Redis with a TTL
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Transactional outbox for deferred work (login-link emails, AI extraction): enqueued inside the request transaction, delivered by lifespan-managed dispatcher workers
-- Admin user management: list users, create staff accounts, promote/demote admins, and delete users — plus a single owner role (bootstrapped account; cannot be demoted or deleted) with owner-to-admin ownership transfer
+- Admin user management: list users, create staff accounts, rename them, promote/demote admins, and delete users — plus a single owner role (bootstrapped account; cannot be demoted or deleted) with owner-to-admin ownership transfer
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
 - Fully-migrated schema: `users`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
-- Cashout domain (create submission, upload document with background AI extraction + polling, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
+- Cashout domain (create/list/delete submission, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
-- React 19 SPA (first pass): auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (upload → poll extraction → correct → verify → complete), and admin submissions/data views
+- React 19 SPA: auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (drag-and-drop upload → poll extraction → correct → verify → complete), and admin submissions/data/users views
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
 - Render deploy hooks: `backend/scripts/build.bash`, `pre-deploy.bash`, `start.bash`
 
@@ -79,7 +80,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 **Extraction schemas** — the per-document data models (`features/cashout/extraction/schemas.py`) currently hold placeholder fields so the pipeline runs end to end. The real observable fields per document type, deterministic post-extraction validation, and cross-document reconciliation still need to be defined.
 
-**Frontend polish** — the React frame (routing, contracts, wiring) is in place; visual design polish, drag-and-drop/paste uploads, and field-typed correction editors (once the extraction schemas are real) are still to come.
+**Field-typed correction editors** — the cashier and admin flows are stable, but the verification form still renders every extracted value as a plain text input. Per-document-type editors follow once the extraction schemas are real. Paste-to-upload is also still outstanding (drag-and-drop works).
 
 **Admin flow** — historical views, filtering by date range and server, editing submitted data, discrepancy investigation.
 
@@ -87,7 +88,7 @@ These are designed but not yet implemented in code. Tracked here so the gap betw
 
 ## Project structure
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/integrations`, and `app/documents`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly. Each module that owns a request-bound resource exposes its FastAPI dependency in a `dependencies.py` beside it (e.g. `infrastructure/db/dependencies.py`'s `get_db`, `features/auth/dependencies.py`'s `get_current_user`).
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/integrations`, and `app/document_ai`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly. Each module that owns a request-bound resource exposes its FastAPI dependency in a `dependencies.py` beside it (e.g. `infrastructure/db/dependencies.py`'s `get_db`, `features/auth/dependencies.py`'s `get_current_user`).
 
 ```
 .
@@ -101,14 +102,14 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   └── app/
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
-│       ├── core/                      # config, cookies, schemas
-│       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis)
+│       ├── core/                      # config, AI model catalog, cookies, logging, shared schemas
+│       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis), outbox/ (dispatcher, messages)
 │       ├── lib/                       # pure helpers: casing, documents
-│       ├── security/                  # password hashing, CSRF cookies, token crypto, require_csrf
+│       ├── security/                  # CSRF cookies, token crypto, require_csrf, rate_limit/ (Redis fixed window)
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
-│       ├── documents/                 # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth (sessions, email_challenges, dependencies: get_current_user/require_admin), users, cashout
+│       ├── document_ai/               # DocumentAIClient (generic classify + extract)
+│       ├── features/                  # auth (shared/sessions, email_challenges, dependencies: get_current_user/require_admin/require_owner), users, cashout
 │       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
@@ -122,12 +123,12 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
         ├── App.tsx                    # QueryClient + Theme + Auth providers
         ├── router.tsx                 # auth-guarded routes (cashier + admin)
         ├── api/                       # fetch client (CSRF, error contract) + typed contracts
-        ├── auth/                      # AuthProvider, guards, login/register, EmailVerificationGate
-        ├── components/ui.tsx          # shared primitives (token-driven colors only)
+        ├── auth/                      # AuthProvider, guards, passwordless login pages (LoginPage, EmailLoginPage, LoginLinkPage, CodeInput)
+        ├── components/                # ui.tsx primitives (token-driven colors only) + dialog / confirm-dialog
         ├── layout/AppLayout.tsx       # mobile-first shell: top bar + bottom nav
-        ├── lib/                       # theme provider, formatting helpers
+        ├── lib/                       # theme provider, formatting helpers, cx
         ├── features/cashout/          # cashier submission flow
-        ├── features/admin/            # submissions + data tables
+        ├── features/admin/            # submissions, data, and users tables
         └── styles/global.css          # Tailwind v4 + centralized light/dark tokens
 ```
 
@@ -138,8 +139,6 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 - Python 3.13+
 - Node.js (matching `@types/node` 25.x is fine)
 - Docker (for the Postgres and Redis containers)
-
-
 
 ### Manual setup
 
@@ -182,6 +181,16 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `EMAIL_CHALLENGE_TTL_MINUTES` | no | `15`                                                       | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
 | `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
 | `OWNER_FULL_NAME`     | no       | `Owner`                                                        | Full name given to the bootstrapped `OWNER_EMAIL` account.                                           |
+| `RATE_LIMIT_AUTH_IP_PER_HOUR` | no | `20`                                                       | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
+| `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | no | `5`                                                 | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
+| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | no | `30`                                              | Per-user hourly quota on cashout document uploads (each starts an AI extraction).                    |
+| `RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR` | no | `15`                                             | Per-user hourly quota on AI re-extractions.                                                          |
+| `OUTBOX_MAX_ATTEMPTS` | no       | `10`                                                           | Delivery attempts before an outbox message dead-letters.                                             |
+| `OUTBOX_BATCH_SIZE`   | no       | `1`                                                            | Messages a dispatcher worker claims per poll.                                                        |
+| `OUTBOX_POLL_INTERVAL_SECONDS` | no | `1.0`                                                     | How often workers poll `outbox_messages` for pending work.                                           |
+| `OUTBOX_CLAIM_TTL_SECONDS` | no  | `30.0`                                                        | How long a claim is protected before a crashed worker's row becomes claimable again.                 |
+| `OUTBOX_BACKOFF_BASE_SECONDS` | no | `5.0`                                                      | Retry backoff base — a failed attempt waits `base * 2^(attempt-1)`.                                  |
+| `OUTBOX_BACKOFF_CAP_SECONDS` | no | `900.0`                                                     | Ceiling on that exponential backoff.                                                                 |
 
 The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai.py](backend/app/core/ai.py) lists the models each provider serves, and [core/config.py](backend/app/core/config.py) inverts that map to resolve `AI_PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
@@ -236,7 +245,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage, and — last, so they stop first on shutdown — the outbox dispatcher workers) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
 
 **AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
 
@@ -288,20 +297,27 @@ Implemented under the `/api` prefix:
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | GET    | `/api/users`                                  | admin           | 200     | List every user, newest first.                              |
 | POST   | `/api/users`                                  | admin + CSRF    | 201     | Create a staff account (no email sent; the user signs in via the login flow). |
+| PATCH  | `/api/users/{id}`                             | admin + CSRF    | 200     | Rename a user (any account, the owner's and your own included — a name carries no privileges). |
 | POST   | `/api/users/{id}/promote`                     | admin + CSRF    | 200     | Grant a user admin access (idempotent; cannot target the owner). |
 | POST   | `/api/users/{id}/demote`                      | admin + CSRF    | 200     | Revoke a user's admin access (cannot demote yourself or the owner). |
 | DELETE | `/api/users/{id}`                             | admin + CSRF    | 204     | Delete a user (the owner cannot be deleted). |
 | POST   | `/api/users/{id}/transfer-ownership`          | owner + CSRF    | 200     | Transfer ownership to an admin; the caller becomes a plain admin. |
 | POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
-| DELETE | `/api/cashout/submissions/{id}`               | owner + CSRF    | 204     | Delete a submission unless reconciled cashout data exists.  |
-| GET    | `/api/cashout/submissions/{id}`               | owner or admin  | 200     | Submission detail with documents (analyses embedded) + data. |
-| POST   | `/api/cashout/submissions/{id}/documents`     | owner + CSRF    | 201     | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
-| POST   | `/api/cashout/documents/{id}/extract`         | owner + CSRF    | 200     | Restart extraction after a `FAILED` attempt (background, poll again). |
-| GET    | `/api/cashout/analyses/{id}`                  | owner or admin  | 200     | Poll the analysis: `EXTRACTING` → `NEEDS_VERIFICATION` \| `FAILED`. |
-| POST   | `/api/cashout/analyses/{id}/verify`           | owner + CSRF    | 200     | Confirm an extraction, optionally with corrected values.    |
-| POST   | `/api/cashout/submissions/{id}/complete`      | owner + CSRF    | 200     | Reconcile the verified analyses → `COMPLETED`.              |
+| GET    | `/api/cashout/submissions`                    | session         | 200     | List submissions, newest first — your own as a cashier, everyone's as an admin. |
+| GET    | `/api/cashout/submissions/{id}`               | submitter or admin | 200  | Submission detail with documents (analyses embedded) + data. |
+| DELETE | `/api/cashout/submissions/{id}`               | submitter + CSRF | 204    | Delete a submission unless reconciled cashout data exists.  |
+| POST   | `/api/cashout/submissions/{id}/complete`      | submitter + CSRF | 200    | Reconcile the verified analyses → `COMPLETED`.              |
+| POST   | `/api/cashout/submissions/{id}/documents`     | submitter + CSRF | 201    | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
+| DELETE | `/api/cashout/documents/{id}`                 | submitter + CSRF | 204    | Remove a document and its analysis while the submission is still `PROCESSING`. |
+| GET    | `/api/cashout/documents/{id}/content`         | submitter or admin | 200  | Serve the original uploaded bytes inline (image or PDF).    |
+| POST   | `/api/cashout/documents/{id}/extract`         | submitter + CSRF | 200    | Restart extraction after a `FAILED` attempt (background, poll again). |
+| GET    | `/api/cashout/analyses/{id}`                  | submitter or admin | 200  | Poll the analysis: `EXTRACTING` → `NEEDS_VERIFICATION` \| `FAILED`. |
+| POST   | `/api/cashout/analyses/{id}/verify`           | submitter + CSRF | 200    | Confirm an extraction, optionally with corrected values.    |
+| GET    | `/api/cashout/data`                           | admin           | 200     | List every reconciled cashout data row, newest first.       |
 
-The auth endpoints are rate limited (per IP, and sign-in emails per address), and cashout document upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
+"Submitter" is the cashier who created the submission — enforced in the cashout service, not by a dependency; it is unrelated to the single **owner** role, which only gates `transfer-ownership`. CSRF is checked on unsafe methods only, so the `GET` rows carry no CSRF requirement even though the routers declare `require_csrf`.
+
+The auth endpoints are rate limited (per client IP on each endpoint, sign-in emails per address, and link verification per challenge), and cashout document upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
 
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
 
@@ -323,15 +339,14 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
 - **Python typing.** `pyproject.toml` requires Python 3.13+ and configures Pyright in strict mode (`[tool.pyright] typeCheckingMode = "strict"`). Run `make typecheck` (backend Pyright + frontend `tsc`).
 - **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/React (the Tailwind plugin sorts classes).
-- **Tests.** `make test` (pytest) runs against a real Postgres and Redis — `TEST_DATABASE_URL` / `TEST_REDIS_URL` if set, otherwise throwaway containers via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
+- **Tests.** `make test` runs both suites: Vitest + Testing Library on the frontend, and pytest against a real Postgres and Redis — `TEST_DATABASE_URL` / `TEST_REDIS_URL` if set, otherwise throwaway containers via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
 
 ### Known incomplete work
 
 The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
-- **Local document storage is not durable on Render** (ephemeral disk) — swap in an object-store implementation of `DocumentStorageClient` before relying on uploaded files surviving a deploy.
-- **The frontend is a first pass** — the React frame (contracts, guards, flows) works end to end, but visual polish and schema-specific correction editors are pending.
+- **Local document storage is not durable on Render** (ephemeral disk) — `storage_lifespan` still hands out `LocalDocumentStorageClient` unconditionally, so uploaded files do not survive a deploy or restart. Add an object-store implementation of `DocumentStorageClient` (the `Protocol` in `integrations/storage/client.py` is the only seam that needs it) and select it from config before relying on stored documents.
 
 ## License
 
