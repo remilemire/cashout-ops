@@ -6,10 +6,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.email import EmailProvider
 
 from .client import EmailClient
 from .console import ConsoleEmailClient
-from .provider import EmailProvider
 from .resend import ResendEmailClient
 
 

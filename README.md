@@ -102,7 +102,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   └── app/
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
-│       ├── core/                      # config, AI model catalog + storage provider, cookies, logging, shared schemas
+│       ├── core/                      # config, AI model catalog, storage/email provider enums, cookies, logging, shared schemas
 │       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis), outbox/ (dispatcher, messages)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # CSRF cookies, token crypto, require_csrf, rate_limit/ (Redis fixed window)

@@ -1,4 +1,4 @@
-# backend/app/integrations/email/provider.py
+# backend/app/core/email.py
 
 from __future__ import annotations
 

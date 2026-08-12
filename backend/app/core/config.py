@@ -10,8 +10,8 @@ from pydantic import EmailStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.ai import AI_PROVIDER_MODELS, AIProvider
+from app.core.email import EmailProvider
 from app.core.storage import StorageProvider
-from app.integrations.email import EmailProvider
 
 # AI_PROVIDER_MODELS inverted: the catalog reads naturally grouped by provider,
 # but every lookup here goes the other way — AI_MODEL is the configured value
