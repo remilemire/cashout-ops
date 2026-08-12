@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .app_error import AppError
 from .catalog import ErrorCode, error_catalog, kind_status_map
+from .rate_limit import RateLimitedError
 from .schemas import ErrorResponseSchema, ValidationIssueSchema
 from .translators import translate_integrity_error, translate_validation_error
 from .validation import ValidationError, validation_issue_catalog
@@ -79,6 +80,11 @@ def _to_response(error: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=kind_status_map[entry["kind"]],
         content=body.model_dump(by_alias=True, exclude_none=True, mode="json"),
+        headers=(
+            {"Retry-After": str(error.retry_after_seconds)}
+            if isinstance(error, RateLimitedError)
+            else None
+        ),
     )
 
 
@@ -119,6 +125,7 @@ _status_to_code: Mapping[int, ErrorCode] = {
     status.HTTP_404_NOT_FOUND: "ROUTE_NOT_FOUND",
     status.HTTP_409_CONFLICT: "CONFLICT",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "VALIDATION_FAILED",
+    status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMITED",
     status.HTTP_500_INTERNAL_SERVER_ERROR: "INTERNAL",
     status.HTTP_503_SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
 }

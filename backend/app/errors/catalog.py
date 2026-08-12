@@ -30,6 +30,7 @@ type _BaseErrorCode = Literal[
     "FORBIDDEN",
     "ROUTE_NOT_FOUND",
     "CONFLICT",
+    "RATE_LIMITED",
     "SERVICE_UNAVAILABLE",
 ]
 
@@ -75,6 +76,11 @@ _base_error_definition_list: ErrorDefinitionList[_BaseErrorCode] = [
         message="The request conflicts with the current state.",
     ),
     ErrorDefinition(
+        code="RATE_LIMITED",
+        kind="TOO_MANY_REQUESTS",
+        message="Too many attempts. Please wait a moment and try again.",
+    ),
+    ErrorDefinition(
         code="SERVICE_UNAVAILABLE",
         kind="SERVICE_UNAVAILABLE",
         message="The service is temporarily unavailable.",
@@ -100,6 +106,7 @@ kind_status_map: Mapping[ErrorKind, int] = {
     "NOT_FOUND": status.HTTP_404_NOT_FOUND,
     "CONFLICT": status.HTTP_409_CONFLICT,
     "VALIDATION": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "TOO_MANY_REQUESTS": status.HTTP_429_TOO_MANY_REQUESTS,
     "INTERNAL": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
 }

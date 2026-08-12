@@ -13,6 +13,7 @@ type ErrorKind = Literal[
     "VALIDATION",
     "FORBIDDEN",
     "UNAUTHORIZED",
+    "TOO_MANY_REQUESTS",
     "INTERNAL",
     "SERVICE_UNAVAILABLE",
 ]
