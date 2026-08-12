@@ -8,14 +8,21 @@ export class ApiError extends Error {
   readonly kind: ErrorResponse["kind"];
   readonly code: ErrorResponse["code"];
   readonly issues: ValidationIssue[];
+  /** Wait hint from a 429's `Retry-After` header, in whole seconds. */
+  readonly retryAfterSeconds: number | null;
 
-  constructor(status: number, body: ErrorResponse) {
+  constructor(
+    status: number,
+    body: ErrorResponse,
+    retryAfterSeconds: number | null = null,
+  ) {
     super(body.message);
     this.name = "ApiError";
     this.status = status;
     this.kind = body.kind;
     this.code = body.code;
     this.issues = body.issues ?? [];
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 
   /** The validation message for a field, if the backend flagged one. */
@@ -29,6 +36,11 @@ const FALLBACK_BODY: ErrorResponse = {
   code: "INTERNAL",
   message: "Something went wrong.",
 };
+
+/** The backend sends `Retry-After` as integer seconds; anything else is ignored. */
+function parseRetryAfter(value: string | null): number | null {
+  return value !== null && /^\d+$/.test(value) ? Number(value) : null;
+}
 
 function readCookie(name: string): string | null {
   const match = document.cookie
@@ -80,6 +92,7 @@ export async function api<T>(
     throw new ApiError(
       response.status,
       (data as ErrorResponse | null) ?? FALLBACK_BODY,
+      parseRetryAfter(response.headers.get("Retry-After")),
     );
   }
   return data as T;

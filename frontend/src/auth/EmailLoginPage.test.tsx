@@ -41,6 +41,16 @@ const challengeInvalid = new ApiError(401, {
   message: "This sign-in code is invalid or has expired.",
 });
 
+const rateLimited = new ApiError(
+  429,
+  {
+    kind: "TOO_MANY_REQUESTS",
+    code: "RATE_LIMITED",
+    message: "Too many attempts. Please wait a moment and try again.",
+  },
+  300,
+);
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -120,6 +130,39 @@ describe("EmailLoginPage", () => {
       }),
     );
     expect(await screen.findByText("Private home")).toBeDefined();
+  });
+
+  it("shows wait-time copy when starting a login is rate limited", async () => {
+    const user = userEvent.setup();
+    startLoginMock.mockRejectedValue(rateLimited);
+    renderPage();
+
+    await user.type(await screen.findByLabelText("Email"), "cashier@test.com");
+    await user.click(
+      screen.getByRole("button", { name: "Email me a sign-in link" }),
+    );
+
+    // The Retry-After hint (300s) is surfaced as a rounded-up wait.
+    expect(
+      await screen.findByText(
+        "Too many attempts. Try again in about 5 minutes.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("shows wait-time copy when code verification is rate limited", async () => {
+    const user = userEvent.setup();
+    verifyLoginCodeMock.mockRejectedValue(rateLimited);
+    renderPage();
+
+    await startChallenge(user);
+    await typeCode(user);
+
+    expect(
+      await screen.findByText(
+        "Too many attempts. Try again in about 5 minutes.",
+      ),
+    ).toBeDefined();
   });
 
   it("shows the failure and offers a fresh start when the challenge is rejected", async () => {

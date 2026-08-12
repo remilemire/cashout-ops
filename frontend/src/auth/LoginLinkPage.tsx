@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { authApi } from "@/api/auth";
+import { ApiError } from "@/api/client";
 import { Card, Spinner } from "@/components/ui";
 
 import { AuthShell } from "./AuthShell";
@@ -36,7 +37,12 @@ export function LoginLinkPage() {
         {!hasParams || linkQuery.isError ? (
           <div className="space-y-3">
             <p className="font-medium">
-              This sign-in link is invalid or has expired.
+              {/* A rate-limited link may still be good; invite a retry
+                  instead of declaring it dead. */}
+              {linkQuery.error instanceof ApiError &&
+              linkQuery.error.code === "RATE_LIMITED"
+                ? "Too many attempts. Wait a moment, then reload this page."
+                : "This sign-in link is invalid or has expired."}
             </p>
             <p className="text-ink-muted text-sm">
               <Link

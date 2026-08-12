@@ -17,6 +17,16 @@ interface Challenge {
   email: string;
 }
 
+/** Friendlier 429 copy: name the wait when the server hinted at one. */
+function rateLimitedCopy(retryAfterSeconds: number | null): string {
+  if (retryAfterSeconds == null) {
+    return "Too many attempts. Please wait a moment and try again.";
+  }
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  const wait = minutes === 1 ? "about a minute" : `about ${minutes} minutes`;
+  return `Too many attempts. Try again in ${wait}.`;
+}
+
 export function EmailLoginPage() {
   const { user, isLoading, completeSignIn } = useAuth();
   const navigate = useNavigate();
@@ -71,12 +81,18 @@ export function EmailLoginPage() {
     setAttempt(0);
   };
 
+  // Rate limiting can hit either phase; both banners share this override.
+  const rateLimitMessage =
+    error instanceof ApiError && error.code === "RATE_LIMITED"
+      ? rateLimitedCopy(error.retryAfterSeconds)
+      : undefined;
+
   // The server's unified challenge error covers mistyped, superseded, and
   // expired codes alike; on this screen a gentler nudge fits all of them.
   const codeErrorMessage =
     error instanceof ApiError && error.code === "EMAIL_CHALLENGE_INVALID"
       ? "That code didn't work. Double-check it, or start over to get a new link."
-      : undefined;
+      : rateLimitMessage;
 
   return (
     <AuthShell>
@@ -95,7 +111,7 @@ export function EmailLoginPage() {
                 autoComplete="email"
                 required
               />
-              <ErrorBanner error={error} />
+              <ErrorBanner error={error} message={rateLimitMessage} />
               <Button type="submit" loading={pending} className="w-full">
                 Email me a sign-in link
               </Button>

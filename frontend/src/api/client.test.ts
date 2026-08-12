@@ -72,6 +72,50 @@ describe("api client", () => {
     });
   });
 
+  it("captures the Retry-After header on rate-limited responses", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          kind: "TOO_MANY_REQUESTS",
+          code: "RATE_LIMITED",
+          message: "Too many attempts. Please wait a moment and try again.",
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "120",
+          },
+        },
+      ),
+    );
+
+    await expect(
+      api("/auth/login/start", { method: "POST" }),
+    ).rejects.toMatchObject({
+      status: 429,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 120,
+    });
+  });
+
+  it("leaves retryAfterSeconds null when the header is absent", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(429, {
+        kind: "TOO_MANY_REQUESTS",
+        code: "RATE_LIMITED",
+        message: "Too many attempts. Please wait a moment and try again.",
+      }),
+    );
+
+    await expect(
+      api("/auth/login/start", { method: "POST" }),
+    ).rejects.toMatchObject({
+      status: 429,
+      retryAfterSeconds: null,
+    });
+  });
+
   it("falls back to a generic error for non-JSON failures", async () => {
     fetchMock.mockResolvedValue(
       new Response("<html>Bad gateway</html>", {

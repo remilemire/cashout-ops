@@ -73,6 +73,31 @@ describe("LoginLinkPage", () => {
     ).toBeDefined();
   });
 
+  it("shows retry copy instead of the invalid-link state when rate limited", async () => {
+    verifyLoginLinkMock.mockRejectedValue(
+      new ApiError(
+        429,
+        {
+          kind: "TOO_MANY_REQUESTS",
+          code: "RATE_LIMITED",
+          message: "Too many attempts. Please wait a moment and try again.",
+        },
+        60,
+      ),
+    );
+
+    renderPage("?challenge=challenge-1&token=token-1");
+
+    expect(
+      await screen.findByText(
+        "Too many attempts. Wait a moment, then reload this page.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("This sign-in link is invalid or has expired."),
+    ).toBeNull();
+  });
+
   it("shows the invalid-link state without calling the API when params are missing", () => {
     renderPage("?challenge=challenge-1");
 

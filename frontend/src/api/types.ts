@@ -11,6 +11,7 @@ export type ErrorKind =
   | "VALIDATION"
   | "FORBIDDEN"
   | "UNAUTHORIZED"
+  | "TOO_MANY_REQUESTS"
   | "INTERNAL"
   | "SERVICE_UNAVAILABLE";
 
@@ -23,6 +24,7 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "ROUTE_NOT_FOUND"
   | "CONFLICT"
+  | "RATE_LIMITED"
   | "SERVICE_UNAVAILABLE"
   // users
   | "USER_NOT_FOUND"
