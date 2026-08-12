@@ -16,8 +16,10 @@ from app.core.config import (
     EmailSettings,
     Settings,
     StorageSettings,
+    settings,
 )
 from app.core.providers import AIProvider, EmailProvider, StorageProvider
+from tests.support.settings import make_test_settings
 
 # Every group reads the environment itself, so a test about a *missing* setting
 # has to pass it as None rather than trust whatever the host's .env carries.
@@ -203,3 +205,28 @@ def test_conventional_names_stay_unprefixed(
     assert config.ai.ANTHROPIC_API_KEY == "conventional-anthropic-key"
     assert config.storage.S3_BUCKET == "conventional-bucket"
     assert config.storage.S3_REGION == "us-east-1"
+
+
+def test_the_test_baseline_ignores_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # env_file is resolved against the working directory, so a poisoned .env
+    # here is exactly what the suite must never read. delenv keeps the test
+    # about dotenv, not the (intentional) os.environ override channel.
+    monkeypatch.delenv("BOOTSTRAP_OWNER_FULL_NAME", raising=False)
+    monkeypatch.delenv("AUTH_SESSION_TTL_DAYS", raising=False)
+    (tmp_path / ".env").write_text(
+        "BOOTSTRAP_OWNER_FULL_NAME=Poisoned\nAUTH_SESSION_TTL_DAYS=99\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    config = make_test_settings()
+
+    assert config.bootstrap.OWNER_FULL_NAME == "Owner"
+    assert config.auth.SESSION_TTL_DAYS == 7
+
+
+def test_the_live_settings_are_the_hermetic_baseline() -> None:
+    # Pydantic equality compares field values: proves the conftest swap
+    # actually installed the baseline on the singleton.
+    assert settings == make_test_settings()

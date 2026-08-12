@@ -10,15 +10,35 @@ import pytest
 # testcontainers' Ryuk reaper (it needs a separate image that may be unavailable).
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
-# Required settings must exist before anything imports app.core.config. Set them
-# here so the suite runs without a .env (e.g. in CI); os.environ wins over .env.
-# This block must stay above pytest_plugins: the fixture modules import app.*.
+# The app.core.config import below builds the settings singleton at import
+# time from os.environ plus any developer .env. These pins keep that throwaway
+# construction valid with or without a .env, whatever provider a developer's
+# .env selects (e.g. STORAGE_PROVIDER=S3 without credentials would otherwise
+# abort collection), without shipping any provider's credentials; os.environ
+# wins over .env. Value isolation is the hermetic baseline's job, below.
 os.environ.setdefault("APP_ENV", "dev")
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
 os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
+os.environ.setdefault("AI_MODEL", "claude-sonnet-5")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
+os.environ.setdefault("EMAIL_PROVIDER", "CONSOLE")
 os.environ.setdefault("BOOTSTRAP_OWNER_EMAIL", "owner@test.com")
+os.environ.setdefault("STORAGE_PROVIDER", "LOCAL")
 os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")
+
+# Replace every group on the live singleton with the hermetic baseline so no
+# test observes a .env value. This must sit below the pins (they keep the
+# import-time construction valid) and above pytest_plugins: the fixture
+# modules import app.* feature modules, at least one of which bakes a settings
+# value at import time (the cashout error catalog's DOCUMENT_TOO_LARGE
+# message). Overwriting attributes preserves the singleton's identity, so
+# every `from app.core.config import settings` importer sees the baseline.
+from app.core.config import Settings, settings  # noqa: E402
+from tests.support.settings import make_test_settings  # noqa: E402
+
+_test_settings = make_test_settings()
+for _group in Settings.model_fields:
+    setattr(settings, _group, getattr(_test_settings, _group))
 
 pytest_plugins = [
     "tests.support.fixtures.db",
