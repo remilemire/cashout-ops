@@ -191,7 +191,7 @@ async def upload_document(
     """Upload an end-of-shift document and start its extraction.
 
     Accepts JPEG, PNG, WebP, or PDF within the configured size limit
-    (`MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
+    (`STORAGE_MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
     checksum) is rejected. The AI extraction runs in the background: this
     returns the analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
     until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the extract
@@ -206,7 +206,7 @@ async def upload_document(
     # below `data` without reading the body of a file we are about to refuse.
     content_type = _to_content_type(file.content_type)
     payload = DocumentUpload(
-        data=await read_document(file, limit=settings.MAX_DOCUMENT_SIZE_BYTES),
+        data=await read_document(file, limit=settings.storage.MAX_DOCUMENT_SIZE_BYTES),
         content_type=content_type,
         original_filename=file.filename or "upload",
     )

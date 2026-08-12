@@ -26,12 +26,12 @@ def _build_email_client() -> EmailClient:
     narrows that optional field for the type checker rather than enforcing
     the requirement itself.
     """
-    if settings.EMAIL_PROVIDER is EmailProvider.RESEND:
-        if not settings.RESEND_API_KEY:
+    if settings.email.PROVIDER is EmailProvider.RESEND:
+        if not settings.email.RESEND_API_KEY:
             raise RuntimeError(
                 "RESEND_API_KEY is required when EMAIL_PROVIDER is RESEND."
             )
         return ResendEmailClient(
-            api_key=settings.RESEND_API_KEY, sender=settings.EMAIL_FROM
+            api_key=settings.email.RESEND_API_KEY, sender=settings.email.FROM
         )
-    return ConsoleEmailClient(sender=settings.EMAIL_FROM)
+    return ConsoleEmailClient(sender=settings.email.FROM)

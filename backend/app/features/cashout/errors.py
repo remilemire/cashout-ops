@@ -77,7 +77,7 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
     ErrorDefinition(
         code="DOCUMENT_TOO_LARGE",
         kind="BAD_REQUEST",
-        message=f"Document exceeds the {settings.MAX_DOCUMENT_SIZE_MB} MB size limit.",
+        message=f"Document exceeds the {settings.storage.MAX_DOCUMENT_SIZE_MB} MB size limit.",
     ),
     ErrorDefinition(
         code="DOCUMENT_DUPLICATE",

@@ -35,7 +35,7 @@ async def rate_limit_upload(
         redis,
         scope="cashout_upload_user",
         identifier=str(current_user.id),
-        limit=settings.RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR,
+        limit=settings.rate_limit.UPLOADS_PER_USER_PER_HOUR,
         window=_HOUR,
     )
 
@@ -49,7 +49,7 @@ async def rate_limit_extract(
         redis,
         scope="cashout_extract_user",
         identifier=str(current_user.id),
-        limit=settings.RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR,
+        limit=settings.rate_limit.EXTRACTS_PER_USER_PER_HOUR,
         window=_HOUR,
     )
 

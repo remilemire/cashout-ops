@@ -4,33 +4,47 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from app.core.ai_models import AI_PROVIDER_MODELS
-from app.core.config import Settings
+from app.core.config import (
+    AISettings,
+    AppSettings,
+    EmailSettings,
+    Settings,
+    StorageSettings,
+)
 from app.core.providers import AIProvider, EmailProvider, StorageProvider
 
-# Fields Settings will not construct without; irrelevant to what these tests
-# assert. LOCAL_STORAGE_DIR and ANTHROPIC_API_KEY are required by the default
-# storage provider and the default model's provider respectively, so they are
-# supplied here rather than left to whatever the environment happens to carry.
-_REQUIRED = {
-    "DATABASE_URL": "postgresql+psycopg://postgres:dev@localhost:5432/test",
-    "REDIS_URL": "redis://localhost:6379/0",
-    "LOCAL_STORAGE_DIR": "storage/documents",
+# Every group reads the environment itself, so a test about a *missing* setting
+# has to pass it as None rather than trust whatever the host's .env carries.
+# These baselines make each construction fully specified; a test overrides only
+# the field it is about.
+_AI = {
     "ANTHROPIC_API_KEY": "test-anthropic-key",
+    "OPENAI_API_KEY": "test-openai-key",
+    "GEMINI_API_KEY": "test-gemini-key",
+}
+_STORAGE = {
+    "LOCAL_DIR": "storage/documents",
+    "S3_BUCKET": None,
+    "S3_REGION": None,
 }
 
 
-def _settings(**overrides: str | None) -> Settings:
-    # Merged rather than splatted side by side so a test can override one of
-    # the required fields — notably clearing LOCAL_STORAGE_DIR.
-    return Settings(**{**_REQUIRED, **overrides})  # pyright: ignore[reportArgumentType]
+def _ai(**overrides: object) -> AISettings:
+    return AISettings(**{**_AI, **overrides})  # pyright: ignore[reportArgumentType]
+
+
+def _storage(**overrides: object) -> StorageSettings:
+    return StorageSettings(**{**_STORAGE, **overrides})  # pyright: ignore[reportArgumentType]
 
 
 def test_a_model_belongs_to_exactly_one_provider() -> None:
-    # config.py inverts AI_PROVIDER_MODELS into a model-keyed map, so a model
+    # config/ai.py inverts AI_PROVIDER_MODELS into a model-keyed map, so a model
     # listed twice would silently resolve to whichever provider came last.
     listed = [model for models in AI_PROVIDER_MODELS.values() for model in models]
 
@@ -44,69 +58,21 @@ def test_a_model_belongs_to_exactly_one_provider() -> None:
 def test_ai_provider_is_derived_from_the_model(
     provider: AIProvider, model: str
 ) -> None:
-    config = _settings(AI_MODEL=model, **{f"{provider}_API_KEY": "test-key"})
+    config = _ai(MODEL=model)
 
-    assert config.AI_PROVIDER is provider
+    assert config.PROVIDER is provider
 
 
 def test_the_default_model_resolves() -> None:
     # The default has to be a listed model or every unconfigured boot fails.
-    assert _settings().AI_PROVIDER in AI_PROVIDER_MODELS
+    # Every key is supplied so the assertion does not depend on which provider
+    # the default currently belongs to.
+    assert _ai().PROVIDER in AI_PROVIDER_MODELS
 
 
 def test_an_unlisted_model_is_rejected() -> None:
     with pytest.raises(ValidationError, match="AI_MODEL must be one of"):
-        _settings(AI_MODEL="gpt-4o")
-
-
-def test_s3_storage_requires_a_bucket() -> None:
-    with pytest.raises(ValidationError, match="S3_BUCKET"):
-        _settings(DOCUMENT_STORAGE_PROVIDER=StorageProvider.S3, S3_REGION="us-east-1")
-
-
-def test_s3_storage_requires_a_region() -> None:
-    with pytest.raises(ValidationError, match="S3_REGION"):
-        _settings(DOCUMENT_STORAGE_PROVIDER=StorageProvider.S3, S3_BUCKET="documents")
-
-
-def test_s3_storage_reports_every_missing_setting() -> None:
-    # One boot surfaces the whole gap, rather than revealing the next missing
-    # variable only after the previous one is supplied.
-    with pytest.raises(ValidationError, match="S3_BUCKET, S3_REGION"):
-        _settings(DOCUMENT_STORAGE_PROVIDER=StorageProvider.S3)
-
-
-def test_s3_storage_does_not_require_the_local_directory() -> None:
-    config = _settings(
-        DOCUMENT_STORAGE_PROVIDER=StorageProvider.S3,
-        S3_BUCKET="documents",
-        S3_REGION="us-east-1",
-        LOCAL_STORAGE_DIR=None,
-    )
-
-    assert config.S3_BUCKET == "documents"
-
-
-def test_local_storage_requires_a_directory() -> None:
-    with pytest.raises(ValidationError, match="LOCAL_STORAGE_DIR"):
-        _settings(LOCAL_STORAGE_DIR=None)
-
-
-def test_local_storage_does_not_require_the_s3_settings() -> None:
-    config = _settings(DOCUMENT_STORAGE_PROVIDER=StorageProvider.LOCAL)
-
-    assert config.S3_BUCKET is None
-
-
-def test_resend_email_requires_an_api_key() -> None:
-    with pytest.raises(ValidationError, match="RESEND_API_KEY"):
-        _settings(EMAIL_PROVIDER=EmailProvider.RESEND, RESEND_API_KEY=None)
-
-
-def test_console_email_does_not_require_an_api_key() -> None:
-    config = _settings(EMAIL_PROVIDER=EmailProvider.CONSOLE, RESEND_API_KEY=None)
-
-    assert config.EMAIL_PROVIDER is EmailProvider.CONSOLE
+        _ai(MODEL="gpt-4o")
 
 
 @pytest.mark.parametrize(
@@ -116,20 +82,124 @@ def test_console_email_does_not_require_an_api_key() -> None:
 def test_the_serving_providers_api_key_is_required(
     provider: AIProvider, model: str
 ) -> None:
-    # _REQUIRED carries an Anthropic key, so clear it to cover that provider
-    # too rather than passing only because the default happens to be set.
+    # Clear only the serving provider's key, leaving the other two set, so the
+    # failure can only come from the one the model needs.
     with pytest.raises(ValidationError, match=f"{provider}_API_KEY"):
-        _settings(AI_MODEL=model, **{f"{provider}_API_KEY": None})
+        _ai(MODEL=model, **{f"{provider}_API_KEY": None})
 
 
 def test_an_unrelated_providers_api_key_may_be_missing() -> None:
     # Only the model's own provider needs a key; a deployment does not carry
     # credentials for the two it never calls.
-    config = _settings(
-        AI_MODEL="gpt-5.6-terra",
-        OPENAI_API_KEY="test-openai-key",
-        ANTHROPIC_API_KEY=None,
-        GEMINI_API_KEY=None,
+    config = _ai(MODEL="gpt-5.6-terra", ANTHROPIC_API_KEY=None, GEMINI_API_KEY=None)
+
+    assert config.PROVIDER is AIProvider.OPENAI
+
+
+def test_s3_storage_requires_a_bucket() -> None:
+    with pytest.raises(ValidationError, match="S3_BUCKET"):
+        _storage(PROVIDER=StorageProvider.S3, S3_REGION="us-east-1")
+
+
+def test_s3_storage_requires_a_region() -> None:
+    with pytest.raises(ValidationError, match="S3_REGION"):
+        _storage(PROVIDER=StorageProvider.S3, S3_BUCKET="documents")
+
+
+def test_s3_storage_reports_every_missing_setting() -> None:
+    # One boot surfaces the whole gap, rather than revealing the next missing
+    # variable only after the previous one is supplied.
+    with pytest.raises(ValidationError, match="S3_BUCKET, S3_REGION"):
+        _storage(PROVIDER=StorageProvider.S3)
+
+
+def test_s3_storage_does_not_require_the_local_directory() -> None:
+    config = _storage(
+        PROVIDER=StorageProvider.S3,
+        S3_BUCKET="documents",
+        S3_REGION="us-east-1",
+        LOCAL_DIR=None,
     )
 
-    assert config.AI_PROVIDER is AIProvider.OPENAI
+    assert config.S3_BUCKET == "documents"
+
+
+def test_local_storage_requires_a_directory() -> None:
+    with pytest.raises(ValidationError, match="STORAGE_LOCAL_DIR"):
+        _storage(LOCAL_DIR=None)
+
+
+def test_a_blank_local_directory_counts_as_unset() -> None:
+    # A bare `STORAGE_LOCAL_DIR=` would otherwise parse to Path(".") and write
+    # documents into the working directory.
+    with pytest.raises(ValidationError, match="STORAGE_LOCAL_DIR"):
+        _storage(LOCAL_DIR="   ")
+
+
+def test_local_storage_does_not_require_the_s3_settings() -> None:
+    config = _storage(PROVIDER=StorageProvider.LOCAL)
+
+    assert config.S3_BUCKET is None
+
+
+def test_the_size_limit_is_exposed_in_bytes() -> None:
+    config = _storage(MAX_DOCUMENT_SIZE_MB=3)
+
+    assert config.MAX_DOCUMENT_SIZE_BYTES == 3 * 1024 * 1024
+
+
+def test_resend_email_requires_an_api_key() -> None:
+    with pytest.raises(ValidationError, match="RESEND_API_KEY"):
+        EmailSettings(PROVIDER=EmailProvider.RESEND, RESEND_API_KEY=None)
+
+
+def test_console_email_does_not_require_an_api_key() -> None:
+    config = EmailSettings(PROVIDER=EmailProvider.CONSOLE, RESEND_API_KEY=None)
+
+    assert config.PROVIDER is EmailProvider.CONSOLE
+
+
+def test_debug_follows_the_environment() -> None:
+    assert AppSettings(ENV="dev").DEBUG is True
+    assert AppSettings(ENV="prod").DEBUG is False
+
+
+def test_groups_load_from_their_prefixed_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Each group reads the environment under its own prefix. Nothing else in the
+    # suite would notice a prefix that stopped matching, because the defaults
+    # would quietly stand in.
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("AUTH_SESSION_TTL_DAYS", "3")
+    monkeypatch.setenv("BOOTSTRAP_OWNER_FULL_NAME", "Configured Owner")
+    monkeypatch.setenv("STORAGE_LOCAL_DIR", "var/documents")
+    monkeypatch.setenv("RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR", "7")
+
+    config = Settings()
+
+    assert config.app.ENV == "dev"
+    assert config.auth.SESSION_TTL_DAYS == 3
+    assert config.bootstrap.OWNER_FULL_NAME == "Configured Owner"
+    assert config.storage.LOCAL_DIR == Path("var/documents")
+    assert config.rate_limit.UPLOADS_PER_USER_PER_HOUR == 7
+
+
+def test_conventional_names_stay_unprefixed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # These four are supplied by something outside this app — a hosting
+    # platform, alembic, or a vendor SDK's own convention — so they keep their
+    # usual spelling despite living inside a prefixed group.
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://unused/conventional")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "conventional-anthropic-key")
+    monkeypatch.setenv("STORAGE_PROVIDER", "S3")
+    monkeypatch.setenv("S3_BUCKET", "conventional-bucket")
+    monkeypatch.setenv("S3_REGION", "us-east-1")
+
+    config = Settings()
+
+    assert config.db.URL == "postgresql+psycopg://unused/conventional"
+    assert config.ai.ANTHROPIC_API_KEY == "conventional-anthropic-key"
+    assert config.storage.S3_BUCKET == "conventional-bucket"
+    assert config.storage.S3_REGION == "us-east-1"

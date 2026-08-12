@@ -61,12 +61,12 @@ async def outbox_lifespan(worker_pool: OutboxWorkerPool) -> AsyncGenerator[None]
         OutboxDispatcher(
             worker_pool.sessionmaker,
             worker_pool.registry,
-            max_attempts=settings.OUTBOX_MAX_ATTEMPTS,
-            batch_size=settings.OUTBOX_BATCH_SIZE,
-            poll_interval_s=settings.OUTBOX_POLL_INTERVAL_SECONDS,
-            claim_ttl_s=settings.OUTBOX_CLAIM_TTL_SECONDS,
-            backoff_base_s=settings.OUTBOX_BACKOFF_BASE_SECONDS,
-            backoff_cap_s=settings.OUTBOX_BACKOFF_CAP_SECONDS,
+            max_attempts=settings.outbox.MAX_ATTEMPTS,
+            batch_size=settings.outbox.BATCH_SIZE,
+            poll_interval_s=settings.outbox.POLL_INTERVAL_SECONDS,
+            claim_ttl_s=settings.outbox.CLAIM_TTL_SECONDS,
+            backoff_base_s=settings.outbox.BACKOFF_BASE_SECONDS,
+            backoff_cap_s=settings.outbox.BACKOFF_CAP_SECONDS,
         )
         for _ in range(worker_pool.workers)
     ]

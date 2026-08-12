@@ -35,14 +35,16 @@ def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
     `_require_key` narrows those optional fields for the type checker rather
     than enforcing the requirement itself.
     """
-    model = settings.AI_MODEL
+    model = settings.ai.MODEL
 
-    if settings.AI_PROVIDER is AIProvider.OPENAI:
-        client = AsyncOpenAI(api_key=_require_key(settings.OPENAI_API_KEY, "OPENAI"))
+    if settings.ai.PROVIDER is AIProvider.OPENAI:
+        client = AsyncOpenAI(api_key=_require_key(settings.ai.OPENAI_API_KEY, "OPENAI"))
         return OpenAIAIClient(client, model=model), client.close
 
-    if settings.AI_PROVIDER is AIProvider.GEMINI:
-        gemini = genai.Client(api_key=_require_key(settings.GEMINI_API_KEY, "GEMINI"))
+    if settings.ai.PROVIDER is AIProvider.GEMINI:
+        gemini = genai.Client(
+            api_key=_require_key(settings.ai.GEMINI_API_KEY, "GEMINI")
+        )
 
         async def close_gemini() -> None:
             gemini.close()
@@ -50,7 +52,7 @@ def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
         return GeminiAIClient(gemini, model=model), close_gemini
 
     anthropic = AsyncAnthropic(
-        api_key=_require_key(settings.ANTHROPIC_API_KEY, "ANTHROPIC")
+        api_key=_require_key(settings.ai.ANTHROPIC_API_KEY, "ANTHROPIC")
     )
     return AnthropicAIClient(anthropic, model=model), anthropic.close
 

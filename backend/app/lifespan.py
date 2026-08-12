@@ -42,8 +42,8 @@ async def lifespan(app: FastAPI):
             DocumentAIClient(
                 ai_client,
                 storage,
-                classification_max_tokens=settings.AI_CLASSIFICATION_MAX_TOKENS,
-                extraction_max_tokens=settings.AI_EXTRACTION_MAX_TOKENS,
+                classification_max_tokens=settings.ai.CLASSIFICATION_MAX_TOKENS,
+                extraction_max_tokens=settings.ai.EXTRACTION_MAX_TOKENS,
             )
         )
 

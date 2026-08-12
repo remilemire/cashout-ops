@@ -4,7 +4,7 @@
 
 - ``email_challenge:{challenge_id}`` holds a JSON-encoded
   :class:`StoredEmailChallenge` and expires after
-  ``EMAIL_CHALLENGE_TTL_MINUTES`` — Redis TTLs enforce expiry, so a missing
+  ``AUTH_CHALLENGE_TTL_MINUTES`` — Redis TTLs enforce expiry, so a missing
   key covers both "never issued" and "expired".
 - ``email_challenge_user:{user_id}`` points at the user's current challenge
   id, written alongside the challenge with the same TTL — it lets initiation
@@ -44,7 +44,7 @@ def _attempts_key(challenge_id: str) -> str:
 async def save(
     redis: Redis, *, challenge_id: str, challenge: StoredEmailChallenge
 ) -> None:
-    ttl = timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES)
+    ttl = timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES)
     await redis.set(_challenge_key(challenge_id), challenge.model_dump_json(), ex=ttl)
     await redis.set(_user_pointer_key(challenge.user_id), challenge_id, ex=ttl)
 
@@ -103,7 +103,7 @@ async def count_code_attempt(redis: Redis, *, challenge_id: str) -> int:
     key = _attempts_key(challenge_id)
     count = await redis.incr(key)
     await redis.expire(  # pyright: ignore[reportUnknownMemberType]
-        key, timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES), nx=True
+        key, timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES), nx=True
     )
 
     return int(count)

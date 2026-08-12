@@ -22,7 +22,7 @@ def set_cookie(
         value=value,
         httponly=httponly,
         max_age=int(max_age.total_seconds()) if max_age is not None else None,
-        secure=not settings.DEBUG,
+        secure=not settings.app.DEBUG,
         samesite="lax",
         path="/",
     )
@@ -33,6 +33,6 @@ def delete_cookie(response: Response, *, key: str, httponly: bool = True) -> Non
         key=key,
         httponly=httponly,
         samesite="lax",
-        secure=not settings.DEBUG,
+        secure=not settings.app.DEBUG,
         path="/",
     )

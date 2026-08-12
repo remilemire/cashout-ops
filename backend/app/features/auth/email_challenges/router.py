@@ -47,7 +47,7 @@ _HOUR = timedelta(hours=1)
         Depends(
             rate_limit_ip(
                 "auth_initiate_ip",
-                limit=settings.RATE_LIMIT_AUTH_IP_PER_HOUR,
+                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
                 window=_HOUR,
             )
         ),
@@ -82,7 +82,7 @@ async def start_login(
         Depends(
             rate_limit_ip(
                 "auth_verify_link_ip",
-                limit=settings.RATE_LIMIT_AUTH_IP_PER_HOUR,
+                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
                 window=_HOUR,
             )
         ),
@@ -115,7 +115,7 @@ async def verify_link(
         Depends(
             rate_limit_ip(
                 "auth_verify_code_ip",
-                limit=settings.RATE_LIMIT_AUTH_IP_PER_HOUR,
+                limit=settings.rate_limit.AUTH_IP_PER_HOUR,
                 window=_HOUR,
             )
         ),

@@ -166,7 +166,7 @@ async def upload_document(
     # The router already stops reading past the limit, so this normally sees
     # the single byte of overshoot; it stays as the authoritative check for
     # callers that assembled the payload some other way.
-    if len(payload.data) > settings.MAX_DOCUMENT_SIZE_BYTES:
+    if len(payload.data) > settings.storage.MAX_DOCUMENT_SIZE_BYTES:
         raise AppError("DOCUMENT_TOO_LARGE")
 
     document = CashoutDocument(

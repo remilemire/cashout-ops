@@ -365,10 +365,10 @@ async def test_upload_rejects_oversized_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Shrink the configured limit rather than posting a full-size body.
-    monkeypatch.setattr(settings, "MAX_DOCUMENT_SIZE_MB", 1)
+    monkeypatch.setattr(settings.storage, "MAX_DOCUMENT_SIZE_MB", 1)
     submission_id = await create_submission(cashier_client)
     stored_before = len(storage.objects)
-    oversized = SAMPLE_PDF_BYTES + b"\0" * settings.MAX_DOCUMENT_SIZE_BYTES
+    oversized = SAMPLE_PDF_BYTES + b"\0" * settings.storage.MAX_DOCUMENT_SIZE_BYTES
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/documents",

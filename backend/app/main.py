@@ -64,7 +64,7 @@ def create_app() -> FastAPI:
         version="1.0.0",
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
-        debug=settings.DEBUG,
+        debug=settings.app.DEBUG,
         responses=error_responses("INTERNAL"),
     )
 

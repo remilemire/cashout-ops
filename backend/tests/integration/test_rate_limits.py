@@ -70,7 +70,7 @@ async def test_initiate_per_email_is_limited_with_retry_after(
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
 
-    for _ in range(settings.RATE_LIMIT_INITIATE_EMAIL_PER_HOUR):
+    for _ in range(settings.rate_limit.INITIATE_EMAIL_PER_HOUR):
         await _initiate(client)
 
     response = await client.post(
@@ -99,7 +99,7 @@ async def test_initiate_per_email_is_limited_with_retry_after(
 async def test_initiate_limit_is_enumeration_safe(client: AsyncClient) -> None:
     # No user row exists for this address: the limiter fires before any user
     # lookup, so the 429 is byte-identical to the real-account case.
-    for _ in range(settings.RATE_LIMIT_INITIATE_EMAIL_PER_HOUR):
+    for _ in range(settings.rate_limit.INITIATE_EMAIL_PER_HOUR):
         await _initiate(client, email="nobody@test.com")
 
     response = await client.post(
@@ -117,7 +117,7 @@ async def test_initiate_limit_is_enumeration_safe(client: AsyncClient) -> None:
 async def test_rate_limit_window_expiry_restores_access(
     client: AsyncClient, redis_client: Redis
 ) -> None:
-    for _ in range(settings.RATE_LIMIT_INITIATE_EMAIL_PER_HOUR):
+    for _ in range(settings.rate_limit.INITIATE_EMAIL_PER_HOUR):
         await _initiate(client, email="nobody@test.com")
     blocked = await client.post(
         "/api/auth/email-challenges", json={"email": "nobody@test.com"}
@@ -141,7 +141,7 @@ async def test_rate_limit_window_expiry_restores_access(
 async def test_initiate_per_ip_is_limited(client: AsyncClient) -> None:
     # Every request uses a unique address, staying far under the per-email
     # limit — only the shared client IP accumulates.
-    for i in range(settings.RATE_LIMIT_AUTH_IP_PER_HOUR):
+    for i in range(settings.rate_limit.AUTH_IP_PER_HOUR):
         await _initiate(client, email=f"unique-{i}@test.com")
 
     response = await client.post(
@@ -192,7 +192,7 @@ async def test_verify_link_per_challenge_is_limited(
 async def test_verify_code_per_ip_is_limited(client: AsyncClient) -> None:
     # The per-challenge budget on this endpoint is the service's atomic
     # MAX_CODE_ATTEMPTS counter; the route-level guard is per IP only.
-    for i in range(settings.RATE_LIMIT_AUTH_IP_PER_HOUR):
+    for i in range(settings.rate_limit.AUTH_IP_PER_HOUR):
         response = await client.post(
             "/api/auth/email-challenges/verify-code",
             json={"challengeId": f"missing-{i}", "code": "000000"},
@@ -220,7 +220,7 @@ async def test_upload_documents_per_user_is_limited(
     drain_outbox: OutboxDrain,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR", 2)
+    monkeypatch.setattr(settings.rate_limit, "UPLOADS_PER_USER_PER_HOUR", 2)
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
 
@@ -255,7 +255,7 @@ async def test_extract_per_user_is_limited(
     drain_outbox: OutboxDrain,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR", 1)
+    monkeypatch.setattr(settings.rate_limit, "EXTRACTS_PER_USER_PER_HOUR", 1)
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)

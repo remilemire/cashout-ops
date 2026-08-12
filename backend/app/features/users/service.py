@@ -52,7 +52,7 @@ async def update(db: AsyncSession, *, user_id: UUID, payload: UserUpdate) -> Use
 
 
 async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User:
-    """Create the bootstrapped OWNER_EMAIL account as the owner."""
+    """Create the bootstrapped BOOTSTRAP_OWNER_EMAIL account as the owner."""
     user = User(
         email=payload.email,
         full_name=payload.full_name,

@@ -25,7 +25,7 @@ class DatabaseResources:
 @asynccontextmanager
 async def db_lifespan() -> AsyncGenerator[DatabaseResources]:
     """Build the async engine and session factory; dispose the engine on exit."""
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_async_engine(settings.db.URL)
     sessionmaker = async_sessionmaker(
         bind=engine, class_=AsyncSession, expire_on_commit=False
     )

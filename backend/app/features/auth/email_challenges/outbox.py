@@ -84,7 +84,7 @@ async def _send_login_link_email(
     emailed link is always the live one, and a crash between the write and
     the send never leaves an emailed-but-unstored token.
     """
-    ttl_minutes = settings.EMAIL_CHALLENGE_TTL_MINUTES
+    ttl_minutes = settings.auth.CHALLENGE_TTL_MINUTES
 
     async with sessionmaker() as db:
         user = await users_service.find_by_id(db, user_id=user_id)
@@ -104,7 +104,7 @@ async def _send_login_link_email(
     if not await store.update(redis, challenge_id=challenge_id, challenge=challenge):
         return  # expired mid-flight
 
-    base_url = settings.APP_BASE_URL.rstrip("/")
+    base_url = settings.app.BASE_URL.rstrip("/")
     link = f"{base_url}/login/link?challenge={challenge_id}&token={token}"
 
     await email_client.send(

@@ -14,7 +14,7 @@ from app.core.config import settings
 async def redis_lifespan() -> AsyncGenerator[Redis]:
     """Build the Redis client and verify connectivity; close the client on exit."""
     client = Redis.from_url(  # pyright: ignore[reportUnknownMemberType]
-        settings.REDIS_URL, decode_responses=True
+        settings.redis.URL, decode_responses=True
     )
     try:
         # Fail fast on an unreachable or misconfigured Redis.

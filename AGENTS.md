@@ -21,7 +21,7 @@ The repository is the source of truth. Inspect existing implementations and near
 
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
 * `backend/app/lifespan.py` is the composition root for the database engine, Redis client, and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
-* `backend/app/core/` contains configuration, the external-provider enums (`providers.py`: `AIProvider`, `EmailProvider`, `StorageProvider`), the AI model catalog (`ai_models.py`: `AI_PROVIDER_MODELS`, which `AI_MODEL` is validated against), cookies, logging, and shared schemas.
+* `backend/app/core/` contains configuration (`config/`: the `Settings` root plus one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `storage`, `outbox`, `rate_limit` — each in its own module), the external-provider enums (`providers.py`: `AIProvider`, `EmailProvider`, `StorageProvider`), the AI model catalog (`ai_models.py`: `AI_PROVIDER_MODELS`, which `AI_MODEL` is validated against), cookies, logging, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency), the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency), and the transactional outbox (`outbox/`: dispatcher, worker pool, messages).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
 * `backend/app/security/` contains CSRF cookie helpers, secret-token cryptography, the `require_csrf` dependency, and the Redis fixed-window rate limiter (`rate_limit/`: `enforce` plus the `rate_limit_ip` dependency factory; feature-keyed limit dependencies live beside their feature). Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.
@@ -152,7 +152,7 @@ Do not move request-bound authorization checks into services merely to make a ro
 * Construct database and external client resources through the application lifespan.
 * Store application-wide resources on `app.state`.
 * Access those resources through dependencies.
-* Validate provider-conditional configuration in `Settings` (`core/config.py`), not in the lifespan. The selected provider's own settings are required and the other providers' are ignored, so an incomplete deployment fails to load its configuration rather than failing on first use.
+* Validate provider-conditional configuration in the settings group that owns it (`core/config/`), not in the lifespan. The selected provider's own settings are required and the other providers' are ignored, so an incomplete deployment fails to load its configuration rather than failing on first use.
 * A lifespan may still guard those settings, but only to narrow an optional field for the type checker; say so where the guard lives.
 * Keep provider-specific implementation details inside `integrations/`.
 * Keep generic document classification and extraction behavior inside `document_ai/`.

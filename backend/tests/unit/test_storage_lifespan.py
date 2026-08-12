@@ -20,8 +20,8 @@ from app.integrations.storage.lifespan import storage_lifespan
 async def test_local_provider_builds_the_local_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_STORAGE_PROVIDER", StorageProvider.LOCAL)
-    monkeypatch.setattr(settings, "LOCAL_STORAGE_DIR", Path("storage/documents"))
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.LOCAL)
+    monkeypatch.setattr(settings.storage, "LOCAL_DIR", Path("storage/documents"))
 
     async with storage_lifespan() as storage:
         assert isinstance(storage, LocalDocumentStorageClient)
@@ -30,11 +30,11 @@ async def test_local_provider_builds_the_local_client(
 async def test_s3_provider_builds_the_s3_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_STORAGE_PROVIDER", StorageProvider.S3)
-    monkeypatch.setattr(settings, "S3_BUCKET", "test-bucket")
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.S3)
+    monkeypatch.setattr(settings.storage, "S3_BUCKET", "test-bucket")
     # A concrete region keeps boto3 client construction independent of any AWS
     # config present (or absent) on the host running the tests.
-    monkeypatch.setattr(settings, "S3_REGION", "us-east-1")
+    monkeypatch.setattr(settings.storage, "S3_REGION", "us-east-1")
 
     async with storage_lifespan() as storage:
         assert isinstance(storage, S3DocumentStorageClient)
@@ -46,9 +46,9 @@ async def test_s3_provider_builds_the_s3_client(
 async def test_s3_provider_without_bucket_fails_at_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_STORAGE_PROVIDER", StorageProvider.S3)
-    monkeypatch.setattr(settings, "S3_BUCKET", None)
-    monkeypatch.setattr(settings, "S3_REGION", "us-east-1")
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.S3)
+    monkeypatch.setattr(settings.storage, "S3_BUCKET", None)
+    monkeypatch.setattr(settings.storage, "S3_REGION", "us-east-1")
 
     with pytest.raises(RuntimeError, match="S3_BUCKET"):
         async with storage_lifespan():
@@ -58,9 +58,9 @@ async def test_s3_provider_without_bucket_fails_at_startup(
 async def test_s3_provider_without_region_fails_at_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_STORAGE_PROVIDER", StorageProvider.S3)
-    monkeypatch.setattr(settings, "S3_BUCKET", "test-bucket")
-    monkeypatch.setattr(settings, "S3_REGION", None)
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.S3)
+    monkeypatch.setattr(settings.storage, "S3_BUCKET", "test-bucket")
+    monkeypatch.setattr(settings.storage, "S3_REGION", None)
 
     with pytest.raises(RuntimeError, match="S3_REGION"):
         async with storage_lifespan():
@@ -70,9 +70,9 @@ async def test_s3_provider_without_region_fails_at_startup(
 async def test_local_provider_without_directory_fails_at_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_STORAGE_PROVIDER", StorageProvider.LOCAL)
-    monkeypatch.setattr(settings, "LOCAL_STORAGE_DIR", None)
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.LOCAL)
+    monkeypatch.setattr(settings.storage, "LOCAL_DIR", None)
 
-    with pytest.raises(RuntimeError, match="LOCAL_STORAGE_DIR"):
+    with pytest.raises(RuntimeError, match="STORAGE_LOCAL_DIR"):
         async with storage_lifespan():
             pass

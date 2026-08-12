@@ -118,7 +118,7 @@ async def test_start_login_bootstraps_owner(
 ) -> None:
     # No users exist: the first sign-in for OWNER_EMAIL creates the account.
     link = await _initiate_and_deliver(
-        client, drain_outbox, email_client, email=settings.OWNER_EMAIL
+        client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
     code = await _obtain_code(client, link)
 
@@ -138,8 +138,8 @@ async def test_start_login_bootstraps_owner(
 async def test_start_login_existing_owner_is_not_duplicated(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    await _initiate(client, email=settings.OWNER_EMAIL)
-    await _initiate(client, email=settings.OWNER_EMAIL)
+    await _initiate(client, email=settings.bootstrap.OWNER_EMAIL)
+    await _initiate(client, email=settings.bootstrap.OWNER_EMAIL)
 
     users = (await db_session.execute(select(User))).scalars().all()
     assert len(users) == 1

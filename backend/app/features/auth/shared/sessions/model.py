@@ -11,7 +11,7 @@ from app.core.config import settings
 
 # Single source for the session lifetime: the store's Redis TTL, the cookie
 # max-age, and `expires_at` all derive from it.
-SESSION_TTL = timedelta(days=settings.SESSION_TTL_DAYS)
+SESSION_TTL = timedelta(days=settings.auth.SESSION_TTL_DAYS)
 
 
 class Session(BaseModel):

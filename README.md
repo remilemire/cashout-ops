@@ -102,7 +102,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │   └── app/
 │       ├── main.py                    # create_app(); ASGI target app.main:app; SPA fallback
 │       ├── lifespan.py                # composition root: enters per-component lifespans, wires app.state
-│       ├── core/                      # config, AI model catalog, storage/email provider enums, cookies, logging, shared schemas
+│       ├── core/                      # config/ (one settings group per concern), AI model catalog, storage/email provider enums, cookies, logging, shared schemas
 │       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis), outbox/ (dispatcher, messages)
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # CSRF cookies, token crypto, require_csrf, rate_limit/ (Redis fixed window)
@@ -146,7 +146,7 @@ Backend tooling is [uv](https://docs.astral.sh/uv/), driven through the repo-roo
 
 ```bash
 # 1. Backend
-cp backend/.env.example backend/.env   # then set OWNER_EMAIL and the selected provider's AI key
+cp backend/.env.example backend/.env   # then set BOOTSTRAP_OWNER_EMAIL and the selected provider's AI key
 make backend-install                   # uv sync (creates .venv, installs incl. dev group)
 
 # 2. Database
@@ -162,40 +162,42 @@ make frontend-build                    # outputs into backend/static/
 
 All backend variables are loaded from `backend/.env` (see `backend/.env.example`).
 
-| Variable              | Required | Default                                                        | Notes                                                                                                |
-| --------------------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
-| `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
-| `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
-| `AI_MODEL`            | no       | `claude-sonnet-4-6`                                            | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai_models.py](backend/app/core/ai_models.py)); selects the document-AI client built at startup. An unlisted value fails validation at boot. |
-| `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
-| `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
-| `DOCUMENT_STORAGE_PROVIDER` | no | `LOCAL`                                                       | `LOCAL` writes documents under `LOCAL_STORAGE_DIR`; `S3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
-| `LOCAL_STORAGE_DIR`   | see notes | —                                                             | Where uploaded documents are written by the local storage client. Required when `DOCUMENT_STORAGE_PROVIDER=LOCAL` (the default). |
-| `S3_BUCKET`           | see notes | —                                                             | Required when `DOCUMENT_STORAGE_PROVIDER=S3`. Credentials are not configured here — they come from the standard AWS chain (env vars, profile, instance role). |
-| `S3_REGION`           | see notes | —                                                             | AWS region for the S3 client. Required when `DOCUMENT_STORAGE_PROVIDER=S3`.                          |
-| `MAX_DOCUMENT_SIZE_MB`| no       | `20`                                                           | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
-| `SESSION_TTL_DAYS`    | no       | `7`                                                            | Session lifetime; also the `session_token` cookie max-age.                                           |
-| `EMAIL_PROVIDER`      | no       | `CONSOLE`                                                      | `CONSOLE` logs emails to stdout (dev default); `RESEND` sends for real and requires `RESEND_API_KEY`. |
-| `RESEND_API_KEY`      | see notes | —                                                             | Required only when `EMAIL_PROVIDER=RESEND` (validated at startup).                                    |
-| `EMAIL_FROM`          | no       | `Whiskey District <onboarding@resend.dev>`                     | Sender address for all outbound mail.                                                                 |
-| `APP_BASE_URL`        | no       | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the emailed sign-in links. Production must set its real origin. |
-| `EMAIL_CHALLENGE_TTL_MINUTES` | no | `15`                                                       | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
-| `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
-| `OWNER_FULL_NAME`     | no       | `Owner`                                                        | Full name given to the bootstrapped `OWNER_EMAIL` account.                                           |
-| `RATE_LIMIT_AUTH_IP_PER_HOUR` | no | `20`                                                       | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
-| `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | no | `5`                                                 | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
-| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | no | `30`                                              | Per-user hourly quota on cashout document uploads (each starts an AI extraction).                    |
-| `RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR` | no | `15`                                             | Per-user hourly quota on AI re-extractions.                                                          |
-| `OUTBOX_MAX_ATTEMPTS` | no       | `10`                                                           | Delivery attempts before an outbox message dead-letters.                                             |
-| `OUTBOX_BATCH_SIZE`   | no       | `1`                                                            | Messages a dispatcher worker claims per poll.                                                        |
-| `OUTBOX_POLL_INTERVAL_SECONDS` | no | `1.0`                                                     | How often workers poll `outbox_messages` for pending work.                                           |
-| `OUTBOX_CLAIM_TTL_SECONDS` | no  | `30.0`                                                        | How long a claim is protected before a crashed worker's row becomes claimable again.                 |
-| `OUTBOX_BACKOFF_BASE_SECONDS` | no | `5.0`                                                      | Retry backoff base — a failed attempt waits `base * 2^(attempt-1)`.                                  |
-| `OUTBOX_BACKOFF_CAP_SECONDS` | no | `900.0`                                                     | Ceiling on that exponential backoff.                                                                 |
+Settings are grouped: each variable's prefix names the nested settings model it belongs to, so `STORAGE_LOCAL_DIR` is read as `settings.storage.LOCAL_DIR` and `AUTH_SESSION_TTL_DAYS` as `settings.auth.SESSION_TTL_DAYS` (see [core/config/](backend/app/core/config/)). A few variables stay unprefixed because something outside this app supplies or expects them — the vendor API keys, `DATABASE_URL`, and the `S3_*` pair; those are marked below.
 
-The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config.py](backend/app/core/config.py) inverts that map to resolve `AI_PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
+| Variable              | Attribute | Required | Default                                                        | Notes                                                                                                |
+| --------------------- | --------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `APP_ENV`             | `app.ENV` | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `app.DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.   |
+| `APP_BASE_URL`        | `app.BASE_URL` | no  | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the emailed sign-in links. Production must set its real origin. |
+| `DATABASE_URL`        | `db.URL`  | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Unprefixed: used by both the app and Alembic, and injected under this name by hosting platforms. |
+| `REDIS_URL`           | `redis.URL` | yes    | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
+| `BOOTSTRAP_OWNER_EMAIL` | `bootstrap.OWNER_EMAIL` | no | `owner@test.com`                                    | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
+| `BOOTSTRAP_OWNER_FULL_NAME` | `bootstrap.OWNER_FULL_NAME` | no | `Owner`                                         | Full name given to the bootstrapped owner account.                                                   |
+| `AUTH_SESSION_TTL_DAYS` | `auth.SESSION_TTL_DAYS` | no | `7`                                                     | Session lifetime; also the `session_token` cookie max-age.                                           |
+| `AUTH_CHALLENGE_TTL_MINUTES` | `auth.CHALLENGE_TTL_MINUTES` | no | `15`                                           | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
+| `EMAIL_PROVIDER`      | `email.PROVIDER` | no  | `CONSOLE`                                                      | `CONSOLE` logs emails to stdout (dev default); `RESEND` sends for real and requires `RESEND_API_KEY`. |
+| `RESEND_API_KEY`      | `email.RESEND_API_KEY` | see notes | —                                                | Unprefixed (vendor convention). Required only when `EMAIL_PROVIDER=RESEND` (validated at startup).    |
+| `EMAIL_FROM`          | `email.FROM` | no      | `Whiskey District <onboarding@resend.dev>`                     | Sender address for all outbound mail.                                                                 |
+| `AI_MODEL`            | `ai.MODEL` | no      | `claude-sonnet-4-6`                                            | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai_models.py](backend/app/core/ai_models.py)); selects the document-AI client built at startup. An unlisted value fails validation at boot. |
+| `AI_CLASSIFICATION_MAX_TOKENS` | `ai.CLASSIFICATION_MAX_TOKENS` | no | `512`                                     | Max output tokens for a classification request.                                                      |
+| `AI_EXTRACTION_MAX_TOKENS` | `ai.EXTRACTION_MAX_TOKENS` | no  | `2048`                                            | Max output tokens for an extraction request.                                                         |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | `ai.*` | see notes | — | Unprefixed (vendor convention). Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
+| `STORAGE_PROVIDER`    | `storage.PROVIDER` | no | `LOCAL`                                                    | `LOCAL` writes documents under `STORAGE_LOCAL_DIR`; `S3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
+| `STORAGE_LOCAL_DIR`   | `storage.LOCAL_DIR` | see notes | —                                                     | Where uploaded documents are written by the local storage client. Required when `STORAGE_PROVIDER=LOCAL` (the default). |
+| `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=S3`. Credentials are not configured here — they come from the standard AWS chain (env vars, profile, instance role). |
+| `S3_REGION`           | `storage.S3_REGION` | see notes | —                                                     | AWS region for the S3 client. Required when `STORAGE_PROVIDER=S3`.                                   |
+| `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
+| `RATE_LIMIT_AUTH_IP_PER_HOUR` | `rate_limit.AUTH_IP_PER_HOUR` | no | `20`                                          | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
+| `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | `rate_limit.INITIATE_EMAIL_PER_HOUR` | no | `5`                             | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
+| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | `rate_limit.UPLOADS_PER_USER_PER_HOUR` | no | `30`                          | Per-user hourly quota on cashout document uploads (each starts an AI extraction).                    |
+| `RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR` | `rate_limit.EXTRACTS_PER_USER_PER_HOUR` | no | `15`                        | Per-user hourly quota on AI re-extractions.                                                          |
+| `OUTBOX_MAX_ATTEMPTS` | `outbox.MAX_ATTEMPTS` | no | `10`                                                     | Delivery attempts before an outbox message dead-letters.                                             |
+| `OUTBOX_BATCH_SIZE`   | `outbox.BATCH_SIZE` | no  | `1`                                                        | Messages a dispatcher worker claims per poll.                                                        |
+| `OUTBOX_POLL_INTERVAL_SECONDS` | `outbox.POLL_INTERVAL_SECONDS` | no | `1.0`                                     | How often workers poll `outbox_messages` for pending work.                                           |
+| `OUTBOX_CLAIM_TTL_SECONDS` | `outbox.CLAIM_TTL_SECONDS` | no  | `30.0`                                            | How long a claim is protected before a crashed worker's row becomes claimable again.                 |
+| `OUTBOX_BACKOFF_BASE_SECONDS` | `outbox.BACKOFF_BASE_SECONDS` | no | `5.0`                                         | Retry backoff base — a failed attempt waits `base * 2^(attempt-1)`.                                  |
+| `OUTBOX_BACKOFF_CAP_SECONDS` | `outbox.BACKOFF_CAP_SECONDS` | no | `900.0`                                        | Ceiling on that exponential backoff.                                                                 |
+
+The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config/ai.py](backend/app/core/config/ai.py) inverts that map to resolve `settings.ai.PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
 The frontend currently reads no environment variables.
 
@@ -252,17 +254,17 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
 
-**Settings.** `Settings(BaseSettings)` reads `.env`. `DEBUG` is a computed field derived from `ENVIRONMENT`.
+**Settings.** `Settings` ([core/config/](backend/app/core/config/)) is one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `storage`, `outbox`, `rate_limit` — each a `BaseSettings` reading `.env` under its own `env_prefix`, so code reads `settings.storage.LOCAL_DIR`. Provider-conditional validation lives in the group it belongs to, so an incomplete deployment fails to load its configuration rather than failing on first use. `settings.app.DEBUG` is a computed field derived from `APP_ENV`.
 
 ## Authentication and sessions
 
-- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`EMAIL_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code. Starting a new sign-in invalidates any previous pending challenge for the account.
+- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`AUTH_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code. Starting a new sign-in invalidates any previous pending challenge for the account.
 - Visiting the link (`POST /api/auth/email-challenges/verify-link`) reveals a one-time code and spends the link — it is single-use, so a second click fails; entering the code in the initiating tab (`POST /api/auth/email-challenges/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
-- Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
+- Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `BOOTSTRAP_OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` / `require_owner` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
 - Cookies are `Secure` in production, `SameSite=Lax`, `Path=/`.
-- Session TTL is `SESSION_TTL_DAYS` (default 7). There is no "remember me".
+- Session TTL is `AUTH_SESSION_TTL_DAYS` (default 7). There is no "remember me".
 - Logout clears both cookies and deletes the corresponding Redis session.
 
 ## Error contract
@@ -334,7 +336,7 @@ The three scripts under `backend/scripts/` are the Render deploy hooks:
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
 - `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --forwarded-allow-ips='*'`. The start command trusts Render's `X-Forwarded-For` (only the platform proxy can reach the service) so per-IP rate limiting sees real client addresses.
 
-The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`CONSOLE`), so nobody can sign in.
+The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `BOOTSTRAP_OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `APP_ENV=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`CONSOLE`), so nobody can sign in.
 
 ## Conventions
 
@@ -349,7 +351,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
-- **`LOCAL` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `DOCUMENT_STORAGE_PROVIDER=S3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `LOCAL` only for development or hosts with a persistent disk. Pointing the client at an S3-compatible store such as MinIO or R2 would need a configurable endpoint, which is no longer modeled.
+- **`LOCAL` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `STORAGE_PROVIDER=S3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `LOCAL` only for development or hosts with a persistent disk. Pointing the client at an S3-compatible store such as MinIO or R2 would need a configurable endpoint, which is no longer modeled.
 
 ## License
 

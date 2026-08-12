@@ -57,8 +57,9 @@ async def make_client(
     Seeds the user row directly (with the given `role`), then signs in through
     the real passwordless challenge flow so the returned client carries
     session + csrf cookies. `owner=True` seeds nothing: initiating a login for
-    OWNER_EMAIL exercises the real lazy owner bootstrap (which names the
-    account OWNER_FULL_NAME, ignoring `full_name`). Omitting `email` picks a
+    BOOTSTRAP_OWNER_EMAIL exercises the real lazy owner bootstrap (which names
+    the account BOOTSTRAP_OWNER_FULL_NAME, ignoring `full_name`). Omitting
+    `email` picks a
     unique address. All clients close at fixture teardown.
     """
     async with contextlib.AsyncExitStack() as stack:

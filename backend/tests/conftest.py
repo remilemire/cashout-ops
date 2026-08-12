@@ -13,12 +13,12 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 # Required settings must exist before anything imports app.core.config. Set them
 # here so the suite runs without a .env (e.g. in CI); os.environ wins over .env.
 # This block must stay above pytest_plugins: the fixture modules import app.*.
-os.environ.setdefault("ENVIRONMENT", "dev")
+os.environ.setdefault("APP_ENV", "dev")
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
 os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
-os.environ.setdefault("OWNER_EMAIL", "owner@test.com")
-os.environ.setdefault("LOCAL_STORAGE_DIR", "storage/documents")
+os.environ.setdefault("BOOTSTRAP_OWNER_EMAIL", "owner@test.com")
+os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")
 
 pytest_plugins = [
     "tests.support.fixtures.db",

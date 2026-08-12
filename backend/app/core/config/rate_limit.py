@@ -1,0 +1,27 @@
+# backend/app/core/config/rate_limit.py
+
+from __future__ import annotations
+
+from pydantic_settings import SettingsConfigDict
+
+from .base import SettingsGroup
+
+
+class RateLimitSettings(SettingsGroup):
+    """Rate limits (fixed 1-hour windows; counters live in Redis under
+    rate_limit:*).
+
+    AUTH_IP caps each anonymous auth endpoint per client IP; INITIATE_EMAIL
+    caps sign-in emails per address, real or decoy; UPLOADS and EXTRACTS cap
+    each user's cashout document uploads and AI re-extractions.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="RATE_LIMIT_")
+
+    AUTH_IP_PER_HOUR: int = 20
+    INITIATE_EMAIL_PER_HOUR: int = 5
+    UPLOADS_PER_USER_PER_HOUR: int = 30
+    EXTRACTS_PER_USER_PER_HOUR: int = 15
+
+
+__all__ = ["RateLimitSettings"]

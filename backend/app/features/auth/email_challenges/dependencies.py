@@ -48,7 +48,7 @@ async def rate_limit_initiate_email(
         redis,
         scope="auth_initiate_email",
         identifier=hash_secret_token(payload.email.lower()),
-        limit=settings.RATE_LIMIT_INITIATE_EMAIL_PER_HOUR,
+        limit=settings.rate_limit.INITIATE_EMAIL_PER_HOUR,
         window=_HOUR,
     )
 
@@ -64,7 +64,7 @@ async def rate_limit_verify_link_challenge(
         scope="auth_verify_link_challenge",
         identifier=payload.challenge_id,
         limit=MAX_LINK_ATTEMPTS,
-        window=timedelta(minutes=settings.EMAIL_CHALLENGE_TTL_MINUTES),
+        window=timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES),
     )
 
 
