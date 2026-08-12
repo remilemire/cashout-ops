@@ -10,6 +10,7 @@ from pydantic import EmailStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.ai import AI_PROVIDER_MODELS, AIProvider
+from app.core.storage import StorageProvider
 from app.integrations.email import EmailProvider
 
 # AI_PROVIDER_MODELS inverted: the catalog reads naturally grouped by provider,
@@ -85,7 +86,19 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
+
+    # Document storage. DOCUMENT_STORAGE_PROVIDER selects the client: LOCAL
+    # writes under DOCUMENT_STORAGE_DIR (dev default; boots without AWS
+    # config), S3 stores objects in S3_BUCKET (required, validated at
+    # startup). AWS credentials come from the standard AWS chain (env vars,
+    # profile, instance role), not from here; S3_ENDPOINT_URL targets
+    # S3-compatible stores such as MinIO or R2.
+    DOCUMENT_STORAGE_PROVIDER: StorageProvider = StorageProvider.LOCAL
     DOCUMENT_STORAGE_DIR: Path = Path("storage/documents")
+    S3_BUCKET: str | None = None
+    S3_REGION: str | None = None
+    S3_ENDPOINT_URL: str | None = None
+
     # Upload ceiling for a single document, in megabytes. The upload endpoint
     # stops reading a request body once it passes this, and the service rejects
     # the upload (DOCUMENT_TOO_LARGE). Configured in MB because that is how the
