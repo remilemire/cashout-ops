@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.core.errors import ErrorKind
 from app.core.schemas import BaseOut
 
-from .codes import ErrorCode
+from .catalog import ErrorCode
 from .validation import ValidationIssueCode
 
 

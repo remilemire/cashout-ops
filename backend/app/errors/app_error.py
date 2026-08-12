@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .codes import ErrorCode
+from .catalog import ErrorCode
 
 
 class AppError(Exception):

@@ -8,7 +8,7 @@ from app.features.cashout.errors import (
 )
 from app.features.users.errors import constraint_code_map as user_constraint_code_map
 
-from .codes import ErrorCode
+from .catalog import ErrorCode
 
 constraint_code_map: ConstraintCodeMap[ErrorCode] = {
     **user_constraint_code_map,

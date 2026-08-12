@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .catalog import error_catalog, kind_status_map
-from .codes import ErrorCode
+from .catalog import ErrorCode, error_catalog, kind_status_map
 from .schemas import ErrorResponseSchema, ValidationIssueSchema
 from .validation import validation_issue_catalog
 

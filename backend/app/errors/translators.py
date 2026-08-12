@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app.lib.casing import snake_to_camel
 
 from .app_error import AppError
-from .codes import ErrorCode
+from .catalog import ErrorCode
 from .constraints import constraint_code_map
 from .validation import (
     ValidationError,

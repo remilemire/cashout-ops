@@ -12,8 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .app_error import AppError
-from .catalog import error_catalog, kind_status_map
-from .codes import ErrorCode
+from .catalog import ErrorCode, error_catalog, kind_status_map
 from .schemas import ErrorResponseSchema, ValidationIssueSchema
 from .translators import translate_integrity_error, translate_validation_error
 from .validation import ValidationError, validation_issue_catalog
