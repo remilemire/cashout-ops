@@ -171,11 +171,10 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
-| `DOCUMENT_STORAGE_PROVIDER` | no | `LOCAL`                                                       | `LOCAL` writes documents under `DOCUMENT_STORAGE_DIR` (dev default; boots without AWS config); `S3` stores them in `S3_BUCKET`. |
-| `DOCUMENT_STORAGE_DIR`| no       | `storage/documents`                                            | Where uploaded documents are written by the local storage client.                                    |
-| `S3_BUCKET`           | see notes | —                                                             | Required only when `DOCUMENT_STORAGE_PROVIDER=S3` (validated at startup). Credentials are not configured here — they come from the standard AWS chain (env vars, profile, instance role). |
-| `S3_REGION`           | no       | —                                                              | AWS region for the S3 client; defaults to the AWS SDK's own resolution.                              |
-| `S3_ENDPOINT_URL`     | no       | —                                                              | Custom endpoint for S3-compatible stores such as MinIO or Cloudflare R2.                             |
+| `DOCUMENT_STORAGE_PROVIDER` | no | `LOCAL`                                                       | `LOCAL` writes documents under `LOCAL_STORAGE_DIR`; `S3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
+| `LOCAL_STORAGE_DIR`   | see notes | —                                                             | Where uploaded documents are written by the local storage client. Required when `DOCUMENT_STORAGE_PROVIDER=LOCAL` (the default). |
+| `S3_BUCKET`           | see notes | —                                                             | Required when `DOCUMENT_STORAGE_PROVIDER=S3`. Credentials are not configured here — they come from the standard AWS chain (env vars, profile, instance role). |
+| `S3_REGION`           | see notes | —                                                             | AWS region for the S3 client. Required when `DOCUMENT_STORAGE_PROVIDER=S3`.                          |
 | `MAX_DOCUMENT_SIZE_MB`| no       | `20`                                                           | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
 | `SESSION_TTL_DAYS`    | no       | `7`                                                            | Session lifetime; also the `session_token` cookie max-age.                                           |
 | `EMAIL_PROVIDER`      | no       | `CONSOLE`                                                      | `CONSOLE` logs emails to stdout (dev default); `RESEND` sends for real and requires `RESEND_API_KEY`. |
@@ -350,7 +349,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
-- **`LOCAL` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `DOCUMENT_STORAGE_PROVIDER=S3` (with `S3_BUCKET`) to store documents in S3 or an S3-compatible store via `S3DocumentStorageClient`; keep `LOCAL` only for development or hosts with a persistent disk.
+- **`LOCAL` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `DOCUMENT_STORAGE_PROVIDER=S3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `LOCAL` only for development or hosts with a persistent disk. Pointing the client at an S3-compatible store such as MinIO or R2 would need a configurable endpoint, which is no longer modeled.
 
 ## License
 

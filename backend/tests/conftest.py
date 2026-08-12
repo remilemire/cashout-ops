@@ -18,6 +18,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
 os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("OWNER_EMAIL", "owner@test.com")
+os.environ.setdefault("LOCAL_STORAGE_DIR", "storage/documents")
 
 pytest_plugins = [
     "tests.support.fixtures.db",

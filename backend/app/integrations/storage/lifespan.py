@@ -26,11 +26,17 @@ async def storage_lifespan() -> AsyncGenerator[DocumentStorageClient]:
 
 
 def _build_document_storage() -> DocumentStorageClient:
-    """Select the configured storage client; S3 requires its bucket."""
+    """Select the configured storage client.
+
+    Settings already rejects a provider whose own configuration is missing, so
+    the guards below narrow those optional fields for the type checker rather
+    than enforcing the requirement themselves.
+    """
     if settings.DOCUMENT_STORAGE_PROVIDER is StorageProvider.S3:
-        if not settings.S3_BUCKET:
+        if not settings.S3_BUCKET or not settings.S3_REGION:
             raise RuntimeError(
-                "S3_BUCKET is required when DOCUMENT_STORAGE_PROVIDER is S3."
+                "S3_BUCKET and S3_REGION are required when "
+                "DOCUMENT_STORAGE_PROVIDER is S3."
             )
         # AWS credentials intentionally come from the standard AWS chain (env
         # vars, profile, instance role) rather than Settings, so every
@@ -42,7 +48,10 @@ def _build_document_storage() -> DocumentStorageClient:
         s3: S3Client = boto3.client(  # pyright: ignore[reportUnknownMemberType]
             "s3",
             region_name=settings.S3_REGION,
-            endpoint_url=settings.S3_ENDPOINT_URL,
         )
         return S3DocumentStorageClient(s3, bucket=settings.S3_BUCKET)
-    return LocalDocumentStorageClient(settings.DOCUMENT_STORAGE_DIR)
+    if settings.LOCAL_STORAGE_DIR is None:
+        raise RuntimeError(
+            "LOCAL_STORAGE_DIR is required when DOCUMENT_STORAGE_PROVIDER is LOCAL."
+        )
+    return LocalDocumentStorageClient(settings.LOCAL_STORAGE_DIR)

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
-from pydantic import EmailStr, computed_field, field_validator
+from pydantic import EmailStr, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.ai_models import AI_PROVIDER_MODELS
@@ -87,16 +87,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str | None = None
 
     # Document storage. DOCUMENT_STORAGE_PROVIDER selects the client: LOCAL
-    # writes under DOCUMENT_STORAGE_DIR (dev default; boots without AWS
-    # config), S3 stores objects in S3_BUCKET (required, validated at
-    # startup). AWS credentials come from the standard AWS chain (env vars,
-    # profile, instance role), not from here; S3_ENDPOINT_URL targets
-    # S3-compatible stores such as MinIO or R2.
+    # writes under LOCAL_STORAGE_DIR, S3 stores objects in S3_BUCKET. Each
+    # provider's own settings are required when it is selected and ignored
+    # otherwise, so both groups default to None and _validate_storage_config
+    # enforces the selected one. AWS credentials are not modeled here; they
+    # come from the standard AWS chain (env vars, profile, instance role).
     DOCUMENT_STORAGE_PROVIDER: StorageProvider = StorageProvider.LOCAL
-    DOCUMENT_STORAGE_DIR: Path = Path("storage/documents")
+    LOCAL_STORAGE_DIR: Path | None = None
     S3_BUCKET: str | None = None
     S3_REGION: str | None = None
-    S3_ENDPOINT_URL: str | None = None
 
     # Upload ceiling for a single document, in megabytes. The upload endpoint
     # stops reading a request body once it passes this, and the service rejects
@@ -111,6 +110,46 @@ class Settings(BaseSettings):
             supported = ", ".join(_MODEL_PROVIDERS)
             raise ValueError(f"AI_MODEL must be one of: {supported}.")
         return value
+
+    @field_validator("LOCAL_STORAGE_DIR", mode="before")
+    @classmethod
+    def _blank_dir_is_unset(cls, value: object) -> object:
+        # A bare `LOCAL_STORAGE_DIR=` would otherwise parse to Path("."), which
+        # silently writes documents into the working directory. Treat it as
+        # unset so the check below rejects it, matching how the S3 settings
+        # already treat their empty strings.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _validate_storage_config(self) -> Settings:
+        """Require the selected storage provider's own settings.
+
+        A misconfigured provider is caught here rather than at first upload,
+        so an incomplete deployment fails to boot instead of accepting
+        documents it cannot store.
+        """
+        if self.DOCUMENT_STORAGE_PROVIDER is StorageProvider.S3:
+            missing = [
+                name
+                for name, value in (
+                    ("S3_BUCKET", self.S3_BUCKET),
+                    ("S3_REGION", self.S3_REGION),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    f"{', '.join(missing)} required when "
+                    f"DOCUMENT_STORAGE_PROVIDER is {StorageProvider.S3}."
+                )
+        elif self.LOCAL_STORAGE_DIR is None:
+            raise ValueError(
+                f"LOCAL_STORAGE_DIR required when "
+                f"DOCUMENT_STORAGE_PROVIDER is {StorageProvider.LOCAL}."
+            )
+        return self
 
     @computed_field
     @property
