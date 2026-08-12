@@ -36,8 +36,11 @@ migrate: backend-migrate ## Apply database migrations
 
 build: install frontend-build ## Render build command (deps + SPA build)
 
+# Behind Render only the platform proxy can reach the service, so trusting
+# X-Forwarded-For from any peer is safe there; uvicorn's worker then rewrites
+# request.client to the real client for per-IP rate limiting.
 start: ## Render start command (gunicorn on $$PORT)
-	$(UV) run gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$$PORT
+	$(UV) run gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$$PORT --forwarded-allow-ips='*'
 
 ## ── Backend (uv, against backend/pyproject.toml) ───────────────────
 

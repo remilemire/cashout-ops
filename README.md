@@ -301,6 +301,8 @@ Implemented under the `/api` prefix:
 | POST   | `/api/cashout/analyses/{id}/verify`           | owner + CSRF    | 200     | Confirm an extraction, optionally with corrected values.    |
 | POST   | `/api/cashout/submissions/{id}/complete`      | owner + CSRF    | 200     | Reconcile the verified analyses → `COMPLETED`.              |
 
+The auth endpoints are rate limited (per IP, and sign-in emails per address), and cashout document upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
+
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
 
 ## Deployment
@@ -311,7 +313,7 @@ The three scripts under `backend/scripts/` are the Render deploy hooks:
 
 - `build.bash` — `uv sync` in `backend/`, then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
-- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT`.
+- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --forwarded-allow-ips='*'`. The start command trusts Render's `X-Forwarded-For` (only the platform proxy can reach the service) so per-IP rate limiting sees real client addresses.
 
 The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `ENVIRONMENT=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=RESEND` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`CONSOLE`), so nobody can sign in.
 

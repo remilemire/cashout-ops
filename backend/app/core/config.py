@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # with it the link and its one-time code) expires this long after initiation.
     EMAIL_CHALLENGE_TTL_MINUTES: int = 15
 
+    # Rate limits (fixed 1-hour windows; counters live in Redis under
+    # rate_limit:*). AUTH_IP caps each anonymous auth endpoint per client IP;
+    # INITIATE_EMAIL caps sign-in emails per address, real or decoy; UPLOADS
+    # and EXTRACTS cap each user's cashout document uploads and AI
+    # re-extractions.
+    RATE_LIMIT_AUTH_IP_PER_HOUR: int = 20
+    RATE_LIMIT_INITIATE_EMAIL_PER_HOUR: int = 5
+    RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR: int = 30
+    RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR: int = 15
+
     # Outbox dispatch. Workers poll outbox_messages every POLL_INTERVAL; a
     # claim is protected for CLAIM_TTL before a crashed worker's row becomes
     # claimable again. Failed attempts retry with exponential backoff
