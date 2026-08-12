@@ -1,23 +1,33 @@
 # backend/tests/integration/test_rate_limits.py
 
-"""Rate limiting on the pre-session auth endpoints.
+"""Rate limiting on the pre-session auth endpoints and the cashout quotas.
 
 The passwordless routes carry two layers: per-identifier limits (email
 address, challenge id) against targeted abuse, and per-IP caps on request
-volume from one source. All requests here share the test client's IP; the
-autouse FLUSHDB between tests resets every counter.
+volume from one source. The AI-costly cashout endpoints carry per-user
+quotas bounding provider spend. All requests here share the test client's
+IP; the autouse FLUSHDB between tests resets every counter.
 """
 
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.features.auth.email_challenges.dependencies import MAX_LINK_ATTEMPTS
 from app.infrastructure.redis import Redis
+from tests.support.api import csrf_headers
+from tests.support.cashout import (
+    configure_manual_note,
+    create_submission,
+    upload_document,
+)
+from tests.support.documents import SAMPLE_PDF_BYTES, SAMPLE_PNG_UPLOAD
 from tests.support.factories import create_user
-from tests.support.fakes import FakeEmailClient, LoginLink
+from tests.support.fakes import FakeAIClient, FakeEmailClient, LoginLink
+from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 from tests.support.fixtures.redis import redis_keys
 
@@ -196,3 +206,72 @@ async def test_verify_code_per_ip_is_limited(client: AsyncClient) -> None:
     )
     assert final.status_code == 429, final.text
     assert final.json()["code"] == RATE_LIMITED_CODE
+
+
+# ================================
+# -- Cashout — per-user quotas ---
+# ================================
+
+
+async def test_upload_documents_per_user_is_limited(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    make_client: ClientFactory,
+    drain_outbox: OutboxDrain,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR", 2)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+
+    # Two uploads with distinct bytes (duplicate checksums are rejected)
+    # spend the whole quota.
+    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await upload_document(
+        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    )
+
+    response = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/documents",
+        files={"file": ("third.pdf", SAMPLE_PDF_BYTES + b" third", "application/pdf")},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 429, response.text
+    body = response.json()
+    assert body["kind"] == RATE_LIMITED_KIND
+    assert body["code"] == RATE_LIMITED_CODE
+    assert response.headers["Retry-After"].isdigit()
+
+    # The quota is keyed per user: another cashier still uploads freely.
+    other = await make_client(email="other-cashier@test.com")
+    other_submission_id = await create_submission(other)
+    await upload_document(other, other_submission_id, drain=drain_outbox)
+
+
+async def test_extract_per_user_is_limited(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR", 1)
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    url = f"/api/cashout/documents/{created['cashoutDocumentId']}/extract"
+
+    first = await cashier_client.post(url, headers=csrf_headers(cashier_client))
+    assert first.status_code == 200, first.text
+
+    # Run the re-queued extraction so the analysis leaves EXTRACTING: absent
+    # the limiter the second call would succeed, so the 429 below can only
+    # come from the quota (the guard dependency fires before the handler).
+    await drain_outbox()
+
+    second = await cashier_client.post(url, headers=csrf_headers(cashier_client))
+    assert second.status_code == 429, second.text
+    body = second.json()
+    assert body["kind"] == RATE_LIMITED_KIND
+    assert body["code"] == RATE_LIMITED_CODE
+    assert second.headers["Retry-After"].isdigit()

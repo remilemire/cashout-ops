@@ -19,6 +19,7 @@ from app.lib.documents import DocumentContentType, read_document
 from app.security.dependencies import require_csrf
 
 from . import service as cashout_service
+from .dependencies import rate_limit_extract, rate_limit_upload
 from .extraction import CashoutDocumentProcessor
 from .extraction.dependencies import get_cashout_document_processor
 from .schemas import (
@@ -165,6 +166,8 @@ async def complete_submission(
     "/submissions/{submission_id}/documents",
     response_model=CashoutDocumentAnalysisOut,
     status_code=status.HTTP_201_CREATED,
+    # Each upload starts an AI extraction, so it draws on the per-user quota.
+    dependencies=[Depends(rate_limit_upload)],
     responses=error_responses(
         "UNSUPPORTED_DOCUMENT_TYPE",
         "DOCUMENT_TOO_LARGE",
@@ -172,6 +175,7 @@ async def complete_submission(
         "SUBMISSION_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "VALIDATION_FAILED",
+        "RATE_LIMITED",
     ),
 )
 async def upload_document(
@@ -246,12 +250,15 @@ async def delete_document(
 @router.post(
     "/documents/{document_id}/extract",
     response_model=CashoutDocumentAnalysisOut,
+    # Re-extraction burns provider tokens on demand — per-user quota applies.
+    dependencies=[Depends(rate_limit_extract)],
     responses=error_responses(
         "DOCUMENT_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "ANALYSIS_VERIFIED",
         "EXTRACTION_IN_PROGRESS",
         "VALIDATION_FAILED",
+        "RATE_LIMITED",
     ),
 )
 async def extract_document(
