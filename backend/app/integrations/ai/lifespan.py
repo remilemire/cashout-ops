@@ -29,7 +29,12 @@ async def ai_lifespan() -> AsyncGenerator[AIClient]:
 
 
 def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
-    """Construct the configured provider's client + an async close callback."""
+    """Construct the configured provider's client + an async close callback.
+
+    Settings already rejects a model whose provider has no API key, so
+    `_require_key` narrows those optional fields for the type checker rather
+    than enforcing the requirement itself.
+    """
     model = settings.AI_MODEL
 
     if settings.AI_PROVIDER is AIProvider.OPENAI:

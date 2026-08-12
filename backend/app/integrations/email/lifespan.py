@@ -20,7 +20,12 @@ async def email_lifespan() -> AsyncGenerator[EmailClient]:
 
 
 def _build_email_client() -> EmailClient:
-    """Select the configured email client; Resend requires its API key."""
+    """Select the configured email client.
+
+    Settings already rejects RESEND without its API key, so the guard below
+    narrows that optional field for the type checker rather than enforcing
+    the requirement itself.
+    """
     if settings.EMAIL_PROVIDER is EmailProvider.RESEND:
         if not settings.RESEND_API_KEY:
             raise RuntimeError(

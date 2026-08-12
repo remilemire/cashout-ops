@@ -151,6 +151,8 @@ Do not move request-bound authorization checks into services merely to make a ro
 * Construct database and external client resources through the application lifespan.
 * Store application-wide resources on `app.state`.
 * Access those resources through dependencies.
+* Validate provider-conditional configuration in `Settings` (`core/config.py`), not in the lifespan. The selected provider's own settings are required and the other providers' are ignored, so an incomplete deployment fails to load its configuration rather than failing on first use.
+* A lifespan may still guard those settings, but only to narrow an optional field for the type checker; say so where the guard lives.
 * Keep provider-specific implementation details inside `integrations/`.
 * Keep generic document classification and extraction behavior inside `document_ai/`.
 * Keep cashout-specific extraction behavior inside the cashout feature.

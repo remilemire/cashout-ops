@@ -151,6 +151,35 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_email_config(self) -> Settings:
+        """Require the selected email provider's own settings."""
+        if self.EMAIL_PROVIDER is EmailProvider.RESEND and not self.RESEND_API_KEY:
+            raise ValueError(
+                f"RESEND_API_KEY required when "
+                f"EMAIL_PROVIDER is {EmailProvider.RESEND}."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_ai_credentials(self) -> Settings:
+        """Require the API key of the provider serving AI_MODEL.
+
+        Only the selected provider's key is needed; the other two stay unset
+        in a normal deployment. This map must cover every AIProvider.
+        """
+        keys = {
+            AIProvider.ANTHROPIC: self.ANTHROPIC_API_KEY,
+            AIProvider.OPENAI: self.OPENAI_API_KEY,
+            AIProvider.GEMINI: self.GEMINI_API_KEY,
+        }
+        if not keys[self.AI_PROVIDER]:
+            raise ValueError(
+                f"{self.AI_PROVIDER}_API_KEY required when "
+                f"AI_MODEL is served by {self.AI_PROVIDER}."
+            )
+        return self
+
     @computed_field
     @property
     def DEBUG(self) -> bool:
