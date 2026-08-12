@@ -53,7 +53,7 @@ const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
   createdAt: "2026-07-17T01:00:00Z",
   provider: "ANTHROPIC",
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   status: "VERIFIED",
   classification: "MANUAL_NOTE",
   classificationConfidence: 0.95,

@@ -31,7 +31,7 @@ class AISettings(SettingsGroup):
 
     model_config = SettingsConfigDict(env_prefix="AI_")
 
-    MODEL: str = "claude-sonnet-4-6"
+    MODEL: str = "claude-sonnet-5"
     # Per-operation output-token budgets, deliberately conservative: a
     # classification is a tiny fixed-shape JSON object; an extraction scales
     # with the schema. Raise via env if analyses start failing OUTPUT_LIMIT_REACHED.
