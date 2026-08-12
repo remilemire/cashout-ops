@@ -95,7 +95,7 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     return challenge_id
 
 
-async def verify_link(redis: Redis, *, challenge_id: str, token: str) -> str:
+async def consume_link(redis: Redis, *, challenge_id: str, token: str) -> str:
     """Confirm the emailed link and return a fresh one-time code.
 
     The link is single-use: verifying clears `token_hash` in the same write
@@ -166,4 +166,4 @@ async def consume_code(
     return user
 
 
-__all__ = ["initiate", "verify_link", "consume_code"]
+__all__ = ["initiate", "consume_link", "consume_code"]

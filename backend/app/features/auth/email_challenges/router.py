@@ -65,7 +65,7 @@ async def verify_link(
     Single-use — a second click of the emailed link fails — while the
     challenge survives; sign-in completes via `/email-challenges/verify-code`.
     """
-    code = await email_challenges_service.verify_link(
+    code = await email_challenges_service.consume_link(
         redis, challenge_id=payload.challenge_id, token=payload.token
     )
     return EmailChallengeVerifyLinkOut(code=code)
