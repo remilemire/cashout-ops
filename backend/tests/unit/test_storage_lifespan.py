@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import settings
-from app.core.storage import StorageProvider
+from app.core.providers import StorageProvider
 from app.integrations.storage import (
     LocalDocumentStorageClient,
     S3DocumentStorageClient,

@@ -1,16 +1,10 @@
-# backend/app/core/ai.py
+# backend/app/core/ai_models.py
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from enum import StrEnum
 
-
-class AIProvider(StrEnum):
-    ANTHROPIC = "ANTHROPIC"
-    OPENAI = "OPENAI"
-    GEMINI = "GEMINI"
-
+from app.core.providers import AIProvider
 
 # Models this application is allowed to run, grouped by the provider whose
 # client serves them. AI_MODEL picks one and Settings derives AI_PROVIDER from
@@ -27,4 +21,4 @@ AI_PROVIDER_MODELS: Mapping[AIProvider, tuple[str, ...]] = {
 }
 
 
-__all__ = ["AI_PROVIDER_MODELS", "AIProvider"]
+__all__ = ["AI_PROVIDER_MODELS"]

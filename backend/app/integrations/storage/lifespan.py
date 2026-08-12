@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import boto3
 
 from app.core.config import settings
-from app.core.storage import StorageProvider
+from app.core.providers import StorageProvider
 
 from .client import DocumentStorageClient
 from .local import LocalDocumentStorageClient

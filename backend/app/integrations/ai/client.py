@@ -6,7 +6,7 @@ from typing import Protocol, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.lib.documents import DocumentContent
 
 ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)

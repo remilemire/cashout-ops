@@ -15,7 +15,7 @@ from anthropic.types import (
 )
 from pydantic import ValidationError
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.lib.documents import DocumentContent, DocumentContentType
 
 from .client import AIContent, ResponseModelT

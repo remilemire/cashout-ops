@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.document_ai import (
     DocumentAIClient,
     DocumentRef,

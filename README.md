@@ -167,7 +167,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
 | `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
-| `AI_MODEL`            | no       | `claude-sonnet-4-6`                                            | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai.py](backend/app/core/ai.py)); selects the document-AI client built at startup. An unlisted value fails validation at boot. |
+| `AI_MODEL`            | no       | `claude-sonnet-4-6`                                            | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai_models.py](backend/app/core/ai_models.py)); selects the document-AI client built at startup. An unlisted value fails validation at boot. |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
@@ -196,7 +196,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `OUTBOX_BACKOFF_BASE_SECONDS` | no | `5.0`                                                      | Retry backoff base — a failed attempt waits `base * 2^(attempt-1)`.                                  |
 | `OUTBOX_BACKOFF_CAP_SECONDS` | no | `900.0`                                                     | Ceiling on that exponential backoff.                                                                 |
 
-The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai.py](backend/app/core/ai.py) lists the models each provider serves, and [core/config.py](backend/app/core/config.py) inverts that map to resolve `AI_PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
+The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config.py](backend/app/core/config.py) inverts that map to resolve `AI_PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
 The frontend currently reads no environment variables.
 

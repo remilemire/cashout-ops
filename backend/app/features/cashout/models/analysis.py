@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.features.cashout.types import (
     CashoutDocumentClassification,
     DocumentAnalysisStatus,

@@ -7,7 +7,7 @@ from google.genai import types
 from google.genai.errors import APIError
 from pydantic import ValidationError
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.lib.documents import DocumentContent
 
 from .client import AIContent, ResponseModelT

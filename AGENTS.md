@@ -21,7 +21,7 @@ The repository is the source of truth. Inspect existing implementations and near
 
 * `backend/app/main.py` creates the FastAPI application, exposes `app.main:app`, and serves the built SPA.
 * `backend/app/lifespan.py` is the composition root for the database engine, Redis client, and external clients stored on `app.state`; it orchestrates the per-component `lifespan.py` modules in `integrations/` and `infrastructure/`.
-* `backend/app/core/` contains configuration, the AI model catalog (`ai.py`: `AI_PROVIDER_MODELS`, which `AI_MODEL` is validated against), the storage and email provider enums (`storage.py`: `StorageProvider`, `email.py`: `EmailProvider`), cookies, logging, and shared schemas.
+* `backend/app/core/` contains configuration, the external-provider enums (`providers.py`: `AIProvider`, `EmailProvider`, `StorageProvider`), the AI model catalog (`ai_models.py`: `AI_PROVIDER_MODELS`, which `AI_MODEL` is validated against), cookies, logging, and shared schemas.
 * `backend/app/infrastructure/` contains low-level infrastructure such as the database foundations (`db/`: Base, registry, the `get_db` dependency), the Redis client (`redis/`: the `Redis` type, its lifespan, and the `get_redis` dependency), and the transactional outbox (`outbox/`: dispatcher, worker pool, messages).
 * `backend/app/lib/` contains pure helpers such as casing and document utilities.
 * `backend/app/security/` contains CSRF cookie helpers, secret-token cryptography, the `require_csrf` dependency, and the Redis fixed-window rate limiter (`rate_limit/`: `enforce` plus the `rate_limit_ip` dependency factory; feature-keyed limit dependencies live beside their feature). Session cookie helpers live with the sessions sub-feature in `features/auth/shared/sessions/`.

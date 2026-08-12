@@ -9,8 +9,8 @@ from anthropic import AsyncAnthropic
 from google import genai
 from openai import AsyncOpenAI
 
-from app.core.ai import AIProvider
 from app.core.config import settings
+from app.core.providers import AIProvider
 
 from .anthropic import AnthropicAIClient
 from .client import AIClient

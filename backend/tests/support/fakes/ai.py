@@ -6,7 +6,7 @@ from typing import cast
 
 from pydantic import BaseModel
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.document_ai import DocumentClassification
 from app.integrations.ai import (
     AIAnalysisError,

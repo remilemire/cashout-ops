@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.email import EmailProvider
+from app.core.providers import EmailProvider
 
 from .client import EmailClient
 from .console import ConsoleEmailClient

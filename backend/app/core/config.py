@@ -9,9 +9,8 @@ from typing import Literal
 from pydantic import EmailStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.ai import AI_PROVIDER_MODELS, AIProvider
-from app.core.email import EmailProvider
-from app.core.storage import StorageProvider
+from app.core.ai_models import AI_PROVIDER_MODELS
+from app.core.providers import AIProvider, EmailProvider, StorageProvider
 
 # AI_PROVIDER_MODELS inverted: the catalog reads naturally grouped by provider,
 # but every lookup here goes the other way — AI_MODEL is the configured value
@@ -74,8 +73,8 @@ class Settings(BaseSettings):
     OUTBOX_BACKOFF_CAP_SECONDS: float = 900.0
 
     # Document-AI model selection. AI_MODEL must be one of the models listed in
-    # core/ai.py; AI_PROVIDER below is derived from it, and only that provider's
-    # API key is required (the lifespan validates it at startup).
+    # core/ai_models.py; AI_PROVIDER below is derived from it, and only that
+    # provider's API key is required (the lifespan validates it at startup).
     AI_MODEL: str = "claude-sonnet-4-6"
     # Per-operation output-token budgets, deliberately conservative: a
     # classification is a tiny fixed-shape JSON object; an extraction scales

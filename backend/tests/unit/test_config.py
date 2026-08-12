@@ -7,8 +7,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.ai import AI_PROVIDER_MODELS, AIProvider
+from app.core.ai_models import AI_PROVIDER_MODELS
 from app.core.config import Settings
+from app.core.providers import AIProvider
 
 # Required fields with no default; irrelevant to what these tests assert, but
 # Settings will not construct without them.

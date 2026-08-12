@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.users.schemas import UserOut
 from app.lib.documents import DocumentContentType

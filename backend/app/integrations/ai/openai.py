@@ -8,7 +8,7 @@ from openai import AsyncOpenAI, LengthFinishReasonError, OpenAIError
 from openai.types.chat import ChatCompletionContentPartParam, ChatCompletionMessageParam
 from pydantic import ValidationError
 
-from app.core.ai import AIProvider
+from app.core.providers import AIProvider
 from app.lib.documents import DocumentContent, DocumentContentType
 
 from .client import AIContent, ResponseModelT
