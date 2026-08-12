@@ -168,10 +168,10 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `ENVIRONMENT`         | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.       |
 | `DATABASE_URL`        | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Used by both the app and Alembic.                   |
 | `REDIS_URL`           | yes      | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
-| `AI_PROVIDER`         | no       | `ANTHROPIC`                                                    | `ANTHROPIC`, `OPENAI`, or `GEMINI` — selects the document-AI client built at startup.                |
+| `AI_MODEL`            | no       | `claude-sonnet-4-6`                                            | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai.py](backend/app/core/ai.py)); selects the document-AI client built at startup. An unlisted value fails validation at boot. |
 | `AI_CLASSIFICATION_MAX_TOKENS` | no | `512`                                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | no  | `2048`                                                        | Max output tokens for an extraction request.                                                         |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the selected `AI_PROVIDER` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | see notes | — | Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
 | `DOCUMENT_STORAGE_DIR`| no       | `storage/documents`                                            | Where uploaded documents are written by the local storage client.                                    |
 | `MAX_DOCUMENT_SIZE_MB`| no       | `20`                                                           | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
 | `SESSION_TTL_DAYS`    | no       | `7`                                                            | Session lifetime; also the `session_token` cookie max-age.                                           |
@@ -183,7 +183,7 @@ All backend variables are loaded from `backend/.env` (see `backend/.env.example`
 | `OWNER_EMAIL`         | no       | `owner@test.com`                                               | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
 | `OWNER_FULL_NAME`     | no       | `Owner`                                                        | Full name given to the bootstrapped `OWNER_EMAIL` account.                                           |
 
-The AI model is not env-configurable: each provider's model is fixed in `AI_MODELS` in [core/config.py](backend/app/core/config.py) and resolved for the selected `AI_PROVIDER`.
+The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai.py](backend/app/core/ai.py) lists the models each provider serves, and [core/config.py](backend/app/core/config.py) inverts that map to resolve `AI_PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
 The frontend currently reads no environment variables.
 

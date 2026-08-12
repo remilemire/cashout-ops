@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
+from app.core.ai import AIProvider
 from app.document_ai import (
     DocumentAIClient,
     DocumentAnalysis,
@@ -18,7 +19,6 @@ from app.features.cashout.types import CashoutDocumentClassification
 from app.integrations.ai import (
     AIAnalysisError,
     AIErrorCode,
-    AIProvider,
     compose_instructions,
 )
 from app.lib.documents import DocumentContentType

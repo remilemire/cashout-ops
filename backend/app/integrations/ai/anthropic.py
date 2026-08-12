@@ -15,12 +15,12 @@ from anthropic.types import (
 )
 from pydantic import ValidationError
 
+from app.core.ai import AIProvider
 from app.lib.documents import DocumentContent, DocumentContentType
 
 from .client import AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
-from .types import AIProvider
 
 _IMAGE_MEDIA_TYPES: Mapping[
     DocumentContentType, Literal["image/jpeg", "image/png", "image/webp"]

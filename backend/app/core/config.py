@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Literal
 
-from pydantic import EmailStr, computed_field
+from pydantic import EmailStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.integrations.ai import AIProvider
+from app.core.ai import AI_PROVIDER_MODELS, AIProvider
 from app.integrations.email import EmailProvider
+
+# AI_PROVIDER_MODELS inverted: the catalog reads naturally grouped by provider,
+# but every lookup here goes the other way — AI_MODEL is the configured value
+# and the provider is derived from it.
+_MODEL_PROVIDERS: Mapping[str, AIProvider] = {
+    model: provider
+    for provider, models in AI_PROVIDER_MODELS.items()
+    for model in models
+}
 
 
 class Settings(BaseSettings):
@@ -63,22 +72,16 @@ class Settings(BaseSettings):
     OUTBOX_BACKOFF_BASE_SECONDS: float = 5.0
     OUTBOX_BACKOFF_CAP_SECONDS: float = 900.0
 
-    # Document-AI provider selection. Only the selected provider's API key is
-    # required; the lifespan validates it at startup.
-    AI_PROVIDER: AIProvider = AIProvider.ANTHROPIC
+    # Document-AI model selection. AI_MODEL must be one of the models listed in
+    # core/ai.py; AI_PROVIDER below is derived from it, and only that provider's
+    # API key is required (the lifespan validates it at startup).
+    AI_MODEL: str = "claude-sonnet-4-6"
     # Per-operation output-token budgets, deliberately conservative: a
     # classification is a tiny fixed-shape JSON object; an extraction scales
     # with the schema. Raise via env if analyses start failing OUTPUT_LIMIT_REACHED.
     AI_CLASSIFICATION_MAX_TOKENS: int = 512
     AI_EXTRACTION_MAX_TOKENS: int = 2048
 
-    # Model per provider, resolved for the selected provider by AI_MODEL below.
-    # The model is not env-configurable — edit a value here to change it.
-    AI_MODELS: ClassVar[Mapping[AIProvider, str]] = {
-        AIProvider.ANTHROPIC: "claude-sonnet-4-6",
-        AIProvider.OPENAI: "gpt-5.6-terra",
-        AIProvider.GEMINI: "gemini-3.5-flash",
-    }
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
@@ -88,6 +91,14 @@ class Settings(BaseSettings):
     # the upload (DOCUMENT_TOO_LARGE). Configured in MB because that is how the
     # limit is communicated to users; code reads MAX_DOCUMENT_SIZE_BYTES.
     MAX_DOCUMENT_SIZE_MB: int = 20
+
+    @field_validator("AI_MODEL")
+    @classmethod
+    def _validate_ai_model(cls, value: str) -> str:
+        if value not in _MODEL_PROVIDERS:
+            supported = ", ".join(_MODEL_PROVIDERS)
+            raise ValueError(f"AI_MODEL must be one of: {supported}.")
+        return value
 
     @computed_field
     @property
@@ -101,8 +112,8 @@ class Settings(BaseSettings):
 
     @computed_field
     @property
-    def AI_MODEL(self) -> str:
-        return self.AI_MODELS[self.AI_PROVIDER]
+    def AI_PROVIDER(self) -> AIProvider:
+        return _MODEL_PROVIDERS[self.AI_MODEL]
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]

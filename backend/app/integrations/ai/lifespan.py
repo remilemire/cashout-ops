@@ -9,13 +9,13 @@ from anthropic import AsyncAnthropic
 from google import genai
 from openai import AsyncOpenAI
 
+from app.core.ai import AIProvider
 from app.core.config import settings
 
 from .anthropic import AnthropicAIClient
 from .client import AIClient
 from .gemini import GeminiAIClient
 from .openai import OpenAIAIClient
-from .types import AIProvider
 
 
 @asynccontextmanager
@@ -53,6 +53,6 @@ def _build_ai_client() -> tuple[AIClient, Callable[[], Awaitable[None]]]:
 def _require_key(value: str | None, provider: str) -> str:
     if not value:
         raise RuntimeError(
-            f"{provider}_API_KEY is required when AI_PROVIDER is {provider}."
+            f"{provider}_API_KEY is required when AI_MODEL is served by {provider}."
         )
     return value

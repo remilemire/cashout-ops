@@ -7,12 +7,12 @@ from google.genai import types
 from google.genai.errors import APIError
 from pydantic import ValidationError
 
+from app.core.ai import AIProvider
 from app.lib.documents import DocumentContent
 
 from .client import AIContent, ResponseModelT
 from .errors import AIAnalysisError, AIErrorCode
 from .instructions import BASE_INSTRUCTIONS, compose_instructions
-from .types import AIProvider
 
 # Finish reasons that mean the model declined rather than completed.
 _REFUSAL_FINISH_REASONS = frozenset(

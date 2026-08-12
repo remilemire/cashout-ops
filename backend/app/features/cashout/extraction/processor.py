@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.core.ai import AIProvider
 from app.document_ai import (
     DocumentAIClient,
     DocumentRef,
     FieldIssue,
 )
 from app.features.cashout.types import CashoutDocumentClassification
-from app.integrations.ai import AIProvider
 
 from .registry import CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
