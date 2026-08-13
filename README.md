@@ -366,4 +366,4 @@ The backend domain and AI pipeline are implemented and tested. What's left:
 
 ## License
 
-Proprietary. Copyright © Whiskey District Inc. All rights reserved. See [LICENSE](LICENSE). This repository is published for internal development purposes only; unauthorized copying or distribution is prohibited.
+Proprietary. Copyright © Whiskey District Inc. All rights reserved. See [LICENSE](LICENSE).
