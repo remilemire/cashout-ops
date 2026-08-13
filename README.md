@@ -363,7 +363,6 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
-- **`local` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `STORAGE_PROVIDER=s3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `local` only for development or hosts with a persistent disk. An S3-compatible store such as MinIO or R2 works too — point the client at it with `S3_ENDPOINT_URL`.
 
 ## License
 
