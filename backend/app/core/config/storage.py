@@ -30,6 +30,12 @@ class StorageSettings(SettingsGroup):
     # Unprefixed: these sit alongside the AWS chain's own variables.
     S3_BUCKET: str | None = Field(default=None, validation_alias="S3_BUCKET")
     S3_REGION: str | None = Field(default=None, validation_alias="S3_REGION")
+    # Optional even under S3, so it stays out of _validate_storage_config:
+    # unset leaves boto3 on AWS's own regional endpoint, and a value points the
+    # client at an S3-compatible store such as MinIO or Cloudflare R2.
+    S3_ENDPOINT_URL: str | None = Field(
+        default=None, validation_alias="S3_ENDPOINT_URL"
+    )
 
     # Upload ceiling for a single document, in megabytes. The upload endpoint
     # stops reading a request body once it passes this, and the service rejects
@@ -44,6 +50,15 @@ class StorageSettings(SettingsGroup):
         # silently writes documents into the working directory. Treat it as
         # unset so the check below rejects it, matching how the S3 settings
         # already treat their empty strings.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("S3_ENDPOINT_URL", mode="before")
+    @classmethod
+    def _blank_endpoint_is_unset(cls, value: object) -> object:
+        # Nothing requires this field, so a bare `S3_ENDPOINT_URL=` would reach
+        # boto3 as an empty endpoint instead of falling back to AWS's own.
         if isinstance(value, str) and not value.strip():
             return None
         return value

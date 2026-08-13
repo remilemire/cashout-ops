@@ -35,9 +35,33 @@ async def test_s3_provider_builds_the_s3_client(
     # A concrete region keeps boto3 client construction independent of any AWS
     # config present (or absent) on the host running the tests.
     monkeypatch.setattr(settings.storage, "S3_REGION", "us-east-1")
+    monkeypatch.setattr(settings.storage, "S3_ENDPOINT_URL", None)
 
     async with storage_lifespan() as storage:
         assert isinstance(storage, S3DocumentStorageClient)
+        # Without an override the client resolves AWS's own endpoint for the
+        # region, which is what makes the override below meaningful.
+        endpoint = storage._s3.meta.endpoint_url  # pyright: ignore[reportPrivateUsage]
+        assert endpoint.endswith("amazonaws.com")
+
+
+async def test_a_custom_endpoint_url_reaches_the_s3_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The endpoint override is what makes S3-compatible stores usable.
+
+    Nothing else in the client changes for MinIO or R2, so this wiring is the
+    whole of that support and is asserted on the built client itself.
+    """
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.S3)
+    monkeypatch.setattr(settings.storage, "S3_BUCKET", "test-bucket")
+    monkeypatch.setattr(settings.storage, "S3_REGION", "us-east-1")
+    monkeypatch.setattr(settings.storage, "S3_ENDPOINT_URL", "http://localhost:9000")
+
+    async with storage_lifespan() as storage:
+        assert isinstance(storage, S3DocumentStorageClient)
+        endpoint = storage._s3.meta.endpoint_url  # pyright: ignore[reportPrivateUsage]
+        assert endpoint == "http://localhost:9000"
 
 
 # Settings rejects these combinations at load, so the lifespan can only reach

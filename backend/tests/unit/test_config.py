@@ -35,6 +35,7 @@ _STORAGE = {
     "LOCAL_DIR": "storage/documents",
     "S3_BUCKET": None,
     "S3_REGION": None,
+    "S3_ENDPOINT_URL": None,
 }
 
 
@@ -126,6 +127,40 @@ def test_s3_storage_does_not_require_the_local_directory() -> None:
     )
 
     assert config.S3_BUCKET == "documents"
+
+
+def test_s3_storage_does_not_require_an_endpoint_url() -> None:
+    # Unset is the AWS endpoint for S3_REGION; only an S3-compatible store
+    # needs the override, so a missing value must still boot.
+    config = _storage(
+        PROVIDER=StorageProvider.S3, S3_BUCKET="documents", S3_REGION="us-east-1"
+    )
+
+    assert config.S3_ENDPOINT_URL is None
+
+
+def test_s3_storage_keeps_a_configured_endpoint_url() -> None:
+    config = _storage(
+        PROVIDER=StorageProvider.S3,
+        S3_BUCKET="documents",
+        S3_REGION="us-east-1",
+        S3_ENDPOINT_URL="http://localhost:9000",
+    )
+
+    assert config.S3_ENDPOINT_URL == "http://localhost:9000"
+
+
+def test_a_blank_endpoint_url_counts_as_unset() -> None:
+    # A bare `S3_ENDPOINT_URL=` would otherwise reach boto3 as an empty
+    # endpoint rather than falling back to AWS's own.
+    config = _storage(
+        PROVIDER=StorageProvider.S3,
+        S3_BUCKET="documents",
+        S3_REGION="us-east-1",
+        S3_ENDPOINT_URL="   ",
+    )
+
+    assert config.S3_ENDPOINT_URL is None
 
 
 def test_local_storage_requires_a_directory() -> None:

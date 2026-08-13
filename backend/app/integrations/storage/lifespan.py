@@ -47,6 +47,9 @@ def _build_document_storage() -> DocumentStorageClient:
         s3: S3Client = boto3.client(  # pyright: ignore[reportUnknownMemberType]
             "s3",
             region_name=settings.storage.S3_REGION,
+            # Unset (None) is boto3's own default, which resolves the AWS
+            # endpoint for the region; a value targets an S3-compatible store.
+            endpoint_url=settings.storage.S3_ENDPOINT_URL,
         )
         return S3DocumentStorageClient(s3, bucket=settings.storage.S3_BUCKET)
     if settings.storage.LOCAL_DIR is None:

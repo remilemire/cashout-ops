@@ -188,6 +188,7 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `STORAGE_LOCAL_DIR`   | `storage.LOCAL_DIR` | see notes | —                                                     | Where uploaded documents are written by the local storage client. Required when `STORAGE_PROVIDER=local` (the default). |
 | `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=s3`. Credentials are not configured here — see the note below the table. |
 | `S3_REGION`           | `storage.S3_REGION` | see notes | —                                                     | AWS region for the S3 client. Required when `STORAGE_PROVIDER=s3`.                                   |
+| `S3_ENDPOINT_URL`     | `storage.S3_ENDPOINT_URL` | no  | —                                               | Custom endpoint for S3-compatible stores such as MinIO or Cloudflare R2. Optional even under `s3`; unset (or blank) leaves the client on the AWS endpoint for `S3_REGION`. |
 | `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
 | `RATE_LIMIT_AUTH_IP_PER_HOUR` | `rate_limit.AUTH_IP_PER_HOUR` | no | `20`                                          | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
 | `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | `rate_limit.INITIATE_EMAIL_PER_HOUR` | no | `5`                             | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
@@ -362,7 +363,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 The backend domain and AI pipeline are implemented and tested. What's left:
 
 - **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
-- **`local` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `STORAGE_PROVIDER=s3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `local` only for development or hosts with a persistent disk. Pointing the client at an S3-compatible store such as MinIO or R2 would need a configurable endpoint, which is no longer modeled.
+- **`local` document storage is not durable on ephemeral hosts** (such as Render's disk) — uploaded files do not survive a deploy or restart. Durable storage is available: set `STORAGE_PROVIDER=s3` (with `S3_BUCKET` and `S3_REGION`) to store documents in S3 via `S3DocumentStorageClient`; keep `local` only for development or hosts with a persistent disk. An S3-compatible store such as MinIO or R2 works too — point the client at it with `S3_ENDPOINT_URL`.
 
 ## License
 
