@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.errors import AppError
-from app.features.auth.external_identities import service as external_identities_service
 from app.infrastructure.redis import Redis
 from app.integrations.oauth import (
     OAuthClient,
@@ -30,6 +29,7 @@ from app.integrations.oauth import (
 )
 
 from . import store
+from .external_identities import service as external_identities_service
 from .model import StoredOAuthFlow
 
 if TYPE_CHECKING:

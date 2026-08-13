@@ -109,7 +109,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
 │       ├── document_ai/               # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth (shared/sessions, email_challenges, dependencies: get_current_user/require_admin/require_owner), users, cashout
+│       ├── features/                  # auth (shared/sessions, email_challenges, oauth/+external_identities, dependencies: get_current_user/require_admin/require_owner), users, cashout
 │       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/

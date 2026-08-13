@@ -1,4 +1,4 @@
-# backend/app/features/auth/external_identities/repository.py
+# backend/app/features/auth/oauth/external_identities/repository.py
 
 from __future__ import annotations
 

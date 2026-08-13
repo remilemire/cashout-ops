@@ -28,7 +28,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/errors/` contains domain errors, handlers, translators, and OpenAPI error shapes.
 * `backend/app/integrations/` contains external AI and storage clients, each with its own `dependencies.py` (e.g. `email/`'s `get_email_client`, `storage/`'s `get_document_storage`).
 * `backend/app/document_ai/` contains generic document classification and extraction behavior.
-* `backend/app/features/` contains feature modules such as auth (with its `shared/sessions/` and `email_challenges/` submodules), users, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
+* `backend/app/features/` contains feature modules such as auth (with its `shared/sessions/`, `email_challenges/`, and `oauth/` submodules — the last owning `oauth/external_identities/`, which maps issuer identities to local accounts and is private to the OAuth flow), users, and cashout. `features/auth/dependencies.py` holds `get_current_user`, `require_admin`, and `require_owner`.
 * `backend/app/features/cashout/extraction/` contains cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
@@ -128,7 +128,7 @@ Services own application behavior and workflows.
 Each feature's data access lives in a dedicated module beside its service:
 
 * `repository.py` owns all database access for the feature: query construction and every `AsyncSession` call (`select`/`execute`/`get`/`add`/`delete`/`flush`).
-* The Redis-backed auth sub-features (`shared/sessions/`, `email_challenges/`) use a `store.py` instead: it owns all Redis commands, key building, TTL enforcement, and value encoding/decoding.
+* The Redis-backed auth sub-features (`shared/sessions/`, `email_challenges/`, `oauth/`) use a `store.py` instead: it owns all Redis commands, key building, TTL enforcement, and value encoding/decoding.
 * Repositories and stores are feature-private: only the owning feature's service imports them. Cross-feature access goes service to service.
 * Services never build queries, call `db.*`, or issue Redis commands directly. Background jobs may own their transaction boundary (`async with sessionmaker() as db`, commit/rollback) but perform all reads and writes through the repository.
 * Flush placement is behavior (it controls when integrity errors surface for translation); preserve it when moving code.

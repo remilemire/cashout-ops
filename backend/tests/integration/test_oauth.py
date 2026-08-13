@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.features.auth.external_identities.model import ExternalIdentity
+from app.features.auth.models import ExternalIdentity
 from app.features.users.model import User
 from app.infrastructure.redis import Redis
 from app.integrations.oauth import OAuthExchangeError, OAuthIdentity, OAuthIssuer

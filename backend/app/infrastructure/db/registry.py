@@ -3,12 +3,14 @@
 """Imports every ORM model so Alembic autogenerate sees the full schema.
 
 Models live in feature packages; importing them here registers them on
-`Base.metadata`. Add new models to this file (or Alembic won't see them).
+`Base.metadata`. Add new models to this file (or Alembic won't see them) —
+via the owning feature's model surface, so a sub-feature can move without
+this file noticing.
 """
 
 from __future__ import annotations
 
-from app.features.auth.external_identities.model import ExternalIdentity
+from app.features.auth.models import ExternalIdentity
 from app.features.cashout.models import (
     CashoutData,
     CashoutDocument,

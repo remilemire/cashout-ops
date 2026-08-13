@@ -1,4 +1,4 @@
-# backend/app/features/auth/external_identities/service.py
+# backend/app/features/auth/oauth/external_identities/service.py
 
 """Mapping OAuth issuer identities to local accounts."""
 
