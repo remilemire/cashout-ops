@@ -12,6 +12,8 @@ from .email_challenges.errors import (
 from .email_challenges.errors import (
     error_definition_list as email_challenge_error_definition_list,
 )
+from .oauth.errors import ErrorCode as OAuthErrorCode
+from .oauth.errors import error_definition_list as oauth_error_definition_list
 from .shared.sessions.errors import ErrorCode as SessionErrorCode
 from .shared.sessions.errors import (
     error_definition_list as session_error_definition_list,
@@ -31,12 +33,15 @@ _auth_error_definition_list: ErrorDefinitionList[_AuthErrorCode] = [
     )
 ]
 
-type ErrorCode = _AuthErrorCode | SessionErrorCode | EmailChallengeErrorCode
+type ErrorCode = (
+    _AuthErrorCode | SessionErrorCode | EmailChallengeErrorCode | OAuthErrorCode
+)
 
 error_definition_list: ErrorDefinitionList[ErrorCode] = [
     *_auth_error_definition_list,
     *session_error_definition_list,
     *email_challenge_error_definition_list,
+    *oauth_error_definition_list,
 ]
 
 __all__ = [

@@ -47,7 +47,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Database    | PostgreSQL 18                                           |
 | KV store    | Redis 8 (`redis-py` asyncio client)                     |
 | Validation  | Pydantic v2 + `pydantic-settings`                       |
-| Auth        | Passwordless email sign-in links, server-side sessions + CSRF double-submit |
+| Auth        | Passwordless email sign-in links + Google OIDC sign-in (Authlib), server-side sessions + CSRF double-submit |
 | Frontend    | React 19, TypeScript, Vite, TanStack Query, React Router |
 | Styling     | Tailwind CSS v4                                         |
 | Lint/format | Ruff (Python), ESLint + Prettier (TS/React)             |
@@ -174,6 +174,9 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `BOOTSTRAP_OWNER_FULL_NAME` | `bootstrap.OWNER_FULL_NAME` | no | `Owner`                                         | Full name given to the bootstrapped owner account.                                                   |
 | `AUTH_SESSION_TTL_DAYS` | `auth.SESSION_TTL_DAYS` | no | `7`                                                     | Session lifetime; also the `session_token` cookie max-age.                                           |
 | `AUTH_CHALLENGE_TTL_MINUTES` | `auth.CHALLENGE_TTL_MINUTES` | no | `15`                                           | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
+| `AUTH_OAUTH_FLOW_TTL_MINUTES` | `auth.OAUTH_FLOW_TTL_MINUTES` | no | `10`                                         | How long a pending OAuth sign-in flow (its Redis state and the `oauth_flow` cookie) stays valid.      |
+| `GOOGLE_CLIENT_ID`    | `auth.GOOGLE_CLIENT_ID` | no | —                                                        | Unprefixed (vendor convention). Google sign-in is on exactly when both Google credentials are set — there is no enablement variable, and boot fails on just one of the two. From Google Cloud Console, with authorized redirect URI `<APP_BASE_URL>/api/auth/oauth/google/callback`. |
+| `GOOGLE_CLIENT_SECRET` | `auth.GOOGLE_CLIENT_SECRET` | no | —                                                     | Unprefixed (vendor convention). See `GOOGLE_CLIENT_ID` — set together or not at all.                 |
 | `EMAIL_PROVIDER`      | `email.PROVIDER` | no  | `CONSOLE`                                                      | `CONSOLE` logs emails to stdout (dev default); `RESEND` sends for real and requires `RESEND_API_KEY`. |
 | `RESEND_API_KEY`      | `email.RESEND_API_KEY` | see notes | —                                                | Unprefixed (vendor convention). Required only when `EMAIL_PROVIDER=RESEND` (validated at startup).    |
 | `EMAIL_FROM`          | `email.FROM` | no      | `Whiskey District <onboarding@resend.dev>`                     | Sender address for all outbound mail.                                                                 |
@@ -304,6 +307,8 @@ Implemented under the `/api` prefix:
 | POST   | `/api/auth/email-challenges/verify-link`      | none            | 200     | Verify the emailed link (single-use); returns the one-time code to display. |
 | POST   | `/api/auth/email-challenges/verify-code`      | none            | 200     | Complete login in the initiating tab; sets `session_token` + `csrf_token` cookies. |
 | POST   | `/api/auth/logout`                            | none            | 204     | Clears both cookies and deletes the Redis session (best-effort). |
+| GET    | `/api/auth/oauth/{issuer}/start`              | none            | 302     | Begin OAuth sign-in (top-level navigation); sets the `oauth_flow` cookie and redirects to the issuer. |
+| GET    | `/api/auth/oauth/{issuer}/callback`           | none            | 302     | Complete OAuth sign-in; sets `session_token` + `csrf_token` cookies and redirects into the SPA (`/login?error={code}` on failure). |
 | GET    | `/api/users/me`                               | session         | 200     | The current user.                                           |
 | GET    | `/api/users`                                  | admin           | 200     | List every user, newest first.                              |
 | POST   | `/api/users`                                  | admin + CSRF    | 201     | Create a staff account (no email sent; the user signs in via the login flow). |

@@ -18,10 +18,11 @@ from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 from app.integrations.email.dependencies import get_email_client
+from app.integrations.oauth.dependencies import get_oauth_client
 from app.integrations.storage.dependencies import get_document_storage
 from app.main import create_app
 
-from ..fakes import FakeDocumentStorage, FakeEmailClient
+from ..fakes import FakeDocumentStorage, FakeEmailClient, FakeOAuthClient
 
 
 @pytest.fixture
@@ -31,6 +32,7 @@ def app(
     processor: CashoutDocumentProcessor,
     storage: FakeDocumentStorage,
     email_client: FakeEmailClient,
+    oauth_client: FakeOAuthClient,
 ) -> FastAPI:
     """A per-test app instance (never the app.main singleton, so tests cannot
     leak state into each other). ASGITransport does not run the lifespan, so
@@ -50,6 +52,7 @@ def app(
     application.dependency_overrides[get_cashout_document_processor] = lambda: processor
     application.dependency_overrides[get_document_storage] = lambda: storage
     application.dependency_overrides[get_email_client] = lambda: email_client
+    application.dependency_overrides[get_oauth_client] = lambda: oauth_client
     application.dependency_overrides[get_redis] = lambda: redis_client
     return application
 

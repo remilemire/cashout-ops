@@ -13,6 +13,7 @@ from app.core.ai_models import AI_PROVIDER_MODELS
 from app.core.config import (
     AISettings,
     AppSettings,
+    AuthSettings,
     EmailSettings,
     Settings,
     StorageSettings,
@@ -159,6 +160,23 @@ def test_console_email_does_not_require_an_api_key() -> None:
     config = EmailSettings(PROVIDER=EmailProvider.CONSOLE, RESEND_API_KEY=None)
 
     assert config.PROVIDER is EmailProvider.CONSOLE
+
+
+# There is no OAuth enablement setting: Google sign-in is on exactly when both
+# credentials are set, so the only invalid state is a half-configured pair.
+def test_google_oauth_credentials_must_be_set_together() -> None:
+    with pytest.raises(ValidationError, match="GOOGLE_CLIENT_SECRET required"):
+        AuthSettings(
+            GOOGLE_CLIENT_ID="test-google-client-id", GOOGLE_CLIENT_SECRET=None
+        )
+    with pytest.raises(ValidationError, match="GOOGLE_CLIENT_ID required"):
+        AuthSettings(GOOGLE_CLIENT_ID=None, GOOGLE_CLIENT_SECRET="test-google-secret")
+
+
+def test_google_oauth_credentials_may_both_be_absent() -> None:
+    config = AuthSettings(GOOGLE_CLIENT_ID=None, GOOGLE_CLIENT_SECRET=None)
+
+    assert config.GOOGLE_CLIENT_ID is None
 
 
 def test_debug_follows_the_environment() -> None:

@@ -11,12 +11,15 @@ from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 
 from .email_challenges.router import router as email_challenges_router
+from .oauth.router import router as oauth_router
 from .shared import access
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Passwordless login lives under /auth (e.g. /auth/email-challenges/verify-code).
 router.include_router(email_challenges_router)
+# OAuth sign-in lives under /auth too (e.g. /auth/oauth/google/start).
+router.include_router(oauth_router)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

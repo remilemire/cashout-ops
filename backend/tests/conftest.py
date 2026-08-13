@@ -22,6 +22,10 @@ os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
 os.environ.setdefault("AI_MODEL", "claude-sonnet-5")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("EMAIL_PROVIDER", "CONSOLE")
+# Pinned as a pair: a developer .env carrying only one of the two would
+# otherwise fail AuthSettings' set-together validation at import.
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
 os.environ.setdefault("BOOTSTRAP_OWNER_EMAIL", "owner@test.com")
 os.environ.setdefault("STORAGE_PROVIDER", "LOCAL")
 os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")

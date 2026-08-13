@@ -8,6 +8,7 @@ Models live in feature packages; importing them here registers them on
 
 from __future__ import annotations
 
+from app.features.auth.external_identities.model import ExternalIdentity
 from app.features.cashout.models import (
     CashoutData,
     CashoutDocument,
@@ -25,6 +26,7 @@ __all__ = [
     "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
+    "ExternalIdentity",
     "OutboxMessage",
     "User",
     "metadata",

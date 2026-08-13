@@ -39,8 +39,10 @@ OPENAPI_TAGS = [
             "Passwordless login. Submitting an email always returns a "
             "challenge (account existence is never revealed); the emailed "
             "link reveals a one-time code, and verifying the code in the "
-            "initiating tab starts a cookie session. Accounts are created "
-            "by admins."
+            "initiating tab starts a cookie session. OAuth sign-in (Google) "
+            "is a browser navigation: /oauth/{issuer}/start redirects to "
+            "the provider and its callback starts the same cookie session "
+            "for an existing account. Accounts are created by admins."
         ),
     },
     {"name": "users", "description": "The authenticated user."},

@@ -20,6 +20,7 @@ from app.infrastructure.outbox.lifespan import (
 from app.infrastructure.redis.lifespan import redis_lifespan
 from app.integrations.ai.lifespan import ai_lifespan
 from app.integrations.email.lifespan import email_lifespan
+from app.integrations.oauth.lifespan import oauth_lifespan
 from app.integrations.storage.lifespan import storage_lifespan
 
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
         redis_client = await stack.enter_async_context(redis_lifespan())
         ai_client = await stack.enter_async_context(ai_lifespan())
         email_client = await stack.enter_async_context(email_lifespan())
+        oauth_client = await stack.enter_async_context(oauth_lifespan())
         storage = await stack.enter_async_context(storage_lifespan())
 
         processor = CashoutDocumentProcessor(
@@ -51,6 +53,7 @@ async def lifespan(app: FastAPI):
         app.state.db_sessionmaker = db.sessionmaker
         app.state.redis = redis_client
         app.state.email_client = email_client
+        app.state.oauth_client = oauth_client
         app.state.document_storage = storage
         app.state.cashout_document_processor = processor
 

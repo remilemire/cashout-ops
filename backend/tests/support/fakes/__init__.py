@@ -11,12 +11,14 @@ SDK-shaped fakes for the provider adapter unit tests live in ``.sdk``.
 
 from .ai import FakeAIClient
 from .email import FakeEmailClient, LoginLink, SentEmail
+from .oauth import FakeOAuthClient
 from .storage import FakeDocumentStorage
 
 __all__ = [
     "FakeAIClient",
     "FakeDocumentStorage",
     "FakeEmailClient",
+    "FakeOAuthClient",
     "LoginLink",
     "SentEmail",
 ]

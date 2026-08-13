@@ -9,7 +9,7 @@ import pytest
 from app.document_ai import DocumentAIClient
 from app.features.cashout.extraction import CashoutDocumentProcessor
 
-from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient
+from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient, FakeOAuthClient
 
 
 @pytest.fixture
@@ -28,6 +28,11 @@ def email_client() -> FakeEmailClient:
 
 
 @pytest.fixture
+def oauth_client() -> FakeOAuthClient:
+    return FakeOAuthClient()
+
+
+@pytest.fixture
 def processor(
     ai_client: FakeAIClient, storage: FakeDocumentStorage
 ) -> CashoutDocumentProcessor:
@@ -42,4 +47,4 @@ def processor(
     )
 
 
-__all__ = ["ai_client", "email_client", "processor", "storage"]
+__all__ = ["ai_client", "email_client", "oauth_client", "processor", "storage"]

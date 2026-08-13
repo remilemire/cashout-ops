@@ -41,7 +41,15 @@ def make_test_settings() -> Settings:
         # the one _validate_ai_credentials requires.
         "ai": AISettings(**_NO_DOTENV, ANTHROPIC_API_KEY="test-anthropic-key"),
         "app": AppSettings(**_NO_DOTENV, ENV="dev"),
-        "auth": AuthSettings(**_NO_DOTENV),
+        # Google credentials present, like the AI key above: enablement is
+        # derived from them, the fake OAuth client is the seam (no issuer is
+        # ever dialed), and integration tests exercise the enabled path by
+        # default. Disabled-path tests monkeypatch the pair to None.
+        "auth": AuthSettings(
+            **_NO_DOTENV,
+            GOOGLE_CLIENT_ID="test-google-client-id",
+            GOOGLE_CLIENT_SECRET="test-google-client-secret",
+        ),
         # Matches the OWNER_EMAIL literal in tests/support/api.py.
         "bootstrap": BootstrapSettings(**_NO_DOTENV, OWNER_EMAIL="owner@test.com"),
         # URL is required but never dialed — real connections come from
