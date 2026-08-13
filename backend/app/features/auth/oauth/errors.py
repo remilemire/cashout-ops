@@ -6,30 +6,24 @@ from typing import Literal
 
 from app.core.errors import ErrorDefinition, ErrorDefinitionList
 
-# OAUTH_FLOW_INVALID covers every in-flow failure (unknown/expired/replayed
-# flow, state mismatch, issuer-denied callback, failed code exchange or
-# ID-token validation) so the error shape reveals nothing about which check
-# failed. The other two describe stable facts a user can act on: this
-# deployment has no account for the identity, or the issuer is not enabled.
+# OAUTH_SIGN_IN_FAILED covers every failure reachable once the browser has
+# left for the issuer (unknown/expired/replayed flow, state mismatch,
+# issuer-denied callback, failed code exchange or ID-token validation, an
+# identity this deployment has no account for) so the error reveals nothing
+# about which check failed — least of all whether an account exists for the
+# identity. OAUTH_ISSUER_NOT_ENABLED stays distinct because it is decided
+# before the browser ever leaves, and states a deployment fact rather than
+# anything about the identity that would have been presented.
 type ErrorCode = Literal[
-    "OAUTH_FLOW_INVALID",
-    "OAUTH_ACCOUNT_NOT_FOUND",
+    "OAUTH_SIGN_IN_FAILED",
     "OAUTH_ISSUER_NOT_ENABLED",
 ]
 
 error_definition_list: ErrorDefinitionList[ErrorCode] = [
     ErrorDefinition(
-        code="OAUTH_FLOW_INVALID",
+        code="OAUTH_SIGN_IN_FAILED",
         kind="UNAUTHORIZED",
-        message="That sign-in attempt is invalid or has expired. Please try again.",
-    ),
-    ErrorDefinition(
-        code="OAUTH_ACCOUNT_NOT_FOUND",
-        kind="FORBIDDEN",
-        message=(
-            "No account here matches that identity. "
-            "Ask an admin to create your account."
-        ),
+        message="That sign-in could not be completed. Please try again.",
     ),
     ErrorDefinition(
         code="OAUTH_ISSUER_NOT_ENABLED",

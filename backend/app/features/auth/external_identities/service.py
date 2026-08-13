@@ -26,7 +26,8 @@ async def resolve_user(db: AsyncSession, *, identity: OAuthIdentity) -> User:
     issuer-side email changes. Otherwise a VERIFIED issuer email may claim
     the local account with that address, creating the link. Never creates an
     account: accounts are admin-provisioned, so an unmatched identity is
-    rejected outright.
+    rejected outright — with the same error every other post-authorization
+    failure raises, so rejection never reveals whether an account exists.
     """
     linked = await repository.find_by_issuer_subject(
         db, issuer=identity.issuer, subject=identity.subject
@@ -36,20 +37,23 @@ async def resolve_user(db: AsyncSession, *, identity: OAuthIdentity) -> User:
         if user is None:
             # The FK cascade removes links with their user, so this only
             # covers a user deleted after the link was loaded.
-            raise AppError("OAUTH_ACCOUNT_NOT_FOUND")
+            raise AppError("OAUTH_SIGN_IN_FAILED")
         return user
 
     if not identity.email_verified or identity.email is None:
-        raise AppError("OAUTH_ACCOUNT_NOT_FOUND")
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     user = await users_service.find_by_email(db, email=identity.email)
     if user is None:
-        raise AppError("OAUTH_ACCOUNT_NOT_FOUND")
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     link = ExternalIdentity(
         user_id=user.id, issuer=identity.issuer, subject=identity.subject
     )
-    await repository.add(db, link)
+    if not await repository.add(db, link):
+        # A concurrent first sign-in linked this identity first. Rejecting the
+        # loser costs it one retry, which the next attempt resolves by subject.
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     return user
 

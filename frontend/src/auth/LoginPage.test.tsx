@@ -129,21 +129,35 @@ describe("LoginPage", () => {
     );
   });
 
-  it("shows the account-not-found callback error", async () => {
-    renderPage({ search: "?error=OAUTH_ACCOUNT_NOT_FOUND" });
+  it("shows one non-committal message for every callback failure", async () => {
+    // The backend reports a single code past the hop to Google; the banner
+    // must not read anything into it about the account.
+    renderPage({ search: "?error=OAUTH_SIGN_IN_FAILED" });
 
     expect(
       await screen.findByText(
-        "That Google account doesn't match any account here. Ask an admin to create your account, or sign in with email.",
+        "This Google account can't be used to access Cashout. Try a different account or contact an administrator.",
       ),
     ).toBeDefined();
   });
 
-  it("shows a generic message for other callback errors", async () => {
-    renderPage({ search: "?error=OAUTH_FLOW_INVALID" });
+  it("shows the same message for an unrecognized error code", async () => {
+    renderPage({ search: "?error=SOMETHING_ELSE" });
 
     expect(
-      await screen.findByText("Google sign-in didn't complete. Please try again."),
+      await screen.findByText(
+        "This Google account can't be used to access Cashout. Try a different account or contact an administrator.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("points at email sign-in when the issuer is disabled", async () => {
+    renderPage({ search: "?error=OAUTH_ISSUER_NOT_ENABLED" });
+
+    expect(
+      await screen.findByText(
+        "Google sign-in isn't available right now. Continue with email instead.",
+      ),
     ).toBeDefined();
   });
 
@@ -151,6 +165,6 @@ describe("LoginPage", () => {
     renderPage();
 
     await screen.findByRole("button", { name: "Continue with email" });
-    expect(screen.queryByText(/sign-in didn't complete/)).toBeNull();
+    expect(screen.queryByText(/can't be used to access Cashout/)).toBeNull();
   });
 });

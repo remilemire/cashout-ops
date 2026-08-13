@@ -12,6 +12,9 @@ import { useAuth } from "./useAuth";
 /**
  * Sign-in method chooser: passwordless email, or Google. A failed OAuth
  * callback redirects back here with `?error={code}`, rendered as a banner.
+ * Only a disabled issuer — decided before the browser leaves for Google —
+ * gets its own message; every other code shares one, because the backend
+ * deliberately reports one code for every failure past that point.
  */
 export function LoginPage() {
   const { user, isLoading } = useAuth();
@@ -36,9 +39,9 @@ export function LoginPage() {
           <ErrorBanner
             error={oauthError}
             message={
-              oauthError === "OAUTH_ACCOUNT_NOT_FOUND"
-                ? "That Google account doesn't match any account here. Ask an admin to create your account, or sign in with email."
-                : "Google sign-in didn't complete. Please try again."
+              oauthError === "OAUTH_ISSUER_NOT_ENABLED"
+                ? "Google sign-in isn't available right now. Continue with email instead."
+                : "This Google account can't be used to access Cashout. Try a different account or contact an administrator."
             }
           />
           <Button

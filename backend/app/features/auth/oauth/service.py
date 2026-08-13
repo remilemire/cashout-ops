@@ -90,7 +90,7 @@ async def start(
             issuer, redirect_uri=_callback_uri(issuer)
         )
     except OAuthExchangeError as error:
-        raise AppError("OAUTH_FLOW_INVALID", str(error)) from error
+        raise AppError("OAUTH_SIGN_IN_FAILED", str(error)) from error
 
     flow_id = str(uuid4())
     await store.save(
@@ -126,18 +126,18 @@ async def complete(
     """
     flow = await store.find(redis, flow_id=flow_id)
     if flow is None or flow.issuer is not issuer:
-        raise AppError("OAUTH_FLOW_INVALID")
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     # Consume BEFORE verifying: the checked delete makes the flow single-use
     # under concurrent callbacks, and a failed verification can never be
     # retried against the same state and verifier.
     if not await store.delete(redis, flow_id=flow_id):
-        raise AppError("OAUTH_FLOW_INVALID")
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     # A denied consent screen calls back with no code; treat it as the same
     # unified failure rather than distinguishing it.
     if code is None or state is None or not secrets.compare_digest(flow.state, state):
-        raise AppError("OAUTH_FLOW_INVALID")
+        raise AppError("OAUTH_SIGN_IN_FAILED")
 
     try:
         token = await oauth_client.exchange_token(
@@ -150,7 +150,7 @@ async def complete(
             issuer, token=token, nonce=flow.nonce
         )
     except OAuthExchangeError as error:
-        raise AppError("OAUTH_FLOW_INVALID", str(error)) from error
+        raise AppError("OAUTH_SIGN_IN_FAILED", str(error)) from error
 
     user = await external_identities_service.resolve_user(db, identity=identity)
 

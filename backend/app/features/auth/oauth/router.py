@@ -6,11 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, error_responses
-from app.errors.translators import translate_integrity_error
 from app.features.auth.shared import access
 from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.redis import Redis
@@ -111,7 +109,7 @@ async def oauth_callback(
     """
     flow_id = get_oauth_flow_cookie(request)
     if flow_id is None:
-        return _error_redirect("OAUTH_FLOW_INVALID")
+        return _error_redirect("OAUTH_SIGN_IN_FAILED")
 
     try:
         completed = await oauth_service.complete(
@@ -123,13 +121,11 @@ async def oauth_callback(
             code=code,
             state=state,
         )
-    except AppError as error:
-        return _error_redirect(error.code)
-    except IntegrityError as error:
-        # Two first sign-ins racing to link the same identity: the loser's
-        # unique violation goes through the centralized translator; only the
-        # JSON-to-redirect conversion happens here.
-        return _error_redirect(translate_integrity_error(error).code)
+    except AppError:
+        # The code is discarded rather than forwarded: every failure the
+        # issuer's callback can reach reports the one code, so the redirect
+        # cannot tell a rejected identity apart from a broken flow.
+        return _error_redirect("OAUTH_SIGN_IN_FAILED")
 
     response = RedirectResponse(
         completed.redirect_to, status_code=status.HTTP_302_FOUND

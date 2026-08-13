@@ -217,7 +217,8 @@ async def test_an_unverified_email_is_rejected(
     response = await _callback(client, state=authorization.authorization.state)
 
     assert response.status_code == 302, response.text
-    assert response.headers["location"] == "/login?error=OAUTH_ACCOUNT_NOT_FOUND"
+    # The unified error: the redirect cannot say the email was unverified.
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert await _identities(db_session) == []
     assert "session_token" not in client.cookies
 
@@ -233,7 +234,9 @@ async def test_an_unknown_account_is_rejected_never_created(
     response = await _callback(client, state=authorization.authorization.state)
 
     assert response.status_code == 302, response.text
-    assert response.headers["location"] == "/login?error=OAUTH_ACCOUNT_NOT_FOUND"
+    # Byte-identical to every other post-authorization failure, so the
+    # redirect never reveals that this deployment has no such account.
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert await _identities(db_session) == []
     users = await db_session.execute(select(func.count()).select_from(User))
     assert users.scalar_one() == 0
@@ -252,14 +255,14 @@ async def test_a_state_mismatch_burns_the_flow(
     tampered = await _callback(client, state="tampered-state")
 
     assert tampered.status_code == 302, tampered.text
-    assert tampered.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert tampered.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert oauth_client.exchanges == []
 
     # Consumption precedes verification, so even the correct state cannot be
     # replayed against a flow that has seen one bad callback.
     client.cookies.set("oauth_flow", flow_id)
     retried = await _callback(client, state=authorization.authorization.state)
-    assert retried.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert retried.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
 
 
 async def test_a_completed_callback_cannot_be_replayed(
@@ -283,7 +286,7 @@ async def test_a_completed_callback_cannot_be_replayed(
     replayed = await _callback(client, state=authorization.authorization.state)
 
     assert replayed.status_code == 302, replayed.text
-    assert replayed.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert replayed.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert "session_token" not in client.cookies
 
 
@@ -300,7 +303,7 @@ async def test_an_expired_flow_is_rejected(
     response = await _callback(client, state=authorization.authorization.state)
 
     assert response.status_code == 302, response.text
-    assert response.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
 
 
 async def test_a_callback_without_the_flow_cookie_is_rejected(
@@ -313,7 +316,7 @@ async def test_a_callback_without_the_flow_cookie_is_rejected(
     response = await _callback(client, state=authorization.authorization.state)
 
     assert response.status_code == 302, response.text
-    assert response.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
 
 
 async def test_a_denied_consent_callback_is_rejected(
@@ -329,7 +332,7 @@ async def test_a_denied_consent_callback_is_rejected(
     )
 
     assert response.status_code == 302, response.text
-    assert response.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert oauth_client.exchanges == []
 
 
@@ -344,13 +347,13 @@ async def test_issuer_failures_surface_as_the_unified_error(
     oauth_client.fail_exchange_with = OAuthExchangeError("exchange boom")
     authorization = await _start(client, oauth_client)
     response = await _callback(client, state=authorization.authorization.state)
-    assert response.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
 
     oauth_client.fail_exchange_with = None
     oauth_client.fail_identity_with = OAuthExchangeError("identity boom")
     authorization = await _start(client, oauth_client)
     response = await _callback(client, state=authorization.authorization.state)
-    assert response.headers["location"] == "/login?error=OAUTH_FLOW_INVALID"
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert "session_token" not in client.cookies
 
 
@@ -384,13 +387,52 @@ async def test_the_flow_is_single_use_under_concurrent_callbacks(
 
         locations = sorted(response.headers["location"] for response in responses)
         # The checked delete guarantees exactly one winner.
-        assert locations == ["/cashouts", "/login?error=OAUTH_FLOW_INVALID"]
+        assert locations == ["/cashouts", "/login?error=OAUTH_SIGN_IN_FAILED"]
         winners = [
             http_client
             for http_client in (first, second)
             if "session_token" in http_client.cookies
         ]
         assert len(winners) == 1
+
+
+async def test_a_link_race_reports_the_same_unified_error(
+    client: AsyncClient,
+    app: FastAPI,
+    db_session: AsyncSession,
+    oauth_client: FakeOAuthClient,
+) -> None:
+    await create_user(db_session, email=CASHIER_EMAIL)
+    oauth_client.identity = _identity()
+
+    transport = ASGITransport(app=app)
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as first,
+        AsyncClient(transport=transport, base_url="http://test") as second,
+    ):
+        # Separate flows, so both callbacks clear the single-use check and
+        # both reach the insert of the same (issuer, subject) link.
+        first_flow = await _start(first, oauth_client)
+        second_flow = await _start(second, oauth_client)
+        responses = await asyncio.gather(
+            _callback(first, state=first_flow.authorization.state),
+            _callback(second, state=second_flow.authorization.state),
+        )
+
+        locations = sorted(response.headers["location"] for response in responses)
+        # The loser's unique violation is reported as the unified error, not
+        # as a conflict code that would mark this identity as known here.
+        assert locations == ["/cashouts", "/login?error=OAUTH_SIGN_IN_FAILED"]
+        winners = [
+            http_client
+            for http_client in (first, second)
+            if "session_token" in http_client.cookies
+        ]
+        assert len(winners) == 1
+
+    # The unique index held: exactly one link exists for the identity.
+    [identity] = await _identities(db_session)
+    assert identity.subject == GOOGLE_SUBJECT
 
 
 # ================================
