@@ -52,10 +52,10 @@ const deleteDocumentMock = vi.mocked(cashoutApi.deleteDocument);
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
   createdAt: "2026-07-17T01:00:00Z",
-  provider: "ANTHROPIC",
+  provider: "anthropic",
   model: "claude-sonnet-5",
-  status: "VERIFIED",
-  classification: "MANUAL_NOTE",
+  status: "verified",
+  classification: "manual_note",
   classificationConfidence: 0.95,
   schemaName: "manual_note",
   extractedDataJson: { note: "cash $100" },

@@ -14,7 +14,7 @@ import {
 
 describe("format helpers", () => {
   it("labels enums and fields", () => {
-    expect(enumLabel("NEEDS_VERIFICATION")).toBe("Needs verification");
+    expect(enumLabel("needs_verification")).toBe("Needs verification");
     expect(fieldLabel("dailyTipout")).toBe("Daily tipout");
     expect(fieldLabel("net_total")).toBe("Net total");
   });

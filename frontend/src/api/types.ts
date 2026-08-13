@@ -120,22 +120,22 @@ export interface VerifyLoginCodeInput {
 
 // ---------- Cashout ----------
 
-export type CashoutSubmissionStatus = "PROCESSING" | "COMPLETED";
+export type CashoutSubmissionStatus = "processing" | "completed";
 
 export type DocumentAnalysisStatus =
-  | "EXTRACTING"
-  | "NEEDS_VERIFICATION"
-  | "VERIFIED"
-  | "FAILED";
+  | "extracting"
+  | "needs_verification"
+  | "verified"
+  | "failed";
 
 export type CashoutDocumentClassification =
-  | "TOUCHBISTRO_SERVER_SHIFT_REPORT"
-  | "PAYSTONE_TERMINAL_REPORT"
-  | "PAYMENT_RECEIPT"
-  | "DAILY_TIP_OUT_SHEET"
-  | "DAILY_CASH_SUMMARY"
-  | "MANUAL_NOTE"
-  | "UNKNOWN";
+  | "touchbistro_server_shift_report"
+  | "paystone_terminal_report"
+  | "payment_receipt"
+  | "daily_tip_out_sheet"
+  | "daily_cash_summary"
+  | "manual_note"
+  | "unknown";
 
 export type DocumentContentType =
   | "image/jpeg"

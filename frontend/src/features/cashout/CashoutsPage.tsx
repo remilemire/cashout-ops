@@ -97,7 +97,7 @@ export function CashoutsPage() {
                   </div>
                   <SubmissionStatusBadge status={submission.status} />
                 </Link>
-                {submission.status === "COMPLETED" ? (
+                {submission.status === "completed" ? (
                   <ChevronRight className="text-ink-muted size-4 shrink-0" />
                 ) : (
                   <Button

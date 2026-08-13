@@ -86,9 +86,10 @@ def test_the_serving_providers_api_key_is_required(
     provider: AIProvider, model: str
 ) -> None:
     # Clear only the serving provider's key, leaving the other two set, so the
-    # failure can only come from the one the model needs.
-    with pytest.raises(ValidationError, match=f"{provider}_API_KEY"):
-        _ai(MODEL=model, **{f"{provider}_API_KEY": None})
+    # failure can only come from the one the model needs. The key is named by
+    # the member (ANTHROPIC_API_KEY), not its snake_case value.
+    with pytest.raises(ValidationError, match=f"{provider.name}_API_KEY"):
+        _ai(MODEL=model, **{f"{provider.name}_API_KEY": None})
 
 
 def test_an_unrelated_providers_api_key_may_be_missing() -> None:

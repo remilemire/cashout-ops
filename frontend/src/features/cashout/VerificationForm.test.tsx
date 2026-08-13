@@ -23,10 +23,10 @@ const verifyMock = vi.mocked(cashoutApi.verifyAnalysis);
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
   createdAt: "2026-07-17T00:00:00Z",
-  provider: "ANTHROPIC",
+  provider: "anthropic",
   model: "test-model",
-  status: "NEEDS_VERIFICATION",
-  classification: "MANUAL_NOTE",
+  status: "needs_verification",
+  classification: "manual_note",
   classificationConfidence: 0.95,
   schemaName: "ManualNoteData",
   extractedDataJson: { note: "cash $100", total: 12.5 },
@@ -60,7 +60,7 @@ function renderForm(editable = true) {
 
 beforeEach(() => {
   verifyMock.mockReset();
-  verifyMock.mockResolvedValue({ ...analysis, status: "VERIFIED" });
+  verifyMock.mockResolvedValue({ ...analysis, status: "verified" });
 });
 
 describe("VerificationForm", () => {

@@ -23,7 +23,7 @@ export function initials(fullName: string): string {
   return (first.charAt(0) + last.charAt(0)).toUpperCase();
 }
 
-/** "NEEDS_VERIFICATION" → "Needs verification" */
+/** "needs_verification" → "Needs verification" */
 export function enumLabel(value: string): string {
   const lower = value.replaceAll("_", " ").toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);

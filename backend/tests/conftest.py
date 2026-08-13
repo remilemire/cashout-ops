@@ -13,7 +13,7 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 # The app.core.config import below builds the settings singleton at import
 # time from os.environ plus any developer .env. These pins keep that throwaway
 # construction valid with or without a .env, whatever provider a developer's
-# .env selects (e.g. STORAGE_PROVIDER=S3 without credentials would otherwise
+# .env selects (e.g. STORAGE_PROVIDER=s3 without credentials would otherwise
 # abort collection), without shipping any provider's credentials; os.environ
 # wins over .env. Value isolation is the hermetic baseline's job, below.
 os.environ.setdefault("APP_ENV", "dev")
@@ -21,13 +21,13 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://unused/unused")
 os.environ.setdefault("REDIS_URL", "redis://unused:6379/0")
 os.environ.setdefault("AI_MODEL", "claude-sonnet-5")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
-os.environ.setdefault("EMAIL_PROVIDER", "CONSOLE")
+os.environ.setdefault("EMAIL_PROVIDER", "console")
 # Pinned as a pair: a developer .env carrying only one of the two would
 # otherwise fail AuthSettings' set-together validation at import.
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
 os.environ.setdefault("BOOTSTRAP_OWNER_EMAIL", "owner@test.com")
-os.environ.setdefault("STORAGE_PROVIDER", "LOCAL")
+os.environ.setdefault("STORAGE_PROVIDER", "local")
 os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")
 
 # Replace every group on the live singleton with the hermetic baseline so no

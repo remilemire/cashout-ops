@@ -72,12 +72,12 @@ export function SubmissionPage() {
   // Admins can view anyone's submission; only the owner can act on it.
   const isOwner = submission.submittedByUserId === user?.id;
   const isAdminView = !isOwner;
-  const editable = isOwner && submission.status === "PROCESSING";
+  const editable = isOwner && submission.status === "processing";
   // Cancel stays available for the owner until the cashout is completed.
-  const canCancel = isOwner && submission.status !== "COMPLETED";
+  const canCancel = isOwner && submission.status !== "completed";
   const documents = submission.documents;
   const verifiedCount = documents.filter(
-    (doc) => doc.analysis?.status === "VERIFIED",
+    (doc) => doc.analysis?.status === "verified",
   ).length;
   const allVerified =
     documents.length > 0 && verifiedCount === documents.length;
@@ -112,7 +112,7 @@ export function SubmissionPage() {
         }
         action={
           <div className="flex items-center gap-2">
-            {documents.length > 0 && submission.status === "PROCESSING" && (
+            {documents.length > 0 && submission.status === "processing" && (
               <Badge tone={allVerified ? "success" : "neutral"}>
                 {verifiedCount}/{documents.length} verified
               </Badge>
@@ -122,7 +122,7 @@ export function SubmissionPage() {
         }
       />
 
-      {submission.status === "COMPLETED" && (
+      {submission.status === "completed" && (
         <Card className="border-success/40 bg-success/10 flex items-center gap-3">
           <PartyPopper className="text-success size-6 shrink-0" />
           <div>

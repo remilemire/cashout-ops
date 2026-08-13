@@ -60,7 +60,7 @@ const submissions: CashoutSubmissionListItem[] = [
   {
     id: "processing-submission",
     createdAt: "2026-07-17T01:00:00Z",
-    status: "PROCESSING",
+    status: "processing",
     submittedByUserId: user.id,
     submittedAt: "2026-07-17T01:00:00Z",
     submittedBy: user,
@@ -68,7 +68,7 @@ const submissions: CashoutSubmissionListItem[] = [
   {
     id: "completed-submission",
     createdAt: "2026-07-16T01:00:00Z",
-    status: "COMPLETED",
+    status: "completed",
     submittedByUserId: user.id,
     submittedAt: "2026-07-16T01:00:00Z",
     submittedBy: user,
@@ -136,7 +136,7 @@ describe("CashoutsPage", () => {
     const twin = (suffix: string): CashoutSubmissionListItem => ({
       id: `aaaaaaaa-0000-4000-8000-00000000000${suffix}`,
       createdAt: "2026-07-17T01:00:00Z",
-      status: "PROCESSING",
+      status: "processing",
       submittedByUserId: user.id,
       submittedAt: "2026-07-17T01:00:00Z",
       submittedBy: user,

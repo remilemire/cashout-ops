@@ -57,7 +57,7 @@ export function NewCashoutPage() {
         title={`Cashout — ${formatDateTime(startedAt)}`}
         action={
           <div className="flex items-center gap-2">
-            <SubmissionStatusBadge status="PROCESSING" />
+            <SubmissionStatusBadge status="processing" />
           </div>
         }
       />

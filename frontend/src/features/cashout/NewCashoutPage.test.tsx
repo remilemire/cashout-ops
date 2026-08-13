@@ -29,7 +29,7 @@ const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
 const submission: CashoutSubmission = {
   id: "submission-1",
   createdAt: "2026-07-17T00:00:00Z",
-  status: "PROCESSING",
+  status: "processing",
   submittedByUserId: "user-1",
   submittedAt: "2026-07-17T00:00:00Z",
 };
@@ -37,9 +37,9 @@ const submission: CashoutSubmission = {
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
   createdAt: "2026-07-17T00:00:00Z",
-  provider: "ANTHROPIC",
+  provider: "anthropic",
   model: "test-model",
-  status: "EXTRACTING",
+  status: "extracting",
   classification: null,
   classificationConfidence: null,
   schemaName: null,

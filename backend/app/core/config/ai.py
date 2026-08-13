@@ -66,9 +66,11 @@ class AISettings(SettingsGroup):
             AIProvider.GEMINI: self.GEMINI_API_KEY,
         }
         if not keys[self.PROVIDER]:
+            # .name, not the member itself: the message names the environment
+            # variable, which keeps the provider's uppercase spelling.
             raise ValueError(
-                f"{self.PROVIDER}_API_KEY required when "
-                f"AI_MODEL is served by {self.PROVIDER}."
+                f"{self.PROVIDER.name}_API_KEY required when "
+                f"AI_MODEL is served by {self.PROVIDER.name}."
             )
         return self
 

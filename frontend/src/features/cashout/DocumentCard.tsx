@@ -46,7 +46,7 @@ export function DocumentCard({
     initialData: initial ?? undefined,
     staleTime: Infinity,
     refetchInterval: (query) =>
-      query.state.data?.status === "EXTRACTING" ? 1500 : false,
+      query.state.data?.status === "extracting" ? 1500 : false,
   });
   const analysis = analysisQuery.data ?? initial;
 
@@ -158,7 +158,7 @@ export function DocumentCard({
         <p className="text-ink-muted text-sm">No analysis for this document.</p>
       )}
 
-      {analysis?.status === "EXTRACTING" && (
+      {analysis?.status === "extracting" && (
         <div className="bg-surface-2 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
           <Spinner className="size-4 shrink-0" />
           <div>
@@ -171,7 +171,7 @@ export function DocumentCard({
         </div>
       )}
 
-      {analysis?.status === "FAILED" && (
+      {analysis?.status === "failed" && (
         <div className="space-y-2">
           <div className="border-danger/30 bg-danger/10 rounded-lg border px-3 py-2 text-sm">
             <p className="text-danger font-medium">
@@ -196,7 +196,7 @@ export function DocumentCard({
         </div>
       )}
 
-      {analysis?.status === "NEEDS_VERIFICATION" && (
+      {analysis?.status === "needs_verification" && (
         <VerificationForm
           analysis={analysis}
           submissionId={submissionId}
@@ -204,7 +204,7 @@ export function DocumentCard({
         />
       )}
 
-      {analysis?.status === "VERIFIED" && (
+      {analysis?.status === "verified" && (
         <div className="space-y-2">
           <FieldList data={analysis.verifiedDataJson ?? {}} />
           <CorrectionNote

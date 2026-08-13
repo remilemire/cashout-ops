@@ -13,17 +13,17 @@ export function SubmissionStatusBadge({
   status: CashoutSubmissionStatus;
 }) {
   return (
-    <Badge tone={status === "COMPLETED" ? "success" : "info"}>
-      {status === "PROCESSING" ? "In progress" : enumLabel(status)}
+    <Badge tone={status === "completed" ? "success" : "info"}>
+      {status === "processing" ? "In progress" : enumLabel(status)}
     </Badge>
   );
 }
 
 const ANALYSIS_TONES = {
-  EXTRACTING: "info",
-  NEEDS_VERIFICATION: "warning",
-  VERIFIED: "success",
-  FAILED: "danger",
+  extracting: "info",
+  needs_verification: "warning",
+  verified: "success",
+  failed: "danger",
 } as const;
 
 export function AnalysisStatusBadge({

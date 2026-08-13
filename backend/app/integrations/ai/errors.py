@@ -6,12 +6,12 @@ from enum import StrEnum
 
 
 class AIErrorCode(StrEnum):
-    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
-    DOCUMENT_REJECTED = "DOCUMENT_REJECTED"
-    UNREADABLE_DOCUMENT = "UNREADABLE_DOCUMENT"
+    SERVICE_UNAVAILABLE = "service_unavailable"
+    DOCUMENT_REJECTED = "document_rejected"
+    UNREADABLE_DOCUMENT = "unreadable_document"
     # The model hit the max-tokens limit before completing its output.
-    OUTPUT_LIMIT_REACHED = "OUTPUT_LIMIT_REACHED"
-    UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
+    OUTPUT_LIMIT_REACHED = "output_limit_reached"
+    UNSUPPORTED_FILE_TYPE = "unsupported_file_type"
 
 
 class AIAnalysisError(Exception):
