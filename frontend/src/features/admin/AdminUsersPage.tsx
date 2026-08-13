@@ -290,7 +290,10 @@ export function AdminUsersPage() {
                                 autoFocus
                                 required
                                 aria-label={`Full name for ${user.email}`}
-                                className="min-h-9"
+                                // Floor the field so the narrow User column
+                                // can't crush it: the Card scrolls
+                                // horizontally instead.
+                                className="min-h-9 min-w-40"
                                 invalid={renamedNameError !== undefined}
                                 value={renamedName}
                                 onChange={(event) =>
