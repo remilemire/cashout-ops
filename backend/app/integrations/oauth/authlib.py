@@ -57,7 +57,11 @@ class AuthlibOAuthClient:
     ) -> OAuthAuthorization:
         app = self._app(issuer)
         try:
-            authorization = await app.create_authorization_url(redirect_uri)  # pyright: ignore[reportUnknownMemberType]
+            # prompt=select_account forces the issuer's account chooser every
+            # time, instead of silently reusing a single active session.
+            authorization = await app.create_authorization_url(  # pyright: ignore[reportUnknownMemberType]
+                redirect_uri, prompt="select_account"
+            )
             # nonce is present because the scope includes openid; code_verifier
             # because code_challenge_method is set. A registration that broke
             # either invariant surfaces here as the KeyError wrap.
