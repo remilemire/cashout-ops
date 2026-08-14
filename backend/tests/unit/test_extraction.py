@@ -15,7 +15,7 @@ from app.document_ai import (
 )
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.extraction.schemas import ManualNoteData
-from app.features.cashout.types import CashoutDocumentClassification
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.integrations.ai import (
     AIAnalysisError,
     AIErrorCode,

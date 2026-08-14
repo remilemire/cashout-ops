@@ -10,10 +10,10 @@ from app.document_ai import (
     DocumentRef,
     FieldIssue,
 )
-from app.features.cashout.types import CashoutDocumentClassification
 
 from .registry import CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
+from .types import CashoutDocumentClassification
 
 _CLASSIFY_INSTRUCTIONS = """
 The document is one end-of-shift record from a restaurant cashout. Differentiate the permitted types as follows:

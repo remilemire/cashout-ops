@@ -15,20 +15,6 @@ class CashoutSubmissionStatus(StrEnum):
     COMPLETED = "completed"
 
 
-# The document types the AI can classify a cashout document as. UNKNOWN is the
-# explicit "none of the above": the model may pick it directly, and the
-# processor folds a null classification into it — so a completed analysis
-# always has a classification.
-class CashoutDocumentClassification(StrEnum):
-    TOUCHBISTRO_SERVER_SHIFT_REPORT = "touchbistro_server_shift_report"
-    PAYSTONE_TERMINAL_REPORT = "paystone_terminal_report"
-    PAYMENT_RECEIPT = "payment_receipt"
-    DAILY_TIP_OUT_SHEET = "daily_tip_out_sheet"
-    DAILY_CASH_SUMMARY = "daily_cash_summary"
-    MANUAL_NOTE = "manual_note"
-    UNKNOWN = "unknown"
-
-
 # EXTRACTING (AI running in the background — poll the analysis) →
 # NEEDS_VERIFICATION (extraction produced data, awaiting the cashier) or
 # FAILED (error_code/error_message set; retry via the extract endpoint) →

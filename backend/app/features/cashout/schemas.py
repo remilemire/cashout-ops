@@ -11,11 +11,8 @@ from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.users.schemas import UserOut
 from app.lib.documents import DocumentContentType
 
-from .types import (
-    CashoutDocumentClassification,
-    CashoutSubmissionStatus,
-    DocumentAnalysisStatus,
-)
+from .extraction.types import CashoutDocumentClassification
+from .types import CashoutSubmissionStatus, DocumentAnalysisStatus
 
 
 class CashoutSubmissionOut(BaseOut):

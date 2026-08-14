@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from app.features.cashout.types import CashoutDocumentClassification
-
 from .schemas import (
     CashoutDocumentSchema,
     DailyCashSummaryData,
@@ -15,6 +13,7 @@ from .schemas import (
     PaystoneTerminalReportData,
     TouchBistroServerShiftReportData,
 )
+from .types import CashoutDocumentClassification
 
 CASHOUT_DOCUMENT_SCHEMAS: Mapping[
     CashoutDocumentClassification, type[CashoutDocumentSchema]

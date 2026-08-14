@@ -7,8 +7,8 @@ from httpx import AsyncClient
 
 from app.core.config import settings
 from app.document_ai import DocumentClassification
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.types import (
-    CashoutDocumentClassification,
     CashoutSubmissionStatus,
     DocumentAnalysisStatus,
 )

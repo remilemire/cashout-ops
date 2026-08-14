@@ -11,10 +11,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.providers import AIProvider
-from app.features.cashout.types import (
-    CashoutDocumentClassification,
-    DocumentAnalysisStatus,
-)
+from app.features.cashout.extraction.types import CashoutDocumentClassification
+from app.features.cashout.types import DocumentAnalysisStatus
 from app.infrastructure.db.models import Base, enum_column
 
 if TYPE_CHECKING:

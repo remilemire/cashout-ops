@@ -15,7 +15,7 @@ from httpx import AsyncClient
 
 from app.document_ai import DocumentAnalysis, DocumentClassification, FieldIssue
 from app.features.cashout.extraction.schemas import ManualNoteData
-from app.features.cashout.types import CashoutDocumentClassification
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 
 from .api import csrf_headers
 from .documents import SAMPLE_PDF_UPLOAD

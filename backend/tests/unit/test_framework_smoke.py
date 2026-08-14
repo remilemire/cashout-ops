@@ -15,7 +15,7 @@ import pytest
 
 from app.document_ai import DocumentClassification
 from app.features.cashout.extraction.schemas import ManualNoteData
-from app.features.cashout.types import CashoutDocumentClassification
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.integrations.ai.anthropic import AnthropicAIClient
 from app.integrations.ai.gemini import GeminiAIClient
 from app.integrations.ai.openai import OpenAIAIClient
