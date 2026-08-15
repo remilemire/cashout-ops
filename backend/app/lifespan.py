@@ -6,10 +6,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.core.config import settings
-from app.document_ai import DocumentAIClient
 from app.features.auth.outbox import SendLoginLinkEmailOutboxHandler
-from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.db.lifespan import db_lifespan
 from app.infrastructure.outbox.lifespan import (
@@ -40,22 +37,13 @@ async def lifespan(app: FastAPI):
         oauth_client = await stack.enter_async_context(oauth_lifespan())
         storage = await stack.enter_async_context(storage_lifespan())
 
-        processor = CashoutDocumentProcessor(
-            DocumentAIClient(
-                ai_client,
-                storage,
-                classification_max_tokens=settings.ai.CLASSIFICATION_MAX_TOKENS,
-                extraction_max_tokens=settings.ai.EXTRACTION_MAX_TOKENS,
-            )
-        )
-
         app.state.db_engine = db.engine
         app.state.db_sessionmaker = db.sessionmaker
         app.state.redis = redis_client
+        app.state.ai_client = ai_client
         app.state.email_client = email_client
         app.state.oauth_client = oauth_client
         app.state.document_storage = storage
-        app.state.cashout_document_processor = processor
 
         # Entered last so the dispatchers stop before their dependencies are
         # torn down on shutdown (the exit stack unwinds in reverse).
@@ -64,7 +52,7 @@ async def lifespan(app: FastAPI):
                 SendLoginLinkEmailOutboxHandler(
                     db.sessionmaker, redis_client, email_client
                 ),
-                RunExtractionOutboxHandler(db.sessionmaker, processor),
+                RunExtractionOutboxHandler(db.sessionmaker, ai_client, storage),
             ]
         )
         await stack.enter_async_context(

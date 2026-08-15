@@ -13,13 +13,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.features.auth.outbox import SendLoginLinkEmailOutboxHandler
-from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.outbox.dispatcher import OutboxDispatcher
 from app.infrastructure.outbox.lifespan import create_outbox_handler_registry
 from app.infrastructure.redis import Redis
 
-from ..fakes import FakeEmailClient
+from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient
 
 
 class OutboxDrain:
@@ -40,14 +39,18 @@ def drain_outbox(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     redis_client: Redis,
     email_client: FakeEmailClient,
-    processor: CashoutDocumentProcessor,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
 ) -> OutboxDrain:
+    # The handler builds its own processor, so it is wired from the same fake
+    # AI and storage fixtures the request path uses — tests that configure
+    # `ai_client` still steer what the drained extraction returns.
     registry = create_outbox_handler_registry(
         [
             SendLoginLinkEmailOutboxHandler(
                 db_sessionmaker, redis_client, email_client
             ),
-            RunExtractionOutboxHandler(db_sessionmaker, processor),
+            RunExtractionOutboxHandler(db_sessionmaker, ai_client, storage),
         ]
     )
     dispatcher = OutboxDispatcher(

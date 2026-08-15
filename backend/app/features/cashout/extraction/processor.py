@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.core.config import settings
 from app.core.providers import AIProvider
 from app.document_ai import (
     DocumentAIClient,
     DocumentRef,
     FieldIssue,
 )
+from app.integrations.ai import AIClient
+from app.integrations.storage import DocumentStorageClient
 
 from .registry import CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
@@ -148,4 +151,29 @@ class CashoutDocumentProcessor:
         )
 
 
-__all__ = ["CashoutDocumentProcessingResult", "CashoutDocumentProcessor"]
+def build_cashout_document_processor(
+    ai: AIClient, storage: DocumentStorageClient
+) -> CashoutDocumentProcessor:
+    """Compose a processor over the configured per-operation token budgets.
+
+    Neither the processor nor its `DocumentAIClient` opens a resource — they
+    only wrap the AI and storage clients, which own their own lifecycles — so
+    each consumer calls this for itself rather than sharing one instance: the
+    request dependency per request, the extraction outbox handler when the
+    composition root constructs it.
+    """
+    return CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai,
+            storage,
+            classification_max_tokens=settings.ai.CLASSIFICATION_MAX_TOKENS,
+            extraction_max_tokens=settings.ai.EXTRACTION_MAX_TOKENS,
+        )
+    )
+
+
+__all__ = [
+    "CashoutDocumentProcessingResult",
+    "CashoutDocumentProcessor",
+    "build_cashout_document_processor",
+]

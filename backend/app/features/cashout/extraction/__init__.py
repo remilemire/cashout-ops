@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
-from .processor import CashoutDocumentProcessingResult, CashoutDocumentProcessor
+from .processor import (
+    CashoutDocumentProcessingResult,
+    CashoutDocumentProcessor,
+    build_cashout_document_processor,
+)
 
-__all__ = ["CashoutDocumentProcessingResult", "CashoutDocumentProcessor"]
+__all__ = [
+    "CashoutDocumentProcessingResult",
+    "CashoutDocumentProcessor",
+    "build_cashout_document_processor",
+]

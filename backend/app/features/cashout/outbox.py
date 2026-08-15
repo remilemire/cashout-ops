@@ -16,10 +16,13 @@ from pydantic import BaseModel
 
 from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
 
+from .extraction import build_cashout_document_processor
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from .extraction import CashoutDocumentProcessor
+    from app.integrations.ai import AIClient
+    from app.integrations.storage import DocumentStorageClient
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +51,13 @@ class RunExtractionOutboxHandler:
     def __init__(
         self,
         sessionmaker: async_sessionmaker[AsyncSession],
-        processor: CashoutDocumentProcessor,
+        ai: AIClient,
+        storage: DocumentStorageClient,
     ) -> None:
         self._sessionmaker = sessionmaker
-        self._processor = processor
+        # Built here rather than handed in: the processor holds no resource,
+        # so there is nothing for the composition root to own on its behalf.
+        self._processor = build_cashout_document_processor(ai, storage)
 
     async def handle(self, payload: RunExtraction) -> None:
         # Imported at call time: the outbox catalog imports this module, and
