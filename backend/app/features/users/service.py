@@ -28,6 +28,17 @@ async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
     return await repository.find_by_id(db, user_id=user_id)
 
 
+async def owner_exists(db: AsyncSession) -> bool:
+    """Whether the deployment currently has an owner.
+
+    False before the first owner is bootstrapped, and again if one is
+    removed out of band — the owner cannot be deleted or demoted through the
+    API, and a transfer moves the role inside a single transaction. Callers
+    use it to decide whether the bootstrap address may claim ownership.
+    """
+    return await repository.owner_exists(db)
+
+
 async def create(db: AsyncSession, *, payload: UserCreate) -> User:
     user = User(
         email=payload.email,
@@ -142,6 +153,7 @@ __all__ = [
     "list_users",
     "find_by_email",
     "find_by_id",
+    "owner_exists",
     "create",
     "update",
     "bootstrap_owner",

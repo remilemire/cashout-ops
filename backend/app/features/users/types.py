@@ -12,11 +12,15 @@ from enum import StrEnum
 #
 # That index is partial, so zero owners is a legal state: the window before
 # BOOTSTRAP_OWNER_EMAIL first signs in. Past it the owner is unremovable
-# through the API, so an ownerless deployment implies an out-of-band database
-# edit. The sign-in flow reclaims ownership on its own only while the
-# bootstrap address has no row (see features/auth/email_challenges/service.py)
-# — nothing promotes an existing account to OWNER, and recovering from the
-# remaining case is deliberately a manual job.
+# through the API, so going ownerless again takes an out-of-band database
+# edit — after which a sign-in at the bootstrap address reclaims ownership
+# (see features/auth/email_challenges/service.py).
+#
+# That recovery holds only while the bootstrap address has no row of its own.
+# Re-creating an account there is an ordinary admin action once ownership has
+# moved on, and it disarms the recovery permanently: nothing promotes an
+# existing account to OWNER, so an ownerless deployment in that state is a
+# manual fix.
 class UserRole(StrEnum):
     STAFF = "staff"
     ADMIN = "admin"

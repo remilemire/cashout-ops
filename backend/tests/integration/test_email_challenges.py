@@ -378,22 +378,21 @@ async def test_verify_code_does_not_duplicate_the_owner(
     assert users[0].role is UserRole.OWNER
 
 
-async def test_verify_code_reports_a_blocked_owner_bootstrap_as_invalid(
+async def test_start_login_for_a_superseded_owner_address_is_a_decoy(
     client: AsyncClient,
     owner_client: AsyncClient,
     db_session: AsyncSession,
+    redis_client: Redis,
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    """A bootstrap that cannot take must not leak a 409 out of the login flow.
+    """Once ownership has moved on, the bootstrap address is just an address.
 
-    Ownership moves to another admin and the bootstrap address is deleted, so
-    the next sign-in for it tries to create a second owner. The SAVEPOINT in
-    `add_if_unique` contains the unique-index violation, leaving the flow to
-    answer with its own unified error — the same path a bootstrap losing a
-    race to a concurrent sign-in takes.
+    Ownership moves to another admin and the bootstrap account is deleted.
+    That address can no longer claim ownership, and the flow says so up front
+    rather than emailing a link whose sign-in is guaranteed to fail — so it
+    becomes indistinguishable from any unknown address.
     """
-    owner_email = settings.bootstrap.OWNER_EMAIL
     heir = await create_user(db_session, email="heir@test.com", role=UserRole.ADMIN)
     transferred = await owner_client.post(
         f"/api/users/{heir.id}/transfer-ownership", headers=csrf_headers(owner_client)
@@ -404,9 +403,43 @@ async def test_verify_code_reports_a_blocked_owner_bootstrap_as_invalid(
         f"/api/users/{former['id']}", headers=csrf_headers(owner_client)
     )
     assert deleted.status_code == 204, deleted.text
+    email_client.sent.clear()
+
+    response = await client.post(
+        "/api/auth/email-challenges",
+        json={"email": settings.bootstrap.OWNER_EMAIL},
+    )
+
+    assert response.status_code == 202, response.text
+    assert re.fullmatch(r"[0-9a-f-]{36}", response.json()["challengeId"])
+    assert await drain_outbox() == 0
+    assert await redis_keys(redis_client, "email_challenge:*") == []
+    assert email_client.sent == []
+    # The heir is still the one and only owner, and no account was recreated.
+    # Expire first: the app promoted the heir in its own session, so this
+    # one's identity map still holds the pre-transfer instance.
+    db_session.expire_all()
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert [(user.email, user.role) for user in users] == [
+        ("heir@test.com", UserRole.OWNER)
+    ]
+
+
+async def test_verify_code_reclaims_ownership_when_no_owner_exists(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    """The gate is "no owner", not "no users".
+
+    A database that holds accounts but no owner — only reachable by an
+    out-of-band edit — heals on the next sign-in at the bootstrap address.
+    """
+    await create_user(db_session, email=CASHIER_EMAIL)
 
     link = await _initiate_and_deliver(
-        client, drain_outbox, email_client, email=owner_email
+        client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
     code = await _obtain_code(client, link)
     response = await client.post(
@@ -414,15 +447,13 @@ async def test_verify_code_reports_a_blocked_owner_bootstrap_as_invalid(
         json={"challengeId": link.challenge_id, "code": code},
     )
 
-    assert response.status_code == 401, response.text
-    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-    # The heir is still the one and only owner.
-    owners = (
-        (await db_session.execute(select(User).where(User.role == UserRole.OWNER)))
-        .scalars()
-        .all()
-    )
-    assert [owner.id for owner in owners] == [heir.id]
+    assert response.status_code == 200, response.text
+    assert response.json()["role"] == "owner"
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert sorted((user.email, user.role) for user in users) == [
+        (CASHIER_EMAIL, UserRole.STAFF),
+        (settings.bootstrap.OWNER_EMAIL, UserRole.OWNER),
+    ]
 
 
 async def test_verify_code_wrong_code_is_capped(

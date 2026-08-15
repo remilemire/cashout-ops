@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .model import User
+from .types import UserRole
 
 
 async def list_all(db: AsyncSession) -> Sequence[User]:
@@ -27,6 +28,17 @@ async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
 
 async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
     return await db.get(User, user_id)
+
+
+async def owner_exists(db: AsyncSession) -> bool:
+    """Whether any account currently holds the owner role.
+
+    ix_users_single_owner indexes exactly these rows, so this is an
+    index-only probe rather than a scan of the table.
+    """
+    stmt = select(select(User.id).where(User.role == UserRole.OWNER).exists())
+
+    return bool((await db.execute(stmt)).scalar())
 
 
 async def add(db: AsyncSession, user: User) -> None:
@@ -70,6 +82,7 @@ __all__ = [
     "list_all",
     "find_by_email",
     "find_by_id",
+    "owner_exists",
     "add",
     "add_if_unique",
     "delete",

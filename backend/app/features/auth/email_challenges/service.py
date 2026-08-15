@@ -52,6 +52,29 @@ def _pointer_hash(email: str) -> str:
     return hash_secret_token(email.lower())
 
 
+async def _may_bootstrap_owner(db: AsyncSession, *, email: str) -> bool:
+    """Whether this address may become the owner on a proven sign-in.
+
+    Only the configured bootstrap address, and only while the deployment has
+    no owner at all — the one state the single-owner invariant leaves open.
+    A database that lost its owner therefore heals on the next sign-in
+    there, while an address whose ownership has moved on is just another
+    unknown one. Saying that outright beats attempting the insert and
+    letting ix_users_single_owner reject it.
+
+    It is a check, not a guarantee: two concurrent sign-ins can both pass
+    here, so the index (and the SAVEPOINT in users' `add_if_unique`) stays
+    the thing that actually holds the invariant.
+
+    The address is compared first, so the ownership query runs only for it —
+    never on an ordinary unknown-address probe.
+    """
+    if email != settings.bootstrap.OWNER_EMAIL:
+        return False
+
+    return not await users_service.owner_exists(db)
+
+
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     """Start an email challenge for the address, returning the challenge id.
 
@@ -62,13 +85,16 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     outbox, so it is sent only once the request commits.
 
     Nothing is written to the users table here. BOOTSTRAP_OWNER_EMAIL is a
-    valid recipient before its account exists, but the account is created
-    only once the emailed link's code comes back (see `consume_code`) —
-    creating it here would let any unauthenticated request mint the owner.
+    valid recipient while it may still claim ownership, but the account is
+    created only once the emailed link's code comes back (see
+    `consume_code`) — creating it here would let any unauthenticated request
+    mint the owner. The recipient test is the same one `consume_code` will
+    apply, so an address that cannot sign in is never emailed a link that
+    cannot work.
     """
     user = await users_service.find_by_email(db, email=email)
 
-    if user is None and email != settings.bootstrap.OWNER_EMAIL:
+    if user is None and not await _may_bootstrap_owner(db, email=email):
         return str(uuid4())  # decoy id
 
     # One active challenge per address: starting a new sign-in invalidates the
@@ -179,21 +205,17 @@ async def _resolve_user(db: AsyncSession, *, email: str) -> User:
     rather than at initiation, where an unauthenticated request would have
     been enough to create it.
 
-    The bootstrap is keyed on that address having no row rather than on the
-    deployment being new, so it also restores ownership to a database that
-    lost its owner. It cannot help once the address holds a non-owner row —
-    the lookup below short-circuits, and no other path assigns OWNER — so
-    that residual state is recovered by hand; see users/types.py.
-
-    Existing ownership is not consulted before emailing: once ownership has
-    been transferred away and the old bootstrap account deleted, that address
-    still gets a link email and only fails here, its insert losing to
-    ix_users_single_owner. Gating initiation on owner existence would make it
-    a plain decoy instead; deliberately left as is.
+    Bootstrapping is gated on the deployment having no owner rather than on
+    the deployment being new (`_may_bootstrap_owner`), so ownership is
+    reclaimable after an out-of-band loss, and an address whose ownership
+    has moved on is turned away here instead of at the unique index. It
+    still cannot help once that address holds a non-owner row: the lookup
+    below short-circuits, and no path promotes an existing account to OWNER
+    (see users/types.py).
     """
     user = await users_service.find_by_email(db, email=email)
 
-    if user is None and email == settings.bootstrap.OWNER_EMAIL:
+    if user is None and await _may_bootstrap_owner(db, email=email):
         # There is no registration step for the owner in the passwordless
         # flow, so its first proven sign-in creates the account.
         user = await users_service.bootstrap_owner(
@@ -205,10 +227,10 @@ async def _resolve_user(db: AsyncSession, *, email: str) -> User:
         )
 
     if user is None:
-        # Either the account vanished after initiation, or the bootstrap lost
-        # a race to a concurrent challenge for the same address. Rejecting the
-        # loser costs it one fresh sign-in, which resolves the account
-        # normally; both surface as the one unified error.
+        # The account vanished after initiation, the address may no longer
+        # claim ownership, or the bootstrap lost a race to a concurrent
+        # challenge for the same address. Rejecting the loser costs it one
+        # fresh sign-in; all three surface as the one unified error.
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
     return user
