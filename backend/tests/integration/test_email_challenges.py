@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -589,3 +591,53 @@ async def test_send_failure_is_recorded_for_retry(
     assert message.attempts == 1
     assert message.max_attempts == 5
     assert message.last_error == "RuntimeError: provider down"
+
+
+# ================================
+# ---------- Time floor ----------
+# ================================
+
+
+async def test_every_challenge_response_holds_the_time_floor(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real and decoy work is padded to a shared minimum duration.
+
+    The decoy path does far less work than the real one (no Redis writes, no
+    outbox row, nothing to commit), so without the floor the response time
+    classifies an address. The suite runs with the floor at 0; a real value
+    is patched in here. Assertions are one-sided (elapsed >= floor) — that is
+    what the implementation guarantees; upper bounds would flake.
+    """
+    monkeypatch.setattr(settings.auth, "CHALLENGE_TIME_FLOOR_MS", 80)
+    await create_user(db_session, email=CASHIER_EMAIL)
+
+    async def elapsed(path: str, json: dict[str, str]) -> tuple[int, float]:
+        start = time.monotonic()
+        response = await client.post(path, json=json)
+        return response.status_code, time.monotonic() - start
+
+    # Initiation: known address (real challenge) and unknown (decoy).
+    for email in (CASHIER_EMAIL, "nobody@test.com"):
+        status, took = await elapsed("/api/auth/email-challenges", {"email": email})
+        assert status == 202
+        assert took >= 0.08, f"initiate({email}) returned in {took * 1000:.1f}ms"
+
+    # Verification: a bogus challenge is the fastest possible rejection —
+    # a straight Redis miss — and must still hold the floor.
+    bogus = "00000000-0000-0000-0000-000000000000"
+    for path, payload in (
+        (
+            "/api/auth/email-challenges/verify-link",
+            {"challengeId": bogus, "token": "t"},
+        ),
+        (
+            "/api/auth/email-challenges/verify-code",
+            {"challengeId": bogus, "code": "000000"},
+        ),
+    ):
+        status, took = await elapsed(path, payload)
+        assert status == 401
+        assert took >= 0.08, f"{path} returned in {took * 1000:.1f}ms"

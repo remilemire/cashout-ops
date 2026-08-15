@@ -15,6 +15,12 @@ class AuthSettings(SettingsGroup):
     # Email challenges. A sign-in link is emailed on login; the challenge (and
     # with it the link and its one-time code) expires this long after initiation.
     CHALLENGE_TTL_MINUTES: int = 15
+    # Minimum duration of every email-challenge response. Real and decoy flows
+    # do different amounts of work; padding both to a shared floor keeps
+    # response timing from revealing whether an account exists. Must exceed the
+    # real path's tail latency (not its average) or the tail still leaks.
+    # 0 disables the floor.
+    CHALLENGE_TIME_FLOOR_MS: int = Field(default=100, ge=0)
     # OAuth sign-in. A flow — its Redis state and the `oauth_flow` cookie —
     # expires this long after /start; a user who parks on the issuer's
     # consent screen longer simply retries.
