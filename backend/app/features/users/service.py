@@ -51,14 +51,21 @@ async def update(db: AsyncSession, *, user_id: UUID, payload: UserUpdate) -> Use
     return user
 
 
-async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User:
-    """Create the bootstrapped BOOTSTRAP_OWNER_EMAIL account as the owner."""
+async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User | None:
+    """Create the bootstrapped BOOTSTRAP_OWNER_EMAIL account as the owner.
+
+    None means the insert lost a race — a concurrent sign-in created this
+    account first, or an owner already exists. The caller decides what that
+    means; the sign-in flow reports its own unified error rather than letting
+    a unique-index violation surface as a 409.
+    """
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         role=UserRole.OWNER,
     )
-    await repository.add(db, user)
+    if not await repository.add_if_unique(db, user):
+        return None
 
     return user
 

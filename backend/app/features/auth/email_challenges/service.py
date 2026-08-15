@@ -43,6 +43,15 @@ def _generate_code() -> str:
     return f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
 
 
+def _pointer_hash(email: str) -> str:
+    """The address as it is keyed in Redis: hashed, so no PII lands in a key.
+
+    Lowercased before hashing, matching the per-email rate limiter, so casing
+    variants of one address share a pointer.
+    """
+    return hash_secret_token(email.lower())
+
+
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     """Start an email challenge for the address, returning the challenge id.
 
@@ -51,32 +60,25 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     the endpoint cannot be used for account enumeration. For a real user the
     challenge is stored in Redis and the link email is enqueued on the
     outbox, so it is sent only once the request commits.
+
+    Nothing is written to the users table here. BOOTSTRAP_OWNER_EMAIL is a
+    valid recipient before its account exists, but the account is created
+    only once the emailed link's code comes back (see `consume_code`) —
+    creating it here would let any unauthenticated request mint the owner.
     """
     user = await users_service.find_by_email(db, email=email)
 
-    if user is None and email == settings.bootstrap.OWNER_EMAIL:
-        # First sign-in bootstraps the owner account (there is no registration
-        # step for it in the passwordless flow). Concurrent initiations can
-        # race to a 409 on ix_users_email at commit; the loser simply retries
-        # and finds the row, so it self-heals.
-        user = await users_service.bootstrap_owner(
-            db,
-            payload=UserCreate(
-                email=settings.bootstrap.OWNER_EMAIL,
-                full_name=settings.bootstrap.OWNER_FULL_NAME,
-            ),
-        )
-
-    if user is None:
+    if user is None and email != settings.bootstrap.OWNER_EMAIL:
         return str(uuid4())  # decoy id
 
-    # One active challenge per user: starting a new sign-in invalidates the
+    # One active challenge per address: starting a new sign-in invalidates the
     # previous link and code. The Redis delete is not transactional with the
     # request, which is acceptable — worst case a rolled-back initiate
     # destroyed a previous challenge the user had already abandoned by
     # re-initiating.
-    previous_challenge_id = await store.find_challenge_id_for_user(
-        redis, user_id=user.id
+    email_hash = _pointer_hash(email)
+    previous_challenge_id = await store.find_challenge_id_for_email(
+        redis, email_hash=email_hash
     )
     if previous_challenge_id is not None:
         await store.delete(redis, challenge_id=previous_challenge_id)
@@ -85,12 +87,13 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     await store.save(
         redis,
         challenge_id=challenge_id,
-        challenge=StoredEmailChallenge(user_id=user.id),
+        challenge=StoredEmailChallenge(email=email),
+        email_hash=email_hash,
     )
     await outbox_service.enqueue(
         db,
         type="auth.send_login_link_email",
-        payload={"challenge_id": challenge_id, "user_id": str(user.id)},
+        payload={"challenge_id": challenge_id},
         max_attempts=SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
     )
 
@@ -150,8 +153,10 @@ async def consume_code(
         if attempt >= MAX_CODE_ATTEMPTS:
             # Out of guesses: destroy the challenge outright.
             await store.delete(redis, challenge_id=challenge_id)
-            await store.clear_user_pointer(
-                redis, user_id=challenge.user_id, challenge_id=challenge_id
+            await store.clear_email_pointer(
+                redis,
+                email_hash=_pointer_hash(challenge.email),
+                challenge_id=challenge_id,
             )
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
@@ -159,13 +164,51 @@ async def consume_code(
     # request already signed in with this challenge.
     if not await store.delete(redis, challenge_id=challenge_id):
         raise AppError("EMAIL_CHALLENGE_INVALID")
-    await store.clear_user_pointer(
-        redis, user_id=challenge.user_id, challenge_id=challenge_id
+    await store.clear_email_pointer(
+        redis, email_hash=_pointer_hash(challenge.email), challenge_id=challenge_id
     )
 
-    user = await users_service.find_by_id(db, user_id=challenge.user_id)
+    return await _resolve_user(db, email=challenge.email)
+
+
+async def _resolve_user(db: AsyncSession, *, email: str) -> User:
+    """The account behind a consumed challenge, bootstrapping the owner.
+
+    This is the mailbox-proof point: the emailed link minted the code that
+    was just accepted, so BOOTSTRAP_OWNER_EMAIL's account is created here
+    rather than at initiation, where an unauthenticated request would have
+    been enough to create it.
+
+    The bootstrap is keyed on that address having no row rather than on the
+    deployment being new, so it also restores ownership to a database that
+    lost its owner. It cannot help once the address holds a non-owner row —
+    the lookup below short-circuits, and no other path assigns OWNER — so
+    that residual state is recovered by hand; see users/types.py.
+
+    Existing ownership is not consulted before emailing: once ownership has
+    been transferred away and the old bootstrap account deleted, that address
+    still gets a link email and only fails here, its insert losing to
+    ix_users_single_owner. Gating initiation on owner existence would make it
+    a plain decoy instead; deliberately left as is.
+    """
+    user = await users_service.find_by_email(db, email=email)
+
+    if user is None and email == settings.bootstrap.OWNER_EMAIL:
+        # There is no registration step for the owner in the passwordless
+        # flow, so its first proven sign-in creates the account.
+        user = await users_service.bootstrap_owner(
+            db,
+            payload=UserCreate(
+                email=settings.bootstrap.OWNER_EMAIL,
+                full_name=settings.bootstrap.OWNER_FULL_NAME,
+            ),
+        )
+
     if user is None:
-        # Deleted-user backstop: the account vanished after initiation.
+        # Either the account vanished after initiation, or the bootstrap lost
+        # a race to a concurrent challenge for the same address. Rejecting the
+        # loser costs it one fresh sign-in, which resolves the account
+        # normally; both surface as the one unified error.
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
     return user

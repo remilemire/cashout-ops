@@ -47,9 +47,7 @@ def drain_outbox(
     # `ai_client` still steer what the drained extraction returns.
     registry = create_outbox_handler_registry(
         [
-            SendLoginLinkEmailOutboxHandler(
-                db_sessionmaker, redis_client, email_client
-            ),
+            SendLoginLinkEmailOutboxHandler(redis_client, email_client),
             RunExtractionOutboxHandler(db_sessionmaker, ai_client, storage),
         ]
     )

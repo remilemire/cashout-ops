@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from .fakes import FakeEmailClient
     from .fixtures.outbox import OutboxDrain
 
-# Matches BOOTSTRAP_OWNER_EMAIL set in conftest; initiating a login for this email
-# lazily bootstraps the owner account.
+# Matches BOOTSTRAP_OWNER_EMAIL set in conftest; completing a login for this
+# email lazily bootstraps the owner account (initiating one does not).
 OWNER_EMAIL = "owner@test.com"
 
 

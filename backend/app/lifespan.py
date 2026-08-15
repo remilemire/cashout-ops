@@ -49,9 +49,7 @@ async def lifespan(app: FastAPI):
         # torn down on shutdown (the exit stack unwinds in reverse).
         registry = create_outbox_handler_registry(
             [
-                SendLoginLinkEmailOutboxHandler(
-                    db.sessionmaker, redis_client, email_client
-                ),
+                SendLoginLinkEmailOutboxHandler(redis_client, email_client),
                 RunExtractionOutboxHandler(db.sessionmaker, ai_client, storage),
             ]
         )

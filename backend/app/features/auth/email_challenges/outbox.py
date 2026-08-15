@@ -12,20 +12,16 @@ from __future__ import annotations
 import logging
 from importlib.resources import files
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
-from app.features.users import service as users_service
 from app.security.crypto import generate_secret_token, hash_secret_token
 
 from . import store
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
     from app.infrastructure.redis import Redis
     from app.integrations.email import EmailClient
 
@@ -45,7 +41,6 @@ type OutboxMessageType = Literal["auth.send_login_link_email"]
 
 class SendLoginLinkEmail(BaseModel):
     challenge_id: str
-    user_id: UUID
 
 
 _send_login_link_email_message: OutboxMessageDefinition[
@@ -69,29 +64,22 @@ def _render_html(*, link: str, ttl_minutes: int) -> str:
 
 
 async def _send_login_link_email(
-    sessionmaker: async_sessionmaker[AsyncSession],
     redis: Redis,
     *,
     email_client: EmailClient,
     challenge_id: str,
-    user_id: UUID,
 ) -> None:
     """Mint the link token and email the magic sign-in link.
 
-    Runs once the initiating request has committed, so it owns its session
-    and transaction. The token hash is written to the challenge BEFORE the
-    send: a retry regenerates and overwrites it, so the most recently
-    emailed link is always the live one, and a crash between the write and
-    the send never leaves an emailed-but-unstored token.
+    Runs once the initiating request has committed. The recipient is the
+    challenge's own address, so delivery needs no database access — and no
+    email address is persisted in the outbox payload. The token hash is
+    written to the challenge BEFORE the send: a retry regenerates and
+    overwrites it, so the most recently emailed link is always the live one,
+    and a crash between the write and the send never leaves an
+    emailed-but-unstored token.
     """
     ttl_minutes = settings.auth.CHALLENGE_TTL_MINUTES
-
-    async with sessionmaker() as db:
-        user = await users_service.find_by_id(db, user_id=user_id)
-        if user is None:
-            logger.info("Login link skipped: user %s no longer exists", user_id)
-            return
-        recipient = user.email
 
     challenge = await store.find(redis, challenge_id=challenge_id)
     if challenge is None:
@@ -108,7 +96,7 @@ async def _send_login_link_email(
     link = f"{base_url}/login/link?challenge={challenge_id}&token={token}"
 
     await email_client.send(
-        to=recipient,
+        to=challenge.email,
         subject=_SUBJECT,
         html=_render_html(link=link, ttl_minutes=ttl_minutes),
     )
@@ -117,39 +105,31 @@ async def _send_login_link_email(
 class SendLoginLinkEmailOutboxHandler:
     """Mints the link token and emails the magic sign-in link.
 
-    The payload carries only ids — the token is generated inside
-    `_send_login_link_email` at delivery time, so no secret ever lands in
-    the outbox table.
+    The payload carries only the challenge id — the token is generated inside
+    `_send_login_link_email` at delivery time, so no secret ever lands in the
+    outbox table, and the recipient address stays in the expiring Redis
+    challenge rather than in a permanently retained outbox row.
     """
 
     message = _send_login_link_email_message
 
-    def __init__(
-        self,
-        sessionmaker: async_sessionmaker[AsyncSession],
-        redis: Redis,
-        email_client: EmailClient,
-    ) -> None:
-        self._sessionmaker = sessionmaker
+    def __init__(self, redis: Redis, email_client: EmailClient) -> None:
         self._redis = redis
         self._email_client = email_client
 
     async def handle(self, payload: SendLoginLinkEmail) -> None:
         await _send_login_link_email(
-            self._sessionmaker,
             self._redis,
             email_client=self._email_client,
             challenge_id=payload.challenge_id,
-            user_id=payload.user_id,
         )
 
     async def on_dead_letter(self, payload: SendLoginLinkEmail) -> None:
         # The user can always start a fresh login, so losing the message only
         # needs to be visible, not repaired.
         logger.error(
-            "Login link outbox message dead-lettered for challenge %s (user %s)",
+            "Login link outbox message dead-lettered for challenge %s",
             payload.challenge_id,
-            payload.user_id,
         )
 
 

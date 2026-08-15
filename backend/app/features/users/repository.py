@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .model import User
@@ -34,6 +35,24 @@ async def add(db: AsyncSession, user: User) -> None:
     await db.flush()
 
 
+async def add_if_unique(db: AsyncSession, user: User) -> bool:
+    """Stage the user and flush, reporting whether the insert took.
+
+    The SAVEPOINT is what makes a lost race survivable: a violation of
+    ix_users_email or ix_users_single_owner would otherwise poison the whole
+    request transaction, leaving the caller a session it can no longer commit
+    even though it handled the loss.
+    """
+    try:
+        async with db.begin_nested():
+            db.add(user)
+            await db.flush()
+    except IntegrityError:
+        return False
+
+    return True
+
+
 async def delete(db: AsyncSession, user: User) -> None:
     await db.delete(user)
 
@@ -47,4 +66,12 @@ async def flush(db: AsyncSession) -> None:
     await db.flush()
 
 
-__all__ = ["list_all", "find_by_email", "find_by_id", "add", "delete", "flush"]
+__all__ = [
+    "list_all",
+    "find_by_email",
+    "find_by_id",
+    "add",
+    "add_if_unique",
+    "delete",
+    "flush",
+]

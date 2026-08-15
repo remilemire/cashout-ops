@@ -6,9 +6,12 @@
   :class:`StoredEmailChallenge` and expires after
   ``AUTH_CHALLENGE_TTL_MINUTES`` — Redis TTLs enforce expiry, so a missing
   key covers both "never issued" and "expired".
-- ``email_challenge_user:{user_id}`` points at the user's current challenge
-  id, written alongside the challenge with the same TTL — it lets initiation
-  find and destroy a user's previous challenge.
+- ``email_challenge_email:{email_hash}`` points at the address's current
+  challenge id, written alongside the challenge with the same TTL — it lets
+  initiation find and destroy the address's previous challenge. Keyed by
+  address rather than user id so it also covers the bootstrap owner address
+  before its account exists, and by the address's hash so no PII reaches a
+  Redis key (the service hashes, as it does for the rate limiter).
 - ``email_challenge_attempts:{challenge_id}`` is a server-atomic counter of
   code attempts with the same TTL; keeping it outside the challenge JSON is
   what makes the guess cap hold under concurrent requests.
@@ -19,7 +22,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -33,8 +35,8 @@ def _challenge_key(challenge_id: str) -> str:
     return f"email_challenge:{challenge_id}"
 
 
-def _user_pointer_key(user_id: UUID | str) -> str:
-    return f"email_challenge_user:{user_id}"
+def _email_pointer_key(email_hash: str) -> str:
+    return f"email_challenge_email:{email_hash}"
 
 
 def _attempts_key(challenge_id: str) -> str:
@@ -42,11 +44,17 @@ def _attempts_key(challenge_id: str) -> str:
 
 
 async def save(
-    redis: Redis, *, challenge_id: str, challenge: StoredEmailChallenge
+    redis: Redis, *, challenge_id: str, challenge: StoredEmailChallenge, email_hash: str
 ) -> None:
+    """Store the challenge and point its address at it.
+
+    `email_hash` is passed in rather than derived from `challenge.email`
+    because hashing belongs to the service; the address stays in the value,
+    where it is needed to email the link and resolve the account.
+    """
     ttl = timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES)
     await redis.set(_challenge_key(challenge_id), challenge.model_dump_json(), ex=ttl)
-    await redis.set(_user_pointer_key(challenge.user_id), challenge_id, ex=ttl)
+    await redis.set(_email_pointer_key(email_hash), challenge_id, ex=ttl)
 
 
 async def find(redis: Redis, *, challenge_id: str) -> StoredEmailChallenge | None:
@@ -109,24 +117,26 @@ async def count_code_attempt(redis: Redis, *, challenge_id: str) -> int:
     return int(count)
 
 
-async def find_challenge_id_for_user(redis: Redis, *, user_id: UUID) -> str | None:
-    """The id of the user's current challenge, or None if absent/expired."""
-    value = await redis.get(_user_pointer_key(user_id))
+async def find_challenge_id_for_email(redis: Redis, *, email_hash: str) -> str | None:
+    """The id of the address's current challenge, or None if absent/expired."""
+    value = await redis.get(_email_pointer_key(email_hash))
 
     return None if value is None else str(value)
 
 
-async def clear_user_pointer(redis: Redis, *, user_id: UUID, challenge_id: str) -> None:
-    """Remove the user's pointer if it still points at ``challenge_id``.
+async def clear_email_pointer(
+    redis: Redis, *, email_hash: str, challenge_id: str
+) -> None:
+    """Remove the address's pointer if it still points at ``challenge_id``.
 
     The GET+DEL pair can race a concurrent initiate (which rewrites the
     pointer between the two commands), but the race is benign: at worst a
     pointer or an orphaned challenge lingers until its ≤15-minute TTL.
     """
-    value = await redis.get(_user_pointer_key(user_id))
+    value = await redis.get(_email_pointer_key(email_hash))
 
     if value is not None and str(value) == challenge_id:
-        await redis.delete(_user_pointer_key(user_id))
+        await redis.delete(_email_pointer_key(email_hash))
 
 
 __all__ = [
@@ -135,6 +145,6 @@ __all__ = [
     "update",
     "delete",
     "count_code_attempt",
-    "find_challenge_id_for_user",
-    "clear_user_pointer",
+    "find_challenge_id_for_email",
+    "clear_email_pointer",
 ]

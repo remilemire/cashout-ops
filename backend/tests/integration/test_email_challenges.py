@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.features.users.model import User
+from app.features.users.types import UserRole
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
@@ -110,39 +111,39 @@ async def test_start_login_unknown_email_is_neutral(
     assert email_client.sent == []
 
 
-async def test_start_login_bootstraps_owner(
+async def test_start_login_for_owner_creates_no_account(
     client: AsyncClient,
     db_session: AsyncSession,
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # No users exist: the first sign-in for OWNER_EMAIL creates the account.
+    # Everything short of the code is reachable by an unauthenticated stranger
+    # — initiating, the link email going out, even clicking the link — so none
+    # of it may create the privileged account.
     link = await _initiate_and_deliver(
         client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
-    code = await _obtain_code(client, link)
+    await _obtain_code(client, link)
 
-    response = await client.post(
-        "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
-    )
-
-    assert response.status_code == 200, response.text
-    me = await client.get("/api/users/me")
-    assert me.json()["role"] == "owner"
-    assert me.json()["fullName"] == "Owner"
     users = (await db_session.execute(select(User))).scalars().all()
-    assert len(users) == 1
+    assert len(users) == 0
 
 
-async def test_start_login_existing_owner_is_not_duplicated(
-    client: AsyncClient, db_session: AsyncSession
+async def test_start_login_for_owner_is_not_a_decoy(
+    client: AsyncClient,
+    redis_client: Redis,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
 ) -> None:
-    await _initiate(client, email=settings.bootstrap.OWNER_EMAIL)
-    await _initiate(client, email=settings.bootstrap.OWNER_EMAIL)
+    challenge_id = await _initiate(client, email=settings.bootstrap.OWNER_EMAIL)
 
-    users = (await db_session.execute(select(User))).scalars().all()
-    assert len(users) == 1
+    # Unlike an unknown address, the owner's gets a stored challenge and a
+    # real email even though no account backs it yet.
+    assert await drain_outbox() == 1
+    [email] = email_client.sent
+    assert email.to == settings.bootstrap.OWNER_EMAIL
+    [key] = await redis_keys(redis_client, "email_challenge:*")
+    assert key == f"email_challenge:{challenge_id}"
 
 
 async def test_second_initiate_invalidates_previous_challenge(
@@ -314,7 +315,7 @@ async def test_verify_code_signs_in_and_consumes(
     # stale per-user pointer outlived it.
     assert await redis_keys(redis_client, "session:*")
     assert await redis_keys(redis_client, "email_challenge:*") == []
-    assert await redis_keys(redis_client, "email_challenge_user:*") == []
+    assert await redis_keys(redis_client, "email_challenge_email:*") == []
 
     # Single use: replaying the same code fails.
     replay = await client.post(
@@ -323,6 +324,103 @@ async def test_verify_code_signs_in_and_consumes(
     )
     assert replay.status_code == 401
     assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+
+
+async def test_verify_code_bootstraps_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # No users exist: the owner account is created here, at the first sign-in
+    # that proves control of the mailbox — not when the challenge started.
+    link = await _initiate_and_deliver(
+        client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
+    )
+    code = await _obtain_code(client, link)
+
+    response = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": link.challenge_id, "code": code},
+    )
+
+    assert response.status_code == 200, response.text
+    me = await client.get("/api/users/me")
+    assert me.json()["role"] == "owner"
+    assert me.json()["fullName"] == "Owner"
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert len(users) == 1
+
+
+async def test_verify_code_does_not_duplicate_the_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    owner_email = settings.bootstrap.OWNER_EMAIL
+    for _ in range(2):
+        link = await _initiate_and_deliver(
+            client, drain_outbox, email_client, email=owner_email
+        )
+        code = await _obtain_code(client, link)
+        response = await client.post(
+            "/api/auth/email-challenges/verify-code",
+            json={"challengeId": link.challenge_id, "code": code},
+        )
+        assert response.status_code == 200, response.text
+
+    # The second sign-in found the account instead of bootstrapping it again.
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert len(users) == 1
+    assert users[0].role is UserRole.OWNER
+
+
+async def test_verify_code_reports_a_blocked_owner_bootstrap_as_invalid(
+    client: AsyncClient,
+    owner_client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    """A bootstrap that cannot take must not leak a 409 out of the login flow.
+
+    Ownership moves to another admin and the bootstrap address is deleted, so
+    the next sign-in for it tries to create a second owner. The SAVEPOINT in
+    `add_if_unique` contains the unique-index violation, leaving the flow to
+    answer with its own unified error — the same path a bootstrap losing a
+    race to a concurrent sign-in takes.
+    """
+    owner_email = settings.bootstrap.OWNER_EMAIL
+    heir = await create_user(db_session, email="heir@test.com", role=UserRole.ADMIN)
+    transferred = await owner_client.post(
+        f"/api/users/{heir.id}/transfer-ownership", headers=csrf_headers(owner_client)
+    )
+    assert transferred.status_code == 200, transferred.text
+    former = (await owner_client.get("/api/users/me")).json()
+    deleted = await owner_client.delete(
+        f"/api/users/{former['id']}", headers=csrf_headers(owner_client)
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    link = await _initiate_and_deliver(
+        client, drain_outbox, email_client, email=owner_email
+    )
+    code = await _obtain_code(client, link)
+    response = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": link.challenge_id, "code": code},
+    )
+
+    assert response.status_code == 401, response.text
+    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+    # The heir is still the one and only owner.
+    owners = (
+        (await db_session.execute(select(User).where(User.role == UserRole.OWNER)))
+        .scalars()
+        .all()
+    )
+    assert [owner.id for owner in owners] == [heir.id]
 
 
 async def test_verify_code_wrong_code_is_capped(
@@ -354,7 +452,7 @@ async def test_verify_code_wrong_code_is_capped(
     )
     assert fifth.status_code == 401
     assert await redis_keys(redis_client, "email_challenge:*") == []
-    assert await redis_keys(redis_client, "email_challenge_user:*") == []
+    assert await redis_keys(redis_client, "email_challenge_email:*") == []
 
     # Even the correct code is dead now.
     final = await client.post(
@@ -395,7 +493,7 @@ async def test_verify_code_attempt_cap_holds_under_concurrency(
         assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
     # The cap was exhausted, so the challenge was destroyed outright.
     assert await redis_keys(redis_client, "email_challenge:*") == []
-    assert await redis_keys(redis_client, "email_challenge_user:*") == []
+    assert await redis_keys(redis_client, "email_challenge_email:*") == []
 
     # Even the correct code is dead now.
     final = await client.post(

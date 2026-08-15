@@ -5,8 +5,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import settings
+from app.features.users import service as users_service
+from app.features.users.schemas import UserCreate
 from app.features.users.types import UserRole
 from tests.support.api import OWNER_EMAIL, csrf_headers, login
 from tests.support.factories import create_user
@@ -501,3 +504,40 @@ async def test_transfer_ownership_to_unknown_user_not_found(
 
     assert response.status_code == 404
     assert response.json()["code"] == "USER_NOT_FOUND"
+
+
+# ================================
+# ------ Bootstrap the owner -----
+# ================================
+
+
+async def test_bootstrap_owner_loses_a_race_without_poisoning_its_session(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """Two transactions bootstrapping the owner at once: exactly one takes.
+
+    The loser reports the loss by returning None rather than raising, and its
+    session survives the contained unique-index violation — without the
+    SAVEPOINT in `add_if_unique` the failed flush would poison the whole
+    request transaction, so the caller could not go on to answer with the
+    sign-in flow's own error.
+    """
+    payload = UserCreate(
+        email=settings.bootstrap.OWNER_EMAIL,
+        full_name=settings.bootstrap.OWNER_FULL_NAME,
+    )
+
+    async with db_sessionmaker() as first, db_sessionmaker() as second:
+        winner = await users_service.bootstrap_owner(first, payload=payload)
+        assert winner is not None
+        assert winner.role is UserRole.OWNER
+        await first.commit()
+
+        loser = await users_service.bootstrap_owner(second, payload=payload)
+
+        assert loser is None
+        # The session is still usable, and still sees a single owner.
+        existing = await users_service.find_by_email(second, email=payload.email)
+        assert existing is not None
+        assert existing.role is UserRole.OWNER
+        await second.commit()
