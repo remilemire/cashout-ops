@@ -14,26 +14,23 @@ from app.document_ai import (
 from app.integrations.ai import AIClient
 from app.integrations.storage import DocumentStorageClient
 
-from .registry import CASHOUT_DOCUMENT_SCHEMAS
+from .registry import CASHOUT_CLASSIFICATION_HINTS, CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
 from .types import CashoutDocumentClassification
 
+# Per-type signals live in CASHOUT_CLASSIFICATION_HINTS; this keeps only the
+# framing, the cross-type distinctions, and the unknown guidance (markers can't
+# describe "none of the above").
 _CLASSIFY_INSTRUCTIONS = """
-The document is one end-of-shift record from a restaurant cashout. Differentiate the permitted types as follows:
+The document is one end-of-shift record from a restaurant cashout.
 
-* TOUCHBISTRO_SERVER_SHIFT_REPORT — a printed TouchBistro point-of-sale report for a server's shift: sales broken into menu categories (food, liquor, ...), tender totals, tips, and voids/discounts, typically titled a shift, server, or sales report.
-* PAYSTONE_TERMINAL_REPORT — a Paystone payment-terminal batch, settlement, or day-close report: card transaction counts and totals per card brand, terminal or batch identifiers, and no menu or sales-category breakdown.
-* PAYMENT_RECEIPT — a single card transaction receipt (merchant or customer copy): one transaction amount, possibly tip and total lines, card details, and an authorization code.
-* DAILY_TIP_OUT_SHEET — a sheet recording the day's tip-outs: rows of recipients or categories (kitchen, bar, ...) with amounts, often handwritten onto a printed template.
-* DAILY_CASH_SUMMARY — a sheet summarizing the day's cash position: expected cash, counted or submitted cash, floats, and shortage/overage amounts.
-* MANUAL_NOTE — a free-form handwritten note or calculation that does not follow any printed template.
-* UNKNOWN — anything else, including unrelated photos and documents too degraded to identify.
+Use unknown for anything else, including unrelated photos and documents too degraded to identify.
 
 Distinguish carefully:
 
 * A terminal report aggregates many transactions or batch totals; a payment receipt shows exactly one transaction.
 * A TouchBistro report is organized around sales and menu categories; a Paystone report is organized around card transactions and settlement.
-* Handwriting alone does not make a document a MANUAL_NOTE: tip-out sheets and cash summaries are often filled in by hand on printed templates. Use MANUAL_NOTE only when there is no underlying form.
+* Handwriting alone does not make a document a manual_note: tip-out sheets and cash summaries are often filled in by hand on printed templates. Use manual_note only when there is no underlying form.
 """
 
 _EXTRACT_INSTRUCTIONS = """
@@ -117,7 +114,10 @@ class CashoutDocumentProcessor:
         document: DocumentRef,
     ) -> CashoutDocumentProcessingResult:
         classification = await self._documents.classify(
-            document, CashoutDocumentClassification, instructions=_CLASSIFY_INSTRUCTIONS
+            document,
+            CashoutDocumentClassification,
+            instructions=_CLASSIFY_INSTRUCTIONS,
+            hints=CASHOUT_CLASSIFICATION_HINTS,
         )
         # The generic layer expresses "can't classify" as a null value; the
         # domain folds it into the explicit UNKNOWN member.

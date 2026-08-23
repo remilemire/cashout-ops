@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.integrations.ai import AIClient, ResponseModelT, compose_instructions
 from app.integrations.storage import DocumentStorageClient
 from app.lib.documents import DocumentContent
 
+from .hints import (
+    ClassificationHint,
+    collect_field_hints,
+    render_classification_hints,
+    render_field_hints,
+)
 from .schemas import ClassificationT, DocumentAnalysis, DocumentClassification
 from .types import DocumentRef
 
@@ -49,6 +57,18 @@ Inspect the full document before producing the response. Tables, headers, footer
 """
 
 
+def _join_sections(*sections: str | None) -> str | None:
+    """Collapse the present sections into the one `extra` compose_instructions takes.
+
+    Returning None when nothing is present preserves the exact hint-less,
+    instruction-less behavior: no "# Additional instructions" header at all.
+    """
+    present = [section for section in sections if section is not None]
+    if not present:
+        return None
+    return "\n\n".join(present)
+
+
 class DocumentAIClient:
     """Generic classification and structured extraction for stored documents.
 
@@ -75,11 +95,18 @@ class DocumentAIClient:
         classification_type: type[ClassificationT],
         *,
         instructions: str | None = None,
+        hints: Mapping[ClassificationT, ClassificationHint] | None = None,
     ) -> DocumentClassification[ClassificationT]:
+        # Sharing `ClassificationT` with `classification_type` is the key
+        # validation: hints for a different enum fail to type-check.
+        extra = _join_sections(
+            instructions,
+            render_classification_hints(hints) if hints is not None else None,
+        )
         return await self.ai.analyze(
             await self._read(document),
             DocumentClassification[classification_type],
-            instructions=compose_instructions(_CLASSIFY_INSTRUCTIONS, instructions),
+            instructions=compose_instructions(_CLASSIFY_INSTRUCTIONS, extra),
             max_tokens=self._classification_max_tokens,
         )
 
@@ -90,10 +117,16 @@ class DocumentAIClient:
         *,
         instructions: str | None = None,
     ) -> DocumentAnalysis[ResponseModelT]:
+        # Field hints ride the response model's `Annotated` metadata rather
+        # than being passed in, so every caller extracting a schema gets its
+        # declared hints.
+        extra = _join_sections(
+            instructions, render_field_hints(collect_field_hints(response_model))
+        )
         return await self.ai.analyze(
             await self._read(document),
             DocumentAnalysis[response_model],
-            instructions=compose_instructions(_EXTRACT_INSTRUCTIONS, instructions),
+            instructions=compose_instructions(_EXTRACT_INSTRUCTIONS, extra),
             max_tokens=self._extraction_max_tokens,
         )
 
