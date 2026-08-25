@@ -23,7 +23,7 @@ from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
 
 from . import repository
-from .analysis_errors import analysis_error_message
+from .analyses.messages import analysis_error_message
 from .extraction import CashoutDocumentProcessor
 from .models import (
     CashoutData,

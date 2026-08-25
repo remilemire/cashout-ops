@@ -2,105 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from app.core.errors import ConstraintCodeMap, ErrorDefinitionList
 
-from app.core.config import settings
-from app.core.errors import ConstraintCodeMap, ErrorDefinition, ErrorDefinitionList
+from .analyses.errors import ErrorCode as AnalysisErrorCode
+from .analyses.errors import (
+    error_definition_list as analysis_error_definition_list,
+)
+from .documents.errors import ErrorCode as DocumentErrorCode
+from .documents.errors import (
+    error_definition_list as document_error_definition_list,
+)
+from .submissions.errors import ErrorCode as SubmissionErrorCode
+from .submissions.errors import (
+    error_definition_list as submission_error_definition_list,
+)
 
-type ErrorCode = Literal[
-    "SUBMISSION_NOT_FOUND",
-    "DOCUMENT_NOT_FOUND",
-    "ANALYSIS_NOT_FOUND",
-    "SUBMISSION_COMPLETED",
-    "SUBMISSION_NOT_COMPLETED",
-    "SUBMISSION_EMPTY",
-    "SUBMISSION_UNVERIFIED",
-    "SUBMISSION_HAS_DATA",
-    "ANALYSIS_VERIFIED",
-    "ANALYSIS_NOT_VERIFIED",
-    "EXTRACTION_IN_PROGRESS",
-    "EXTRACTION_FAILED",
-    "DOCUMENT_TOO_LARGE",
-    "DOCUMENT_DUPLICATE",
-    "UNSUPPORTED_DOCUMENT_TYPE",
-]
+# Cashout owns no codes directly at the root: every code lives in its
+# subfeature and is folded in below, so cashout exposes a single error
+# surface for the whole feature.
+type ErrorCode = SubmissionErrorCode | DocumentErrorCode | AnalysisErrorCode
 
 error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="SUBMISSION_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Cashout submission not found.",
-    ),
-    ErrorDefinition(
-        code="DOCUMENT_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Cashout document not found.",
-    ),
-    ErrorDefinition(
-        code="ANALYSIS_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Document analysis not found.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_COMPLETED",
-        kind="CONFLICT",
-        message="This cashout has already been completed.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_NOT_COMPLETED",
-        kind="CONFLICT",
-        message="Only a completed cashout can be unsubmitted.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_EMPTY",
-        kind="CONFLICT",
-        message="Upload at least one document before completing.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_UNVERIFIED",
-        kind="CONFLICT",
-        message="Every document must be verified before completing.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_HAS_DATA",
-        kind="CONFLICT",
-        message="This cashout has reconciled data and cannot be deleted.",
-    ),
-    ErrorDefinition(
-        code="ANALYSIS_VERIFIED",
-        kind="CONFLICT",
-        message="This analysis has already been verified.",
-    ),
-    ErrorDefinition(
-        code="ANALYSIS_NOT_VERIFIED",
-        kind="CONFLICT",
-        message="Only a verified analysis can be edited.",
-    ),
-    ErrorDefinition(
-        code="EXTRACTION_IN_PROGRESS",
-        kind="CONFLICT",
-        message="An extraction is already in progress.",
-    ),
-    ErrorDefinition(
-        code="EXTRACTION_FAILED",
-        kind="CONFLICT",
-        message="The extraction failed; retry it before verifying.",
-    ),
-    ErrorDefinition(
-        code="DOCUMENT_TOO_LARGE",
-        kind="BAD_REQUEST",
-        message=f"Document exceeds the {settings.storage.MAX_DOCUMENT_SIZE_MB} MB size limit.",
-    ),
-    ErrorDefinition(
-        code="DOCUMENT_DUPLICATE",
-        kind="CONFLICT",
-        message="This document has already been uploaded to this cashout.",
-    ),
-    ErrorDefinition(
-        code="UNSUPPORTED_DOCUMENT_TYPE",
-        kind="BAD_REQUEST",
-        message="Unsupported document content type.",
-    ),
+    *submission_error_definition_list,
+    *document_error_definition_list,
+    *analysis_error_definition_list,
 ]
 
 # cashout_data.submission_id is ON DELETE RESTRICT: reconciled data blocks

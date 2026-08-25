@@ -773,7 +773,7 @@ async def test_failed_extraction_and_retry(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    from app.features.cashout.analysis_errors import analysis_error_message
+    from app.features.cashout.analyses.messages import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
     ai_client.error = AIAnalysisError(

@@ -1,4 +1,4 @@
-# backend/app/features/cashout/analysis_errors.py
+# backend/app/features/cashout/analyses/messages.py
 
 """User-facing messages for FAILED document analyses.
 

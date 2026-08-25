@@ -34,8 +34,9 @@ os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")
 # test observes a .env value. This must sit below the pins (they keep the
 # import-time construction valid) and above pytest_plugins: the fixture
 # modules import app.* feature modules, at least one of which bakes a settings
-# value at import time (the cashout error catalog's DOCUMENT_TOO_LARGE
-# message). Overwriting attributes preserves the singleton's identity, so
+# value at import time (the DOCUMENT_TOO_LARGE message in cashout's
+# documents/errors.py, reached via the cashout error union). Overwriting
+# attributes preserves the singleton's identity, so
 # every `from app.core.config import settings` importer sees the baseline.
 from app.core.config import Settings, settings  # noqa: E402
 from tests.support.settings import make_test_settings  # noqa: E402
