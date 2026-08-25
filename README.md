@@ -110,7 +110,8 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
 │       ├── document_ai/               # DocumentAIClient (generic classify + extract)
 │       ├── features/                  # auth (shared/sessions, email_challenges, oauth/+external_identities, dependencies: get_current_user/require_admin/require_owner), users, cashout
-│       │   └── cashout/extraction/    # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
+│       │   └── cashout/               # submissions/, documents/, analyses/, data/ sub-features + shared/ (access policy); thin root router/errors/models/outbox surfaces
+│       │       └── extraction/        # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
@@ -363,7 +364,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 
 The backend domain and AI pipeline are implemented and tested. What's left:
 
-- **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (`service._reconcile`) still need to be defined.
+- **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (the data sub-feature's `service.reconcile`) still need to be defined.
 
 ## License
 
