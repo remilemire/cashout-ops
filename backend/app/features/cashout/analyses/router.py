@@ -10,63 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import error_responses
 from app.features.auth.dependencies import get_current_user
-from app.features.cashout.extraction import CashoutDocumentProcessor
-from app.features.cashout.extraction.dependencies import (
-    get_cashout_document_processor,
-)
 from app.features.users.model import User
 from app.infrastructure.db.dependencies import get_db
 
 from . import service as analyses_service
-from .dependencies import rate_limit_extract
 from .schemas import CashoutAnalysisVerify, CashoutDocumentAnalysisOut
 
-router = APIRouter()
+router = APIRouter(prefix="/analyses")
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
-DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 
 
-@router.post(
-    "/documents/{document_id}/extract",
-    response_model=CashoutDocumentAnalysisOut,
-    # Re-extraction burns provider tokens on demand — per-user quota applies.
-    dependencies=[Depends(rate_limit_extract)],
-    responses=error_responses(
-        "DOCUMENT_NOT_FOUND",
-        "SUBMISSION_COMPLETED",
-        "ANALYSIS_VERIFIED",
-        "EXTRACTION_IN_PROGRESS",
-        "VALIDATION_FAILED",
-        "RATE_LIMITED",
-    ),
-)
-async def extract_document(
-    document_id: DocumentId,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    processor: Annotated[
-        CashoutDocumentProcessor, Depends(get_cashout_document_processor)
-    ],
-) -> CashoutDocumentAnalysisOut:
-    """Restart extraction on a document (e.g. after a `FAILED` attempt).
-
-    Resets the analysis to `EXTRACTING` and runs the AI in the background —
-    poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
-    cannot be re-run, nor one whose extraction is still in progress.
-    """
-    analysis = await analyses_service.restart_extraction(
-        db,
-        document_id=document_id,
-        user=current_user,
-        processor=processor,
-    )
-    return CashoutDocumentAnalysisOut.model_validate(analysis)
-
-
 @router.get(
-    "/analyses/{analysis_id}",
+    "/{analysis_id}",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses("ANALYSIS_NOT_FOUND", "VALIDATION_FAILED"),
 )
@@ -88,7 +45,7 @@ async def get_analysis(
 
 
 @router.post(
-    "/analyses/{analysis_id}/verify",
+    "/{analysis_id}/verify",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
         "ANALYSIS_NOT_FOUND",
@@ -118,7 +75,7 @@ async def verify_analysis(
 
 
 @router.post(
-    "/analyses/{analysis_id}/unverify",
+    "/{analysis_id}/unverify",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
         "ANALYSIS_NOT_FOUND",

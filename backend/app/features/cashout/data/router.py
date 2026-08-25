@@ -13,11 +13,11 @@ from app.infrastructure.db.dependencies import get_db
 from . import service as data_service
 from .schemas import CashoutDataOut
 
-router = APIRouter()
+router = APIRouter(prefix="/data")
 
 
 @router.get(
-    "/data",
+    "",
     response_model=list[CashoutDataOut],
     dependencies=[Depends(require_admin)],
 )

@@ -39,11 +39,12 @@ router = APIRouter(
     ),
 )
 
-# The submission lifecycle (create, list, complete, unsubmit, delete).
+# The submission lifecycle (create, list, complete, unsubmit, delete), plus
+# document upload.
 router.include_router(submissions_router)
-# Document upload, removal, and inline viewing.
+# Document removal, inline viewing, and re-extraction.
 router.include_router(documents_router)
-# Extraction restarts, polling, and verification.
+# Analysis polling and verification.
 router.include_router(analyses_router)
 # The reconciled cashout data (admin table).
 router.include_router(data_router)

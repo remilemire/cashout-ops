@@ -10,9 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.errors import AppError
-from app.features.cashout.analyses import service as analyses_service
-from app.features.cashout.analyses.model import CashoutDocumentAnalysis
-from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
@@ -31,14 +28,12 @@ async def upload_document(
     submission_id: UUID,
     user: User,
     storage: DocumentStorageClient,
-    processor: CashoutDocumentProcessor,
-) -> CashoutDocumentAnalysis:
-    """Store the document, create its EXTRACTING analysis, and queue extraction.
+) -> CashoutDocument:
+    """Validate and store an uploaded document on an incomplete submission.
 
-    The AI extraction itself runs from the outbox (`run_extraction` via the
-    extraction handler); the message is enqueued in this transaction, so it
-    dispatches only once the upload commits. Clients poll the returned
-    analysis.
+    Storage only: the AI extraction is started by the intake workflow
+    (`shared/intake.py`), which calls this and then starts extraction on the
+    stored document in the same transaction.
     """
     submission = await _get_submission_for_actor(
         db, submission_id=submission_id, actor=user
@@ -68,10 +63,7 @@ async def upload_document(
     await repository.add_document(db, document)
     await storage.write(document.storage_key, payload.data)
 
-    analysis = await analyses_service.start_extraction(
-        db, document=document, processor=processor
-    )
-    return analysis
+    return document
 
 
 async def delete_document(
