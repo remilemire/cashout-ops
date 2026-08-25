@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import type { CashoutDocumentAnalysis, FieldIssue } from "@/api/types";
@@ -21,10 +21,13 @@ export function VerificationForm({
   analysis,
   submissionId,
   editable,
+  secondaryAction,
 }: {
   analysis: CashoutDocumentAnalysis;
   submissionId: string;
   editable: boolean;
+  /** Sits beside Verify in the action row; only shown while editable. */
+  secondaryAction?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -138,16 +141,15 @@ export function VerificationForm({
           </div>
 
           <ErrorBanner error={verify.error} />
-          <Button
-            className="w-full sm:w-auto"
-            onClick={() => verify.mutate()}
-            loading={verify.isPending}
-          >
-            <Check className="size-4" />
-            {changedCount > 0
-              ? `Verify with ${changedCount} correction${changedCount > 1 ? "s" : ""}`
-              : "Looks right — verify"}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={() => verify.mutate()} loading={verify.isPending}>
+              <Check className="size-4" />
+              {changedCount > 0
+                ? `Verify with ${changedCount} correction${changedCount > 1 ? "s" : ""}`
+                : "Looks right — verify"}
+            </Button>
+            {secondaryAction}
+          </div>
         </>
       ) : (
         <FieldList data={extracted} />

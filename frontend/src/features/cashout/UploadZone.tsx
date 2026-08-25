@@ -32,7 +32,6 @@ export function UploadZone({
 
   return (
     <section
-      id="upload-zone"
       aria-label="Upload a document"
       onDragOver={(event) => {
         event.preventDefault();

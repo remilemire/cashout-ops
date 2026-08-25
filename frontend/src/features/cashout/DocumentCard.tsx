@@ -105,158 +105,166 @@ export function DocumentCard({
   const contentUrl = cashoutApi.documentContentUrl(document.id);
 
   return (
-    <Card className="space-y-3">
-      <div className="flex items-start gap-3">
-        <a
-          href={contentUrl}
-          target="_blank"
-          rel="noreferrer"
-          title="View original"
-          className="border-line bg-surface-2 block size-14 shrink-0 overflow-hidden rounded-lg border"
-        >
-          {isImage ? (
-            <img
-              src={contentUrl}
-              alt={document.originalFilename}
-              loading="lazy"
-              className="size-full object-cover"
-            />
-          ) : (
-            <span className="text-ink-muted grid size-full place-items-center">
-              <FileText className="size-6" strokeWidth={1.5} />
-            </span>
-          )}
-        </a>
-
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{document.originalFilename}</p>
-          <p className="text-ink-muted text-xs">
-            {analysis?.classification
-              ? enumLabel(analysis.classification)
-              : "Not classified yet"}
-          </p>
+    <>
+      <Card className="space-y-3">
+        <div className="flex items-start gap-3">
           <a
             href={contentUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-accent-strong mt-0.5 inline-flex items-center gap-1 text-xs hover:underline"
+            title="View original"
+            className="border-line bg-surface-2 block size-14 shrink-0 overflow-hidden rounded-lg border"
           >
-            View original <ExternalLink className="size-3" />
+            {isImage ? (
+              <img
+                src={contentUrl}
+                alt={document.originalFilename}
+                loading="lazy"
+                className="size-full object-cover"
+              />
+            ) : (
+              <span className="text-ink-muted grid size-full place-items-center">
+                <FileText className="size-6" strokeWidth={1.5} />
+              </span>
+            )}
           </a>
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{document.originalFilename}</p>
+            <p className="text-ink-muted text-xs">
+              {analysis?.classification
+                ? enumLabel(analysis.classification)
+                : "Not classified yet"}
+            </p>
+            <a
+              href={contentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent-strong mt-0.5 inline-flex items-center gap-1 text-xs hover:underline"
+            >
+              View original <ExternalLink className="size-3" />
+            </a>
+          </div>
+
+          {(analysis || editable) && (
+            <div className="flex items-center gap-1">
+              {analysis && <AnalysisStatusBadge status={analysis.status} />}
+              {editable && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Remove document"
+                  title="Remove document"
+                  className="text-ink-muted hover:text-danger -my-2 -mr-1 px-2"
+                  loading={remove.isPending}
+                  onClick={() => setRemoveOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
-        {(analysis || editable) && (
-          <div className="flex items-center gap-1">
-            {analysis && <AnalysisStatusBadge status={analysis.status} />}
-            {editable && (
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Remove document"
-                title="Remove document"
-                className="text-ink-muted hover:text-danger -my-2 -mr-1 px-2"
-                loading={remove.isPending}
-                onClick={() => setRemoveOpen(true)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            )}
+        <ErrorBanner error={remove.error} />
+
+        {!analysis && (
+          <p className="text-ink-muted text-sm">
+            No analysis for this document.
+          </p>
+        )}
+
+        {analysis?.status === "extracting" && (
+          <div className="bg-surface-2 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
+            <Spinner className="size-4 shrink-0" />
+            <div>
+              <p className="font-medium">Reading the document…</p>
+              <p className="text-ink-muted text-xs">
+                The AI is classifying and extracting it. This can take a moment.
+              </p>
+            </div>
+            <ScanLine className="text-ink-muted ml-auto size-5 animate-pulse" />
           </div>
         )}
-      </div>
 
-      <ErrorBanner error={remove.error} />
-
-      {!analysis && (
-        <p className="text-ink-muted text-sm">No analysis for this document.</p>
-      )}
-
-      {analysis?.status === "extracting" && (
-        <div className="bg-surface-2 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-          <Spinner className="size-4 shrink-0" />
-          <div>
-            <p className="font-medium">Reading the document…</p>
-            <p className="text-ink-muted text-xs">
-              The AI is classifying and extracting it. This can take a moment.
-            </p>
-          </div>
-          <ScanLine className="text-ink-muted ml-auto size-5 animate-pulse" />
-        </div>
-      )}
-
-      {analysis?.status === "failed" && (
-        <div className="space-y-2">
-          <div className="border-danger/30 bg-danger/10 rounded-lg border px-3 py-2 text-sm">
-            <p className="text-danger font-medium">
-              Extraction failed
-              {analysis.errorCode ? ` (${analysis.errorCode})` : ""}
-            </p>
-            {analysis.errorMessage && (
-              <p className="text-ink-muted mt-0.5">{analysis.errorMessage}</p>
+        {analysis?.status === "failed" && (
+          <div className="space-y-2">
+            <div className="border-danger/30 bg-danger/10 rounded-lg border px-3 py-2 text-sm">
+              <p className="text-danger font-medium">
+                Extraction failed
+                {analysis.errorCode ? ` (${analysis.errorCode})` : ""}
+              </p>
+              {analysis.errorMessage && (
+                <p className="text-ink-muted mt-0.5">{analysis.errorMessage}</p>
+              )}
+            </div>
+            {editable && (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => retry.mutate()}
+                loading={retry.isPending}
+              >
+                <RefreshCw className="size-4" />
+                Retry extraction
+              </Button>
             )}
+            <ErrorBanner error={retry.error} />
           </div>
-          {editable && (
-            <Button
-              variant="outline"
-              onClick={() => retry.mutate()}
-              loading={retry.isPending}
-            >
-              <RefreshCw className="size-4" />
-              Retry extraction
-            </Button>
-          )}
-          <ErrorBanner error={retry.error} />
-        </div>
-      )}
+        )}
 
-      {analysis?.status === "needs_verification" && (
-        <div className="space-y-2">
-          <VerificationForm
-            analysis={analysis}
-            submissionId={submissionId}
-            editable={editable}
-          />
-          {editable && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-ink-muted"
-              onClick={() => retry.mutate()}
-              loading={retry.isPending}
-            >
-              <RefreshCw className="size-4" />
-              Retry extraction
-            </Button>
-          )}
-          <ErrorBanner error={retry.error} />
-        </div>
-      )}
+        {analysis?.status === "needs_verification" && (
+          <div className="space-y-2">
+            <VerificationForm
+              analysis={analysis}
+              submissionId={submissionId}
+              editable={editable}
+              secondaryAction={
+                <Button
+                  variant="outline"
+                  onClick={() => retry.mutate()}
+                  loading={retry.isPending}
+                >
+                  <RefreshCw className="size-4" />
+                  Retry extraction
+                </Button>
+              }
+            />
+            <ErrorBanner error={retry.error} />
+          </div>
+        )}
 
-      {analysis?.status === "verified" && (
-        <div className="space-y-2">
-          <FieldList data={analysis.verifiedDataJson ?? {}} />
-          <CorrectionNote
-            extracted={analysis.extractedDataJson}
-            verified={analysis.verifiedDataJson}
-          />
-          <p className="text-ink-muted text-xs">
-            Verified{" "}
-            {analysis.verifiedAt ? formatDateTime(analysis.verifiedAt) : ""}
-          </p>
-          {editable && (
-            <Button
-              variant="outline"
-              onClick={() => unverify.mutate()}
-              loading={unverify.isPending}
-            >
-              <Pencil className="size-4" />
-              Edit
-            </Button>
-          )}
-          <ErrorBanner error={unverify.error} />
-        </div>
-      )}
+        {analysis?.status === "verified" && (
+          <div className="space-y-2">
+            <FieldList data={analysis.verifiedDataJson ?? {}} />
+            <CorrectionNote
+              extracted={analysis.extractedDataJson}
+              verified={analysis.verifiedDataJson}
+            />
+            <p className="text-ink-muted text-xs">
+              Verified{" "}
+              {analysis.verifiedAt ? formatDateTime(analysis.verifiedAt) : ""}
+            </p>
+            {editable && (
+              // Set apart from the verified summary above it.
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={() => unverify.mutate()}
+                loading={unverify.isPending}
+              >
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            )}
+            <ErrorBanner error={unverify.error} />
+          </div>
+        )}
+      </Card>
 
+      {/* Outside the card: a closed <dialog> renders no box, but as the last
+          child it would take :last-child from the content above it and leave
+          the card's space-y margin hanging below the last visible row. */}
       <ConfirmDialog
         open={removeOpen}
         onClose={() => setRemoveOpen(false)}
@@ -272,7 +280,7 @@ export function DocumentCard({
         This permanently deletes {document.originalFilename} and its extracted
         data from this cashout. This can&rsquo;t be undone.
       </ConfirmDialog>
-    </Card>
+    </>
   );
 }
 

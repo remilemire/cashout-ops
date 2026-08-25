@@ -1,7 +1,7 @@
 // frontend/src/features/cashout/SubmissionPage.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, PartyPopper, Plus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, PartyPopper } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -235,7 +235,7 @@ export function SubmissionPage() {
 
 /**
  * The post-verification prompt: once every document is verified the cashier
- * chooses between adding another document and closing the cashout out.
+ * can close the cashout out, or keep uploading through the zone above it.
  */
 function CompletePrompt({
   allVerified,
@@ -268,26 +268,12 @@ function CompletePrompt({
         All documents verified
       </p>
       <p className="text-ink-muted text-sm">
-        Add another end-of-shift document, or complete the cashout to reconcile
-        everything.
+        Add another end-of-shift document above, or complete the cashout to
+        reconcile everything.
       </p>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button
-          variant="outline"
-          className="sm:flex-1"
-          onClick={() =>
-            document
-              .getElementById("upload-zone")
-              ?.scrollIntoView({ behavior: "smooth", block: "center" })
-          }
-        >
-          <Plus className="size-4" />
-          Add another document
-        </Button>
-        <Button className="sm:flex-1" loading={pending} onClick={onComplete}>
-          Complete cashout
-        </Button>
-      </div>
+      <Button className="w-full" loading={pending} onClick={onComplete}>
+        Complete cashout
+      </Button>
       <ErrorBanner error={error} />
     </Card>
   );
