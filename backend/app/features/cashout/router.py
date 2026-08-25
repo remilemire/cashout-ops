@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.errors import AppError, error_responses
 from app.features.auth.dependencies import get_current_user, require_admin
+from app.features.cashout.documents.types import DocumentUpload
 from app.features.users.model import User
 from app.infrastructure.db.dependencies import get_db
 from app.integrations.storage import DocumentStorageClient
@@ -30,7 +31,6 @@ from .schemas import (
     CashoutSubmissionListOut,
     CashoutSubmissionOut,
 )
-from .types import DocumentUpload
 
 router = APIRouter(
     prefix="/cashout",

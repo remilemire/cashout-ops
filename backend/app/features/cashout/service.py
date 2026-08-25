@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.document_ai import DocumentRef
 from app.errors import AppError
+from app.features.cashout.analyses.types import DocumentAnalysisStatus
+from app.features.cashout.documents.types import DocumentUpload
+from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.model import User
 from app.features.users.types import UserRole
 from app.infrastructure.outbox import service as outbox_service
@@ -29,11 +32,6 @@ from .models import (
     CashoutSubmission,
 )
 from .schemas import CashoutAnalysisVerify
-from .types import (
-    CashoutSubmissionStatus,
-    DocumentAnalysisStatus,
-    DocumentUpload,
-)
 
 logger = logging.getLogger(__name__)
 

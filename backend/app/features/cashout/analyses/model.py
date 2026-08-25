@@ -1,4 +1,4 @@
-# backend/app/features/cashout/models/analysis.py
+# backend/app/features/cashout/analyses/model.py
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.providers import AIProvider
 from app.features.cashout.extraction.types import CashoutDocumentClassification
-from app.features.cashout.types import DocumentAnalysisStatus
 from app.infrastructure.db.models import Base, enum_column
 
-if TYPE_CHECKING:
-    from app.features.users.model import User
+from .types import DocumentAnalysisStatus
 
-    from .document import CashoutDocument
+if TYPE_CHECKING:
+    from app.features.cashout.documents.model import CashoutDocument
+    from app.features.users.model import User
 
 
 class CashoutDocumentAnalysis(Base):

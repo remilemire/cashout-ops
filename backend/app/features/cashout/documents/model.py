@@ -1,4 +1,4 @@
-# backend/app/features/cashout/models/document.py
+# backend/app/features/cashout/documents/model.py
 
 from __future__ import annotations
 
@@ -13,10 +13,9 @@ from app.infrastructure.db.models import Base, enum_column
 from app.lib.documents import DocumentContentType
 
 if TYPE_CHECKING:
+    from app.features.cashout.analyses.model import CashoutDocumentAnalysis
+    from app.features.cashout.submissions.model import CashoutSubmission
     from app.features.users.model import User
-
-    from .analysis import CashoutDocumentAnalysis
-    from .submission import CashoutSubmission
 
 
 class CashoutDocument(Base):

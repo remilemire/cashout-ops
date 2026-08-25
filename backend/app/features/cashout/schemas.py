@@ -8,11 +8,12 @@ from typing import Any
 
 from app.core.providers import AIProvider
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
+from app.features.cashout.analyses.types import DocumentAnalysisStatus
+from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.schemas import UserOut
 from app.lib.documents import DocumentContentType
 
 from .extraction.types import CashoutDocumentClassification
-from .types import CashoutSubmissionStatus, DocumentAnalysisStatus
 
 
 class CashoutSubmissionOut(BaseOut):

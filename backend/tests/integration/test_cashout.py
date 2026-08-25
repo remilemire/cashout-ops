@@ -11,12 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.document_ai import DocumentClassification
+from app.features.cashout.analyses.types import DocumentAnalysisStatus
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.models import CashoutDocument, CashoutSubmission
-from app.features.cashout.types import (
-    CashoutSubmissionStatus,
-    DocumentAnalysisStatus,
-)
+from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     complete_submission,

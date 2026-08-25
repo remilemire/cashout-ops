@@ -1,4 +1,4 @@
-# backend/app/features/cashout/models/data.py
+# backend/app/features/cashout/data/model.py
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.models import Base
 
 if TYPE_CHECKING:
-    from .submission import CashoutSubmission
+    from app.features.cashout.submissions.model import CashoutSubmission
 
 
 class CashoutData(Base):

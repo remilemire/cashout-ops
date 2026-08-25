@@ -1,18 +1,8 @@
-# backend/app/features/cashout/types.py
+# backend/app/features/cashout/analyses/types.py
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
-
-from app.lib.documents import DocumentContentType
-
-
-# PROCESSING covers the whole open phase (uploading, extracting, verifying);
-# completion reconciles the verified analyses and closes the submission.
-class CashoutSubmissionStatus(StrEnum):
-    PROCESSING = "processing"
-    COMPLETED = "completed"
 
 
 # EXTRACTING (AI running in the background — poll the analysis) →
@@ -26,8 +16,4 @@ class DocumentAnalysisStatus(StrEnum):
     FAILED = "failed"
 
 
-@dataclass(frozen=True)
-class DocumentUpload:
-    data: bytes
-    content_type: DocumentContentType
-    original_filename: str
+__all__ = ["DocumentAnalysisStatus"]
