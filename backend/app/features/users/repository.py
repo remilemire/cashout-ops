@@ -84,15 +84,6 @@ async def add_if_unique(db: AsyncSession, user: User) -> bool:
     return True
 
 
-async def delete(db: AsyncSession, user: User) -> None:
-    await db.delete(user)
-    # Flush so an unexpected FK violation (e.g. a submission created in a race
-    # with the has-submissions check) surfaces inside the request — where the
-    # IntegrityError translator turns it into a 409 — instead of at commit
-    # time in get_db's teardown, after the 204 was already sent.
-    await db.flush()
-
-
 async def flush(db: AsyncSession) -> None:
     """Push pending changes to the database without committing.
 
@@ -110,6 +101,5 @@ __all__ = [
     "owner_exists",
     "add",
     "add_if_unique",
-    "delete",
     "flush",
 ]

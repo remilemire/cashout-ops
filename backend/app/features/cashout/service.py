@@ -133,20 +133,6 @@ async def list_submissions(
     return await repository.list_submissions(db, only_user_id=only_user_id)
 
 
-async def user_is_referenced(db: AsyncSession, *, user_id: UUID) -> bool:
-    """Whether any cashout row references the user.
-
-    True when the user is a submission's employee or (first) completer,
-    uploaded a document, or verified an analysis — admins can do the last
-    four on other users' cashouts. The users service consults this when
-    deleting an account: a referenced user must be soft-deleted so those
-    rows keep a valid FK target. Cross-feature access goes service to
-    service, which is why this thin wrapper exists rather than users
-    reaching into this feature's repository.
-    """
-    return await repository.user_is_referenced(db, user_id=user_id)
-
-
 async def complete_submission(
     db: AsyncSession, *, submission_id: UUID, user: User
 ) -> CashoutSubmission:

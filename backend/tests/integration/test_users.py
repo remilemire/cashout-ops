@@ -14,14 +14,9 @@ from app.features.users.model import User
 from app.features.users.schemas import UserCreate
 from app.features.users.types import UserRole
 from tests.support.api import OWNER_EMAIL, csrf_headers, login
-from tests.support.cashout import (
-    configure_manual_note,
-    create_submission,
-    upload_document,
-    verify_analysis,
-)
+from tests.support.cashout import create_submission
 from tests.support.factories import create_user
-from tests.support.fakes import FakeAIClient, FakeEmailClient
+from tests.support.fakes import FakeEmailClient
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 
@@ -410,9 +405,11 @@ async def test_deleted_user_loses_access(
     assert (await admin_client.get("/api/users/me")).status_code == 200
 
 
-async def test_delete_user_without_submissions_hard_deletes(
+async def test_delete_user_without_submissions_only_deactivates(
     admin_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    # Even a fresh account nothing references is deactivated, never removed:
+    # deletion is always a soft delete.
     user = await create_user(db_session, email="fresh@test.com")
 
     response = await admin_client.delete(
@@ -422,13 +419,16 @@ async def test_delete_user_without_submissions_hard_deletes(
     assert response.status_code == 204, response.text
     listed = (await admin_client.get("/api/users")).json()
     assert "fresh@test.com" not in [entry["email"] for entry in listed]
-    # No cashout rows reference them (user_is_referenced is false), so the
-    # row is gone outright — not just stamped deleted.
+    # The row survives, stamped as deleted. Expire first: the app stamped it
+    # in its own session, so this one's identity map still holds the
+    # pre-delete instance created above.
+    db_session.expire_all()
     stmt = select(User).where(User.email == "fresh@test.com")
-    assert (await db_session.execute(stmt)).scalar_one_or_none() is None
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.deleted_at is not None
 
 
-async def test_delete_user_with_submissions_soft_deletes(
+async def test_delete_user_soft_deletes_and_keeps_history(
     admin_client: AsyncClient,
     make_client: ClientFactory,
     db_session: AsyncSession,
@@ -456,38 +456,6 @@ async def test_delete_user_with_submissions_soft_deletes(
     assert entry["employee"]["fullName"] == "Busy Author"
     # The row survives, stamped as deleted.
     stmt = select(User).where(User.email == "author@test.com")
-    row = (await db_session.execute(stmt)).scalar_one()
-    assert row.deleted_at is not None
-
-
-async def test_delete_user_referenced_by_others_cashouts_soft_deletes(
-    admin_client: AsyncClient,
-    make_client: ClientFactory,
-    db_session: AsyncSession,
-    ai_client: FakeAIClient,
-    drain_outbox: OutboxDrain,
-) -> None:
-    # An admin with no submissions of their own, but who uploaded to and
-    # verified on someone else's cashout. Those rows reference them
-    # (uploaded_by_user_id, verified_by_user_id), so deleting the account
-    # must soft-delete it, not remove the row.
-    cashier = await make_client(email="busy-cashier@test.com")
-    acting_admin = await make_client(email="acting-admin@test.com", role=UserRole.ADMIN)
-    configure_manual_note(ai_client)
-    submission_id = await create_submission(cashier)
-    created = await upload_document(acting_admin, submission_id, drain=drain_outbox)
-    await verify_analysis(acting_admin, created["id"])
-    acting = (await acting_admin.get("/api/users/me")).json()
-
-    response = await admin_client.delete(
-        f"/api/users/{acting['id']}", headers=csrf_headers(admin_client)
-    )
-
-    assert response.status_code == 204, response.text
-    listed = (await admin_client.get("/api/users")).json()
-    assert "acting-admin@test.com" not in [entry["email"] for entry in listed]
-    # The row survives, stamped as deleted, keeping the cashout FKs valid.
-    stmt = select(User).where(User.email == "acting-admin@test.com")
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.deleted_at is not None
 

@@ -9,7 +9,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
-from app.features.cashout import service as cashout_service
 
 from . import repository
 from .model import User
@@ -101,15 +100,12 @@ async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User | No
 
 
 async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
-    """Delete a user: hard when possible, soft when cashout rows reference them.
+    """Delete a user by deactivating them: stamp deleted_at, never hard-delete.
 
-    A referenced row cannot be removed — a cashout FK still points at it:
-    their own submissions' employee_user_id, or (since admins can act on
-    others' cashouts) documents they uploaded, analyses they verified, and
-    completions they performed. Those accounts are deactivated by stamping
-    deleted_at instead — every live-account lookup excludes them, while
-    cashout history keeps rendering their name. The owner cannot be deleted
-    either way.
+    The row always survives — every live-account lookup excludes it, but any
+    cashout FKs pointing at it (submissions, uploads, verifications,
+    completions) stay valid, and the account can be reinvited later at the
+    same email. The owner cannot be deleted.
     """
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
@@ -117,11 +113,7 @@ async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     if user.role is UserRole.OWNER:
         raise AppError("CANNOT_DELETE_OWNER")
 
-    if await cashout_service.user_is_referenced(db, user_id=user.id):
-        user.deleted_at = datetime.now(UTC)
-        return
-
-    await repository.delete(db, user)
+    user.deleted_at = datetime.now(UTC)
 
 
 async def promote_admin(db: AsyncSession, *, user_id: UUID, actor: User) -> User:

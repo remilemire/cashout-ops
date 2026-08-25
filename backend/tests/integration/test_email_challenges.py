@@ -420,9 +420,14 @@ async def test_start_login_for_a_superseded_owner_address_is_a_decoy(
     # one's identity map still holds the pre-transfer instance.
     db_session.expire_all()
     users = (await db_session.execute(select(User))).scalars().all()
-    assert [(user.email, user.role) for user in users] == [
-        ("heir@test.com", UserRole.OWNER)
-    ]
+    by_email = {user.email: user for user in users}
+    assert set(by_email) == {"heir@test.com", settings.bootstrap.OWNER_EMAIL}
+    assert by_email["heir@test.com"].role is UserRole.OWNER
+    # Deletion is always soft, so the bootstrap row survives — but only as a
+    # deactivated non-owner, demoted by the transfer before it was deleted.
+    former_row = by_email[settings.bootstrap.OWNER_EMAIL]
+    assert former_row.deleted_at is not None
+    assert former_row.role is not UserRole.OWNER
 
 
 async def test_verify_code_reclaims_ownership_when_no_owner_exists(

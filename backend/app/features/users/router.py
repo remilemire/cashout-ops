@@ -142,7 +142,6 @@ async def demote_user(
         "FORBIDDEN",
         "USER_NOT_FOUND",
         "CANNOT_DELETE_OWNER",
-        "CONFLICT",
         "VALIDATION_FAILED",
     ),
 )
@@ -150,15 +149,12 @@ async def delete_user(
     user_id: UserId,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Delete a user (admin only). Their sessions are not revoked; the
-    deleted-user lookup during authentication turns them away.
+    """Delete a user (admin only): the account is always deactivated.
 
-    A user referenced by cashout history — their own submissions, or
-    documents, verifications, and completions they performed on anyone's —
-    is soft-deleted (deactivated): the row stays so that history keeps its
-    user, but the account disappears from listings and can no longer sign
-    in. An unreferenced user is removed outright. The owner cannot be
-    deleted; recreating a soft-deleted user's email revives the account as
+    The account disappears from listings and can no longer sign in — its
+    sessions are not revoked; the deleted-user lookup during authentication
+    turns them away — while cashout history keeps its user. The owner cannot
+    be deleted; recreating a deleted user's email revives the account as
     staff.
     """
     await users_service.delete_by_id(db, user_id=user_id)

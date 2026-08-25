@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -83,34 +83,6 @@ async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> 
     # Surface the cashout_data ON DELETE RESTRICT violation before removing
     # document objects or returning a successful response.
     await db.flush()
-
-
-async def user_is_referenced(db: AsyncSession, *, user_id: UUID) -> bool:
-    """Whether any cashout row references the user through one of its FKs.
-
-    Covers all five user FKs across the feature: a submission's employee and
-    its (first) completer, a document's uploader, and an analysis's verifier.
-    Deliberately counts soft-deleted submissions too — their rows (and FKs)
-    still exist, so the referenced user must stay a valid FK target.
-    """
-    submission_refs = select(CashoutSubmission.id).where(
-        or_(
-            CashoutSubmission.employee_user_id == user_id,
-            CashoutSubmission.completed_by_user_id == user_id,
-            CashoutSubmission.first_completed_by_user_id == user_id,
-        )
-    )
-    document_refs = select(CashoutDocument.id).where(
-        CashoutDocument.uploaded_by_user_id == user_id
-    )
-    analysis_refs = select(CashoutDocumentAnalysis.id).where(
-        CashoutDocumentAnalysis.verified_by_user_id == user_id
-    )
-    stmt = select(
-        submission_refs.exists() | document_refs.exists() | analysis_refs.exists()
-    )
-
-    return bool((await db.execute(stmt)).scalar())
 
 
 # ================================
@@ -217,7 +189,6 @@ __all__ = [
     "get_submission_with_details",
     "list_submissions",
     "delete_submission",
-    "user_is_referenced",
     "get_document",
     "list_storage_keys",
     "list_documents_with_analysis",

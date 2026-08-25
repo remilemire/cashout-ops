@@ -69,7 +69,7 @@ const ACTION_DIALOGS: Record<
     confirmLabel: "Delete",
     confirmTone: "danger",
     body: (user) =>
-      `${user.fullName} will lose access immediately. Accounts with cashout history are deactivated instead of deleted, and their submissions are kept.`,
+      `${user.fullName}'s account will be deactivated and lose access immediately. Their submission history is kept, and they can be reinvited later with the same email.`,
   },
   transfer: {
     title: "Transfer ownership",
