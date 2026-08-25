@@ -69,7 +69,7 @@ const ACTION_DIALOGS: Record<
     confirmLabel: "Delete",
     confirmTone: "danger",
     body: (user) =>
-      `${user.fullName}'s account will be permanently deleted. This can't be undone.`,
+      `${user.fullName} will lose access immediately. Accounts with cashout history are deactivated instead of deleted, and their submissions are kept.`,
   },
   transfer: {
     title: "Transfer ownership",
@@ -115,31 +115,33 @@ export function AdminUsersPage() {
       }
     },
   });
+  // The four dialog-confirmed actions close the dialog on settle rather than
+  // success: leaving it open on failure would cover the error banners below,
+  // so the user would see nothing happen.
   const promoteUser = useMutation({
     mutationFn: usersApi.promote,
     onSuccess: async () => {
-      setUserAction(null);
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
+    onSettled: () => setUserAction(null),
   });
   const demoteUser = useMutation({
     mutationFn: usersApi.demote,
     onSuccess: async () => {
-      setUserAction(null);
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
+    onSettled: () => setUserAction(null),
   });
   const deleteUser = useMutation({
     mutationFn: usersApi.remove,
     onSuccess: async () => {
-      setUserAction(null);
       await queryClient.invalidateQueries({ queryKey: userKeys.list });
     },
+    onSettled: () => setUserAction(null),
   });
   const transferOwnership = useMutation({
     mutationFn: usersApi.transferOwnership,
     onSuccess: async () => {
-      setUserAction(null);
       // The caller's own role changed too (owner → admin), so refresh the
       // session user alongside the list to update the nav without a reload.
       await Promise.all([
@@ -147,6 +149,7 @@ export function AdminUsersPage() {
         queryClient.invalidateQueries({ queryKey: ME_KEY }),
       ]);
     },
+    onSettled: () => setUserAction(null),
   });
 
   const onCreate = (event: SyntheticEvent<HTMLFormElement>) => {

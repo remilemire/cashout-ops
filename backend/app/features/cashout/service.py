@@ -105,6 +105,17 @@ async def list_submissions(
     return await repository.list_submissions(db, only_user_id=only_user_id)
 
 
+async def user_has_submissions(db: AsyncSession, *, user_id: UUID) -> bool:
+    """Whether the user has ever submitted a cashout (any status).
+
+    The users service consults this when deleting an account: an author with
+    history must be soft-deleted so their submissions keep a valid author.
+    Cross-feature access goes service to service, which is why this thin
+    wrapper exists rather than users reaching into this feature's repository.
+    """
+    return await repository.user_has_submissions(db, user_id=user_id)
+
+
 async def complete_submission(
     db: AsyncSession, *, submission_id: UUID, user_id: UUID
 ) -> CashoutSubmission:

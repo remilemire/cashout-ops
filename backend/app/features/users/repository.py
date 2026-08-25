@@ -12,22 +12,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .model import User
 from .types import UserRole
 
+# Soft-deleted rows (deleted_at set) behave as gone: every live-account
+# lookup below excludes them. Only find_by_email_include_deleted sees them,
+# for the reinvite flow.
+
 
 async def list_all(db: AsyncSession) -> Sequence[User]:
-    stmt = select(User).order_by(User.created_at.desc())
+    stmt = (
+        select(User).where(User.deleted_at.is_(None)).order_by(User.created_at.desc())
+    )
     return (await db.execute(stmt)).scalars().all()
 
 
 async def find_by_email(db: AsyncSession, *, email: str) -> User | None:
-    stmt = select(User).where(User.email == email)
+    stmt = select(User).where(User.email == email, User.deleted_at.is_(None))
 
     user = (await db.execute(stmt)).scalar_one_or_none()
 
     return user
 
 
+async def find_by_email_include_deleted(db: AsyncSession, *, email: str) -> User | None:
+    """The email's row even when soft-deleted (ix_users_email spans both).
+
+    Only the reinvite path in the users service should need this; everything
+    else treats a soft-deleted account as nonexistent.
+    """
+    stmt = select(User).where(User.email == email)
+
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
-    return await db.get(User, user_id)
+    stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def owner_exists(db: AsyncSession) -> bool:
@@ -67,6 +86,11 @@ async def add_if_unique(db: AsyncSession, user: User) -> bool:
 
 async def delete(db: AsyncSession, user: User) -> None:
     await db.delete(user)
+    # Flush so an unexpected FK violation (e.g. a submission created in a race
+    # with the has-submissions check) surfaces inside the request — where the
+    # IntegrityError translator turns it into a 409 — instead of at commit
+    # time in get_db's teardown, after the 204 was already sent.
+    await db.flush()
 
 
 async def flush(db: AsyncSession) -> None:
@@ -81,6 +105,7 @@ async def flush(db: AsyncSession) -> None:
 __all__ = [
     "list_all",
     "find_by_email",
+    "find_by_email_include_deleted",
     "find_by_id",
     "owner_exists",
     "add",

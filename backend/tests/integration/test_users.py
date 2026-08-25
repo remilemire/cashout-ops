@@ -5,15 +5,19 @@ from __future__ import annotations
 from uuid import uuid4
 
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.features.users import service as users_service
+from app.features.users.model import User
 from app.features.users.schemas import UserCreate
 from app.features.users.types import UserRole
 from tests.support.api import OWNER_EMAIL, csrf_headers, login
+from tests.support.cashout import create_submission
 from tests.support.factories import create_user
 from tests.support.fakes import FakeEmailClient
+from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 
 
@@ -399,6 +403,125 @@ async def test_deleted_user_loses_access(
     # gone, even though the Redis key may linger); the admin's own survives.
     assert (await client.get("/api/users/me")).status_code == 401
     assert (await admin_client.get("/api/users/me")).status_code == 200
+
+
+async def test_delete_user_without_submissions_hard_deletes(
+    admin_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await create_user(db_session, email="fresh@test.com")
+
+    response = await admin_client.delete(
+        f"/api/users/{user.id}", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 204, response.text
+    listed = (await admin_client.get("/api/users")).json()
+    assert "fresh@test.com" not in [entry["email"] for entry in listed]
+    # No submissions reference them, so the row is gone outright — not just
+    # stamped deleted.
+    stmt = select(User).where(User.email == "fresh@test.com")
+    assert (await db_session.execute(stmt)).scalar_one_or_none() is None
+
+
+async def test_delete_user_with_submissions_soft_deletes(
+    admin_client: AsyncClient,
+    make_client: ClientFactory,
+    db_session: AsyncSession,
+) -> None:
+    author_client = await make_client(email="author@test.com", full_name="Busy Author")
+    submission_id = await create_submission(author_client)
+    author = (await author_client.get("/api/users/me")).json()
+
+    response = await admin_client.delete(
+        f"/api/users/{author['id']}", headers=csrf_headers(admin_client)
+    )
+
+    assert response.status_code == 204, response.text
+    # Gone from the accounts list...
+    listed = (await admin_client.get("/api/users")).json()
+    assert "author@test.com" not in [entry["email"] for entry in listed]
+    # ...and their lingering session is dead.
+    turned_away = await author_client.get("/api/users/me")
+    assert turned_away.status_code == 401
+    assert turned_away.json()["code"] == "INVALID_SESSION"
+    # But history keeps its author: the admin still sees the submission
+    # under their name.
+    submissions = (await admin_client.get("/api/cashout/submissions")).json()
+    entry = next(item for item in submissions if item["id"] == submission_id)
+    assert entry["submittedBy"]["fullName"] == "Busy Author"
+    # The row survives, stamped as deleted.
+    stmt = select(User).where(User.email == "author@test.com")
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.deleted_at is not None
+
+
+async def test_soft_deleted_user_can_be_reinvited(
+    admin_client: AsyncClient,
+    make_client: ClientFactory,
+    client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # An admin author, to prove reinviting never restores old privileges.
+    author_client = await make_client(
+        email="rehire@test.com", full_name="Old Name", role=UserRole.ADMIN
+    )
+    await create_submission(author_client)
+    author = (await author_client.get("/api/users/me")).json()
+    deleted = await admin_client.delete(
+        f"/api/users/{author['id']}", headers=csrf_headers(admin_client)
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    response = await admin_client.post(
+        "/api/users",
+        json={"email": "rehire@test.com", "fullName": "New Name"},
+        headers=csrf_headers(admin_client),
+    )
+
+    # No EMAIL_TAKEN: the soft-deleted row is revived — the same row (so
+    # their old submissions' FKs stay intact), renamed, and reset to staff.
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["id"] == author["id"]
+    assert body["fullName"] == "New Name"
+    assert body["role"] == "staff"
+
+    # The revived account can sign in through the email-challenge flow.
+    await login(
+        client,
+        email="rehire@test.com",
+        drain_outbox=drain_outbox,
+        email_client=email_client,
+    )
+    assert (await client.get("/api/users/me")).status_code == 200
+
+
+async def test_soft_deleted_user_cannot_sign_in(
+    admin_client: AsyncClient,
+    make_client: ClientFactory,
+    client: AsyncClient,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    author_client = await make_client(email="gone@test.com")
+    await create_submission(author_client)
+    author = (await author_client.get("/api/users/me")).json()
+    deleted = await admin_client.delete(
+        f"/api/users/{author['id']}", headers=csrf_headers(admin_client)
+    )
+    assert deleted.status_code == 204, deleted.text
+    email_client.sent.clear()
+
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": "gone@test.com"}
+    )
+
+    # The address gets the unknown-address decoy treatment: a well-formed
+    # challenge id, but nothing enqueued and no email sent.
+    assert response.status_code == 202, response.text
+    assert await drain_outbox() == 0
+    assert email_client.sent == []
 
 
 async def test_delete_owner_is_forbidden(

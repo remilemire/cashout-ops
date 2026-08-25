@@ -7,6 +7,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cashoutApi } from "@/api/cashout";
+import { ApiError } from "@/api/client";
 import type { CashoutSubmissionListItem, User } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 
@@ -128,6 +129,26 @@ describe("CashoutsPage", () => {
     expect(cancelSubmissionMock.mock.calls[0]?.[0]).toBe(
       "processing-submission",
     );
+  });
+
+  it("shows the error banner when cancelling fails", async () => {
+    cancelSubmissionMock.mockRejectedValue(
+      new ApiError(409, {
+        kind: "CONFLICT",
+        code: "CONFLICT",
+        message: "This cashout can no longer be cancelled.",
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel cashout" }));
+
+    // The confirm dialog closed on confirm, so the failure must surface on
+    // the page itself.
+    expect(
+      await screen.findByText("This cashout can no longer be cancelled."),
+    ).toBeDefined();
   });
 
   it("keeps submissions distinct when the truncated ids collide", async () => {

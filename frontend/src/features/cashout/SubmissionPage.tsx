@@ -103,6 +103,10 @@ export function SubmissionPage() {
         )}
       </div>
 
+      {/* The confirm dialog closes before the request settles, so a failed
+          cancel must surface out here. */}
+      <ErrorBanner error={cancel.error} />
+
       <PageHeader
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
         subtitle={

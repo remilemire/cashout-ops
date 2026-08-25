@@ -62,6 +62,9 @@ export function CashoutsPage() {
         action={startButton}
       />
       <ErrorBanner error={submissionsQuery.error} />
+      {/* The confirm dialog closes before the request settles, so a failed
+          cancel must surface out here. */}
+      <ErrorBanner error={cancel.error} />
 
       {submissionsQuery.isLoading ? (
         <SkeletonList />
