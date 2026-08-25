@@ -8,8 +8,8 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
-from app.features.auth.shared.sessions.dependencies import get_current_session
-from app.features.auth.shared.sessions.model import Session
+from app.features.auth.sessions.dependencies import get_current_session
+from app.features.auth.sessions.model import Session
 from app.features.users import service as users_service
 from app.features.users.model import User
 from app.features.users.types import UserRole

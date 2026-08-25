@@ -1,4 +1,4 @@
-# backend/app/features/auth/shared/sessions/model.py
+# backend/app/features/auth/sessions/model.py
 
 from __future__ import annotations
 

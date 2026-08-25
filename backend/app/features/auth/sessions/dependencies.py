@@ -1,4 +1,4 @@
-# backend/app/features/auth/shared/sessions/dependencies.py
+# backend/app/features/auth/sessions/dependencies.py
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from app.errors import AppError
-from app.features.auth.shared.sessions import service as sessions_service
-from app.features.auth.shared.sessions.cookies import get_session_cookie
-from app.features.auth.shared.sessions.model import Session
+from app.features.auth.sessions import service as sessions_service
+from app.features.auth.sessions.cookies import get_session_cookie
+from app.features.auth.sessions.model import Session
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 

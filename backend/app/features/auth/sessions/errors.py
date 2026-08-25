@@ -1,4 +1,4 @@
-# backend/app/features/auth/shared/sessions/errors.py
+# backend/app/features/auth/sessions/errors.py
 
 from __future__ import annotations
 

@@ -13,12 +13,12 @@ from uuid import UUID
 
 from fastapi import Response
 
-from app.features.auth.shared.sessions import service as sessions_service
-from app.features.auth.shared.sessions.cookies import (
+from app.features.auth.sessions import service as sessions_service
+from app.features.auth.sessions.cookies import (
     clear_session_cookie,
     set_session_cookie,
 )
-from app.features.auth.shared.sessions.model import Session
+from app.features.auth.sessions.model import Session
 from app.infrastructure.redis import Redis
 from app.security.crypto import generate_secret_token
 from app.security.csrf import clear_csrf_cookie, set_csrf_cookie

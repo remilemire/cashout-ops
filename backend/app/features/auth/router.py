@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from app.features.auth.shared.sessions.cookies import get_session_cookie
+from app.features.auth.sessions.cookies import get_session_cookie
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 

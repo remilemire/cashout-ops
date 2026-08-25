@@ -14,8 +14,8 @@ from .email_challenges.errors import (
 )
 from .oauth.errors import ErrorCode as OAuthErrorCode
 from .oauth.errors import error_definition_list as oauth_error_definition_list
-from .shared.sessions.errors import ErrorCode as SessionErrorCode
-from .shared.sessions.errors import (
+from .sessions.errors import ErrorCode as SessionErrorCode
+from .sessions.errors import (
     error_definition_list as session_error_definition_list,
 )
 

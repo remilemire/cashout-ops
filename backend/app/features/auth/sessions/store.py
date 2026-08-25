@@ -1,4 +1,4 @@
-# backend/app/features/auth/shared/sessions/store.py
+# backend/app/features/auth/sessions/store.py
 
 """Redis storage for sessions.
 
