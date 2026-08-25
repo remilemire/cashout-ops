@@ -17,10 +17,9 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.errors import AppError
+from app.features.auth.shared import accounts
 from app.features.users import service as users_service
-from app.features.users.schemas import UserCreate
 from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
 from app.security.crypto import hash_secret_token
@@ -52,29 +51,6 @@ def _pointer_hash(email: str) -> str:
     return hash_secret_token(email.lower())
 
 
-async def _may_bootstrap_owner(db: AsyncSession, *, email: str) -> bool:
-    """Whether this address may become the owner on a proven sign-in.
-
-    Only the configured bootstrap address, and only while the deployment has
-    no owner at all — the one state the single-owner invariant leaves open.
-    A database that lost its owner therefore heals on the next sign-in
-    there, while an address whose ownership has moved on is just another
-    unknown one. Saying that outright beats attempting the insert and
-    letting ix_users_single_owner reject it.
-
-    It is a check, not a guarantee: two concurrent sign-ins can both pass
-    here, so the index (and the SAVEPOINT in users' `add_if_unique`) stays
-    the thing that actually holds the invariant.
-
-    The address is compared first, so the ownership query runs only for it —
-    never on an ordinary unknown-address probe.
-    """
-    if email != settings.bootstrap.OWNER_EMAIL:
-        return False
-
-    return not await users_service.owner_exists(db)
-
-
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     """Start an email challenge for the address, returning the challenge id.
 
@@ -94,7 +70,7 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     """
     user = await users_service.find_by_email(db, email=email)
 
-    if user is None and not await _may_bootstrap_owner(db, email=email):
+    if user is None and not await accounts.may_bootstrap_owner(db, email=email):
         return str(uuid4())  # decoy id
 
     # One active challenge per address: starting a new sign-in invalidates the
@@ -161,6 +137,11 @@ async def consume_code(
     """Consume the challenge and return its user; the router completes
     sign-in via `access.grant`.
 
+    Accepting the code is this flow's mailbox proof — the emailed link is
+    what minted it — so this is also where BOOTSTRAP_OWNER_EMAIL's account
+    is created, rather than at initiation, where an unauthenticated request
+    would have been enough to create it (see `accounts.resolve`).
+
     Every failure mode raises the one unified error so the response shape
     cannot reveal whether a challenge, code, or account exists.
     """
@@ -194,38 +175,7 @@ async def consume_code(
         redis, email_hash=_pointer_hash(challenge.email), challenge_id=challenge_id
     )
 
-    return await _resolve_user(db, email=challenge.email)
-
-
-async def _resolve_user(db: AsyncSession, *, email: str) -> User:
-    """The account behind a consumed challenge, bootstrapping the owner.
-
-    This is the mailbox-proof point: the emailed link minted the code that
-    was just accepted, so BOOTSTRAP_OWNER_EMAIL's account is created here
-    rather than at initiation, where an unauthenticated request would have
-    been enough to create it.
-
-    Bootstrapping is gated on the deployment having no owner rather than on
-    the deployment being new (`_may_bootstrap_owner`), so ownership is
-    reclaimable after an out-of-band loss, and an address whose ownership
-    has moved on is turned away here instead of at the unique index. It
-    still cannot help once that address holds a non-owner row: the lookup
-    below short-circuits, and no path promotes an existing account to OWNER
-    (see users/types.py).
-    """
-    user = await users_service.find_by_email(db, email=email)
-
-    if user is None and await _may_bootstrap_owner(db, email=email):
-        # There is no registration step for the owner in the passwordless
-        # flow, so its first proven sign-in creates the account.
-        user = await users_service.bootstrap_owner(
-            db,
-            payload=UserCreate(
-                email=settings.bootstrap.OWNER_EMAIL,
-                full_name=settings.bootstrap.OWNER_FULL_NAME,
-            ),
-        )
-
+    user = await accounts.resolve(db, email=challenge.email)
     if user is None:
         # The account vanished after initiation, the address may no longer
         # claim ownership, or the bootstrap lost a race to a concurrent

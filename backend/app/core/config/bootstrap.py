@@ -14,8 +14,10 @@ class BootstrapSettings(SettingsGroup):
     model_config = SettingsConfigDict(env_prefix="BOOTSTRAP_")
 
     OWNER_EMAIL: EmailStr = "owner@test.com"
-    # Full name given to the OWNER_EMAIL account when a first passwordless
-    # sign-in bootstraps it as the owner (no registration form supplies one).
+    # Full name given to the OWNER_EMAIL account when its first proven
+    # sign-in bootstraps it as the owner. No registration form supplies one,
+    # and an issuer-supplied profile name is deliberately not used, so the
+    # owner's name never depends on which sign-in flow it arrived through.
     OWNER_FULL_NAME: str = "Owner"
 
 

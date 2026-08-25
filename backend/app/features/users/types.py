@@ -14,7 +14,8 @@ from enum import StrEnum
 # BOOTSTRAP_OWNER_EMAIL first signs in. Past it the owner is unremovable
 # through the API, so going ownerless again takes an out-of-band database
 # edit — after which a sign-in at the bootstrap address reclaims ownership
-# (see features/auth/email_challenges/service.py).
+# (see features/auth/shared/accounts.py, which every sign-in flow resolves
+# its proven address through).
 #
 # That recovery holds only while the bootstrap address has no row of its own.
 # Re-creating an account there is an ordinary admin action once ownership has

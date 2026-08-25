@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.features.auth.models import ExternalIdentity
 from app.features.users.model import User
+from app.features.users.types import UserRole
 from app.infrastructure.redis import Redis
 from app.integrations.oauth import OAuthExchangeError, OAuthIdentity, OAuthIssuer
 from tests.support.factories import create_user
@@ -238,6 +239,84 @@ async def test_an_unknown_account_is_rejected_never_created(
     # redirect never reveals that this deployment has no such account.
     assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
     assert await _identities(db_session) == []
+    users = await db_session.execute(select(func.count()).select_from(User))
+    assert users.scalar_one() == 0
+
+
+async def test_first_sign_in_at_the_bootstrap_address_creates_the_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    oauth_client: FakeOAuthClient,
+) -> None:
+    """The owner bootstrap is not the email challenge's alone.
+
+    No account exists yet, so the deployment's first sign-in is necessarily
+    an unmatched identity. The issuer's verified-email claim is the mailbox
+    proof the bootstrap needs, so BOOTSTRAP_OWNER_EMAIL claims ownership
+    here exactly as it would through the emailed code.
+    """
+    oauth_client.identity = _identity(email=settings.bootstrap.OWNER_EMAIL)
+
+    authorization = await _start(client, oauth_client)
+    response = await _callback(client, state=authorization.authorization.state)
+
+    assert response.status_code == 302, response.text
+    assert response.headers["location"] == "/cashouts"
+    me = await client.get("/api/users/me")
+    assert me.json()["role"] == "owner"
+    # The name comes from BOOTSTRAP_OWNER_FULL_NAME, not the issuer profile,
+    # so the owner is the same account whichever flow bootstraps it.
+    assert me.json()["fullName"] == "Owner"
+
+    # The account exists once, with the identity linked to it, so the next
+    # sign-in matches by subject rather than bootstrapping again.
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert [(user.email, user.role) for user in users] == [
+        (settings.bootstrap.OWNER_EMAIL, UserRole.OWNER)
+    ]
+    [identity] = await _identities(db_session)
+    assert identity.user_id == users[0].id
+    assert identity.subject == GOOGLE_SUBJECT
+
+
+async def test_the_bootstrap_address_cannot_claim_an_existing_ownership(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    oauth_client: FakeOAuthClient,
+) -> None:
+    # Ownership already lives elsewhere, so the bootstrap address is just an
+    # unknown one — the same gate the email challenge applies.
+    await create_user(db_session, email="heir@test.com", role=UserRole.OWNER)
+    oauth_client.identity = _identity(email=settings.bootstrap.OWNER_EMAIL)
+
+    authorization = await _start(client, oauth_client)
+    response = await _callback(client, state=authorization.authorization.state)
+
+    assert response.status_code == 302, response.text
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
+    assert "session_token" not in client.cookies
+    assert await _identities(db_session) == []
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert [user.email for user in users] == ["heir@test.com"]
+
+
+async def test_an_unverified_bootstrap_address_never_bootstraps(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    oauth_client: FakeOAuthClient,
+) -> None:
+    # The verified-email claim IS the proof the bootstrap rests on: without
+    # it, holding the address at the issuer proves nothing about the mailbox.
+    oauth_client.identity = _identity(
+        email=settings.bootstrap.OWNER_EMAIL, email_verified=False
+    )
+
+    authorization = await _start(client, oauth_client)
+    response = await _callback(client, state=authorization.authorization.state)
+
+    assert response.status_code == 302, response.text
+    assert response.headers["location"] == "/login?error=OAUTH_SIGN_IN_FAILED"
+    assert "session_token" not in client.cookies
     users = await db_session.execute(select(func.count()).select_from(User))
     assert users.scalar_one() == 0
 
