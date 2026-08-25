@@ -52,9 +52,10 @@ logger = logging.getLogger(__name__)
 
 
 async def create_submission(db: AsyncSession, *, user_id: UUID) -> CashoutSubmission:
-    # Cashouts are not shift-locked; a user may open one at any time.
+    # Cashouts are not shift-locked; a user may open one at any time. The
+    # creator is the cashout's employee.
     submission = CashoutSubmission(
-        submitted_by_user_id=user_id,
+        employee_user_id=user_id,
         submitted_at=datetime.now(UTC),
     )
     await repository.add_submission(db, submission)
@@ -66,12 +67,12 @@ async def delete_submission(
     db: AsyncSession,
     *,
     submission_id: UUID,
-    user_id: UUID,
+    user: User,
     storage: DocumentStorageClient,
 ) -> None:
-    """Delete an owned submission unless reconciled data references it."""
-    submission = await _get_owned_submission(
-        db, submission_id=submission_id, user_id=user_id
+    """Delete a submission (employee or admin) unless reconciled data references it."""
+    submission = await _get_submission_for_actor(
+        db, submission_id=submission_id, actor=user
     )
     storage_keys = await repository.list_storage_keys(db, submission_id=submission.id)
 
@@ -105,23 +106,26 @@ async def list_submissions(
     return await repository.list_submissions(db, only_user_id=only_user_id)
 
 
-async def user_has_submissions(db: AsyncSession, *, user_id: UUID) -> bool:
-    """Whether the user has ever submitted a cashout (any status).
+async def user_is_referenced(db: AsyncSession, *, user_id: UUID) -> bool:
+    """Whether any cashout row references the user.
 
-    The users service consults this when deleting an account: an author with
-    history must be soft-deleted so their submissions keep a valid author.
-    Cross-feature access goes service to service, which is why this thin
-    wrapper exists rather than users reaching into this feature's repository.
+    True when the user is a submission's employee or (first) completer,
+    uploaded a document, or verified an analysis — admins can do the last
+    four on other users' cashouts. The users service consults this when
+    deleting an account: a referenced user must be soft-deleted so those
+    rows keep a valid FK target. Cross-feature access goes service to
+    service, which is why this thin wrapper exists rather than users
+    reaching into this feature's repository.
     """
-    return await repository.user_has_submissions(db, user_id=user_id)
+    return await repository.user_is_referenced(db, user_id=user_id)
 
 
 async def complete_submission(
-    db: AsyncSession, *, submission_id: UUID, user_id: UUID
+    db: AsyncSession, *, submission_id: UUID, user: User
 ) -> CashoutSubmission:
     """Reconcile the verified analyses into a CashoutData and close the cashout."""
-    submission = await _get_owned_submission(
-        db, submission_id=submission_id, user_id=user_id
+    submission = await _get_submission_for_actor(
+        db, submission_id=submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
@@ -141,6 +145,11 @@ async def complete_submission(
 
     await repository.add_data(db, _reconcile(submission.id, analyses))
     submission.status = CashoutSubmissionStatus.COMPLETED
+    # Record the actual actor (the admin when an admin completes); the first
+    # completer is bookkeeping — set once, never overwritten.
+    submission.completed_by_user_id = user.id
+    if submission.first_completed_by_user_id is None:
+        submission.first_completed_by_user_id = user.id
 
     return submission
 
@@ -155,7 +164,7 @@ async def upload_document(
     *,
     payload: DocumentUpload,
     submission_id: UUID,
-    user_id: UUID,
+    user: User,
     storage: DocumentStorageClient,
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
@@ -166,8 +175,8 @@ async def upload_document(
     dispatches only once the upload commits. Clients poll the returned
     analysis.
     """
-    submission = await _get_owned_submission(
-        db, submission_id=submission_id, user_id=user_id
+    submission = await _get_submission_for_actor(
+        db, submission_id=submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
@@ -185,7 +194,8 @@ async def upload_document(
         storage_key=f"cashout/{submission.id}/{uuid4().hex}",
         original_filename=payload.original_filename,
         checksum_sha256=hashlib.sha256(payload.data).hexdigest(),
-        uploaded_by_user_id=user_id,
+        # The actual actor: the admin when an admin uploads for the employee.
+        uploaded_by_user_id=user.id,
         uploaded_at=datetime.now(UTC),
         cashout_submission_id=submission.id,
     )
@@ -206,13 +216,13 @@ async def delete_document(
     db: AsyncSession,
     *,
     document_id: UUID,
-    user_id: UUID,
+    user: User,
     storage: DocumentStorageClient,
 ) -> None:
     """Remove a document (and its analysis) from an incomplete submission."""
     document = await _get_document(db, document_id)
-    submission = await _get_owned_submission(
-        db, submission_id=document.cashout_submission_id, user_id=user_id
+    submission = await _get_submission_for_actor(
+        db, submission_id=document.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
@@ -230,7 +240,7 @@ async def get_document_content(
     user: User,
     storage: DocumentStorageClient,
 ) -> tuple[CashoutDocument, bytes]:
-    """The original uploaded bytes, for viewing; owner or admin."""
+    """The original uploaded bytes, for viewing; employee or admin."""
     document = await _get_document(db, document_id)
     submission = await _get_submission(db, document.cashout_submission_id)
     _ensure_can_view(submission, user)
@@ -242,7 +252,7 @@ async def extract_document(
     db: AsyncSession,
     *,
     document_id: UUID,
-    user_id: UUID,
+    user: User,
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
     """Reset a document's analysis and queue a fresh extraction attempt.
@@ -252,8 +262,8 @@ async def extract_document(
     re-run, and an extraction already in flight cannot be restarted.
     """
     document = await _get_document(db, document_id)
-    submission = await _get_owned_submission(
-        db, submission_id=document.cashout_submission_id, user_id=user_id
+    submission = await _get_submission_for_actor(
+        db, submission_id=document.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
@@ -323,7 +333,7 @@ async def run_extraction(
 async def get_analysis(
     db: AsyncSession, *, analysis_id: UUID, user: User
 ) -> CashoutDocumentAnalysis:
-    """Poll target for extraction progress; owner or admin."""
+    """Poll target for extraction progress; employee or admin."""
     analysis = await _get_analysis(db, analysis_id)
 
     document = await _get_document(db, analysis.cashout_document_id)
@@ -338,14 +348,14 @@ async def verify_analysis(
     *,
     payload: CashoutAnalysisVerify,
     analysis_id: UUID,
-    user_id: UUID,
+    user: User,
 ) -> CashoutDocumentAnalysis:
-    """Cashier confirmation of an extraction, optionally with corrections."""
+    """Confirmation of an extraction (employee or admin), optionally corrected."""
     analysis = await _get_analysis(db, analysis_id)
 
     document = await _get_document(db, analysis.cashout_document_id)
-    submission = await _get_owned_submission(
-        db, submission_id=document.cashout_submission_id, user_id=user_id
+    submission = await _get_submission_for_actor(
+        db, submission_id=document.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
@@ -357,14 +367,15 @@ async def verify_analysis(
     if analysis.status is DocumentAnalysisStatus.FAILED:
         raise AppError("EXTRACTION_FAILED")
 
-    # The cashier either confirms the extraction as-is or submits corrections.
+    # The actor either confirms the extraction as-is or submits corrections.
     if payload.verified_data is not None:
         analysis.verified_data_json = payload.verified_data
     else:
         analysis.verified_data_json = analysis.extracted_data_json
 
     analysis.status = DocumentAnalysisStatus.VERIFIED
-    analysis.verified_by_user_id = user_id
+    # The actual actor: the admin when an admin verifies for the employee.
+    analysis.verified_by_user_id = user.id
     analysis.verified_at = datetime.now(UTC)
 
     return analysis
@@ -406,20 +417,22 @@ async def _get_analysis(db: AsyncSession, analysis_id: UUID) -> CashoutDocumentA
     return analysis
 
 
-async def _get_owned_submission(
-    db: AsyncSession, *, submission_id: UUID, user_id: UUID
+async def _get_submission_for_actor(
+    db: AsyncSession, *, submission_id: UUID, actor: User
 ) -> CashoutSubmission:
+    """Fetch a submission the actor may act on: its employee, or any admin.
+
+    Admins (and the owner) have full control over every cashout, so acting
+    and viewing share the same rule.
+    """
     submission = await _get_submission(db, submission_id)
-    if submission.submitted_by_user_id != user_id:
-        raise AppError(
-            "FORBIDDEN", "You do not have access to this cashout submission."
-        )
+    _ensure_can_view(submission, actor)
     return submission
 
 
 def _ensure_can_view(submission: CashoutSubmission, user: User) -> None:
     is_admin = user.role in (UserRole.ADMIN, UserRole.OWNER)
-    if not is_admin and submission.submitted_by_user_id != user.id:
+    if not is_admin and submission.employee_user_id != user.id:
         raise AppError(
             "FORBIDDEN", "You do not have access to this cashout submission."
         )

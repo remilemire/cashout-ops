@@ -146,12 +146,17 @@ export interface CashoutSubmission {
   id: string;
   createdAt: string;
   status: CashoutSubmissionStatus;
-  submittedByUserId: string;
+  employeeUserId: string;
   submittedAt: string;
+  /** Who performed the most recent completion (an admin may act for the employee). */
+  completedByUserId: string | null;
+  /** Who completed it first; set once and never overwritten. */
+  firstCompletedByUserId: string | null;
+  updatedAt: string;
 }
 
 export interface CashoutSubmissionListItem extends CashoutSubmission {
-  submittedBy: User;
+  employee: User;
 }
 
 export interface FieldIssue {
@@ -204,7 +209,7 @@ export interface CashoutData {
 }
 
 export interface CashoutSubmissionDetail extends CashoutSubmission {
-  submittedBy: User;
+  employee: User;
   documents: CashoutDocument[];
   data: CashoutData | null;
 }

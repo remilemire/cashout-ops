@@ -30,8 +30,11 @@ const submission: CashoutSubmission = {
   id: "submission-1",
   createdAt: "2026-07-17T00:00:00Z",
   status: "processing",
-  submittedByUserId: "user-1",
+  employeeUserId: "user-1",
   submittedAt: "2026-07-17T00:00:00Z",
+  completedByUserId: null,
+  firstCompletedByUserId: null,
+  updatedAt: "2026-07-17T00:00:00Z",
 };
 
 const analysis: CashoutDocumentAnalysis = {

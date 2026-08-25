@@ -62,17 +62,23 @@ const submissions: CashoutSubmissionListItem[] = [
     id: "processing-submission",
     createdAt: "2026-07-17T01:00:00Z",
     status: "processing",
-    submittedByUserId: user.id,
+    employeeUserId: user.id,
     submittedAt: "2026-07-17T01:00:00Z",
-    submittedBy: user,
+    completedByUserId: null,
+    firstCompletedByUserId: null,
+    updatedAt: "2026-07-17T01:00:00Z",
+    employee: user,
   },
   {
     id: "completed-submission",
     createdAt: "2026-07-16T01:00:00Z",
     status: "completed",
-    submittedByUserId: user.id,
+    employeeUserId: user.id,
     submittedAt: "2026-07-16T01:00:00Z",
-    submittedBy: user,
+    completedByUserId: user.id,
+    firstCompletedByUserId: user.id,
+    updatedAt: "2026-07-16T02:00:00Z",
+    employee: user,
   },
 ];
 
@@ -158,9 +164,12 @@ describe("CashoutsPage", () => {
       id: `aaaaaaaa-0000-4000-8000-00000000000${suffix}`,
       createdAt: "2026-07-17T01:00:00Z",
       status: "processing",
-      submittedByUserId: user.id,
+      employeeUserId: user.id,
       submittedAt: "2026-07-17T01:00:00Z",
-      submittedBy: user,
+      completedByUserId: null,
+      firstCompletedByUserId: null,
+      updatedAt: "2026-07-17T01:00:00Z",
+      employee: user,
     });
     listSubmissionsMock.mockResolvedValue([twin("1"), twin("2")]);
     renderPage();

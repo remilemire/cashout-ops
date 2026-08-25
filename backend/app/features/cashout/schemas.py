@@ -19,12 +19,15 @@ class CashoutSubmissionOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
     status: CashoutSubmissionStatus
-    submitted_by_user_id: uuid.UUID
+    employee_user_id: uuid.UUID
     submitted_at: UtcDateTime
+    completed_by_user_id: uuid.UUID | None = None
+    first_completed_by_user_id: uuid.UUID | None = None
+    updated_at: UtcDateTime
 
 
 class CashoutSubmissionListOut(CashoutSubmissionOut):
-    submitted_by: UserOut
+    employee: UserOut
 
 
 class CashoutDocumentAnalysisOut(BaseOut):
@@ -72,7 +75,7 @@ class CashoutDataOut(BaseOut):
 
 
 class CashoutSubmissionDetailOut(CashoutSubmissionOut):
-    submitted_by: UserOut
+    employee: UserOut
     documents: list[CashoutDocumentOut]
     data: CashoutDataOut | None = None
 

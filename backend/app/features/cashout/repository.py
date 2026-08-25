@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -44,7 +44,7 @@ async def get_submission_with_details(
                 CashoutDocument.analysis
             ),
             joinedload(CashoutSubmission.data),
-            joinedload(CashoutSubmission.submitted_by),
+            joinedload(CashoutSubmission.employee),
         )
         .where(CashoutSubmission.id == submission_id)
     )
@@ -57,11 +57,11 @@ async def list_submissions(
 ) -> Sequence[CashoutSubmission]:
     stmt = (
         select(CashoutSubmission)
-        .options(joinedload(CashoutSubmission.submitted_by))
+        .options(joinedload(CashoutSubmission.employee))
         .order_by(CashoutSubmission.submitted_at.desc())
     )
     if only_user_id is not None:
-        stmt = stmt.where(CashoutSubmission.submitted_by_user_id == only_user_id)
+        stmt = stmt.where(CashoutSubmission.employee_user_id == only_user_id)
 
     return (await db.execute(stmt)).scalars().all()
 
@@ -73,12 +73,27 @@ async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> 
     await db.flush()
 
 
-async def user_has_submissions(db: AsyncSession, *, user_id: UUID) -> bool:
-    """Whether any submission (in any status) names the user as its author."""
+async def user_is_referenced(db: AsyncSession, *, user_id: UUID) -> bool:
+    """Whether any cashout row references the user through one of its FKs.
+
+    Covers all five user FKs across the feature: a submission's employee and
+    its (first) completer, a document's uploader, and an analysis's verifier.
+    """
+    submission_refs = select(CashoutSubmission.id).where(
+        or_(
+            CashoutSubmission.employee_user_id == user_id,
+            CashoutSubmission.completed_by_user_id == user_id,
+            CashoutSubmission.first_completed_by_user_id == user_id,
+        )
+    )
+    document_refs = select(CashoutDocument.id).where(
+        CashoutDocument.uploaded_by_user_id == user_id
+    )
+    analysis_refs = select(CashoutDocumentAnalysis.id).where(
+        CashoutDocumentAnalysis.verified_by_user_id == user_id
+    )
     stmt = select(
-        select(CashoutSubmission.id)
-        .where(CashoutSubmission.submitted_by_user_id == user_id)
-        .exists()
+        submission_refs.exists() | document_refs.exists() | analysis_refs.exists()
     )
 
     return bool((await db.execute(stmt)).scalar())
@@ -174,7 +189,7 @@ __all__ = [
     "get_submission_with_details",
     "list_submissions",
     "delete_submission",
-    "user_has_submissions",
+    "user_is_referenced",
     "get_document",
     "list_storage_keys",
     "list_documents_with_analysis",

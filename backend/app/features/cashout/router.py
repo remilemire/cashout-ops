@@ -88,11 +88,14 @@ async def delete_submission(
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
-    """Delete an owned submission that has no reconciled cashout data."""
+    """Delete a submission that has no reconciled cashout data.
+
+    The submission's employee or an admin may cancel it.
+    """
     await cashout_service.delete_submission(
         db,
         submission_id=submission_id,
-        user_id=current_user.id,
+        user=current_user,
         storage=storage,
     )
 
@@ -122,7 +125,7 @@ async def get_submission(
 ) -> CashoutSubmissionDetailOut:
     """Return a submission with its documents (analyses included) and data.
 
-    Accessible to the submission's owner or an admin.
+    Accessible to the submission's employee or an admin.
     """
     submission = await cashout_service.get_submission(
         db, submission_id=submission_id, user=current_user
@@ -149,10 +152,11 @@ async def complete_submission(
     """Close out the cashout once every document analysis is verified.
 
     Reconciles the verified analyses into the submission's cashout data and
-    moves the submission to `COMPLETED`.
+    moves the submission to `COMPLETED`. The submission's employee or an
+    admin may complete it; the completing user is recorded.
     """
     submission = await cashout_service.complete_submission(
-        db, submission_id=submission_id, user_id=current_user.id
+        db, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionOut.model_validate(submission)
 
@@ -214,7 +218,7 @@ async def upload_document(
         db,
         payload=payload,
         submission_id=submission_id,
-        user_id=current_user.id,
+        user=current_user,
         storage=storage,
         processor=processor,
     )
@@ -236,13 +240,13 @@ async def delete_document(
 ) -> None:
     """Remove a document (and its analysis) from an incomplete submission.
 
-    Only the submission's owner may remove documents, and only while the
-    submission is still `PROCESSING`.
+    The submission's employee or an admin may remove documents, and only
+    while the submission is still `PROCESSING`.
     """
     await cashout_service.delete_document(
         db,
         document_id=document_id,
-        user_id=current_user.id,
+        user=current_user,
         storage=storage,
     )
 
@@ -278,7 +282,7 @@ async def extract_document(
     analysis = await cashout_service.extract_document(
         db,
         document_id=document_id,
-        user_id=current_user.id,
+        user=current_user,
         processor=processor,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
@@ -306,7 +310,7 @@ async def get_document_content(
 ) -> Response:
     """Serve the original uploaded document (image or PDF), inline.
 
-    Accessible to the submission's owner or an admin.
+    Accessible to the submission's employee or an admin.
     """
     document, data = await cashout_service.get_document_content(
         db, document_id=document_id, user=current_user, storage=storage
@@ -337,8 +341,8 @@ async def get_analysis(
     """Poll a document analysis for its extraction progress.
 
     `EXTRACTING` means the AI is still running; it resolves to
-    `NEEDS_VERIFICATION` or `FAILED`. Accessible to the submission's owner or
-    an admin.
+    `NEEDS_VERIFICATION` or `FAILED`. Accessible to the submission's employee
+    or an admin.
     """
     analysis = await cashout_service.get_analysis(
         db, analysis_id=analysis_id, user=current_user
@@ -367,10 +371,11 @@ async def verify_analysis(
     """Confirm an extraction, optionally submitting corrected values.
 
     Marks the analysis `VERIFIED`. `verifiedData` overrides the extracted data;
-    omit it to confirm the extraction as-is.
+    omit it to confirm the extraction as-is. The submission's employee or an
+    admin may verify; the verifying user is recorded.
     """
     analysis = await cashout_service.verify_analysis(
-        db, payload=payload, analysis_id=analysis_id, user_id=current_user.id
+        db, payload=payload, analysis_id=analysis_id, user=current_user
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

@@ -51,7 +51,7 @@ export function CashoutsPage() {
 
   // The list endpoint returns everything for admins; this page is "mine".
   const mine = (submissionsQuery.data ?? []).filter(
-    (submission) => submission.submittedByUserId === user?.id,
+    (submission) => submission.employeeUserId === user?.id,
   );
 
   return (

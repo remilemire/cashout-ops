@@ -20,7 +20,7 @@ async def test_translate_real_postgres_restrict_violation_maps_constraint(
 ) -> None:
     user = await create_user(db_session)
     submission = CashoutSubmission(
-        submitted_by_user_id=user.id,
+        employee_user_id=user.id,
         submitted_at=datetime.now(UTC),
     )
     db_session.add(submission)

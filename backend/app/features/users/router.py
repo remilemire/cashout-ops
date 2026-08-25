@@ -153,11 +153,13 @@ async def delete_user(
     """Delete a user (admin only). Their sessions are not revoked; the
     deleted-user lookup during authentication turns them away.
 
-    A user with cashout submissions is soft-deleted (deactivated): the row
-    stays so their submission history keeps its author, but the account
-    disappears from listings and can no longer sign in. A user without
-    submissions is removed outright. The owner cannot be deleted; recreating
-    a soft-deleted user's email revives the account as staff.
+    A user referenced by cashout history — their own submissions, or
+    documents, verifications, and completions they performed on anyone's —
+    is soft-deleted (deactivated): the row stays so that history keeps its
+    user, but the account disappears from listings and can no longer sign
+    in. An unreferenced user is removed outright. The owner cannot be
+    deleted; recreating a soft-deleted user's email revives the account as
+    staff.
     """
     await users_service.delete_by_id(db, user_id=user_id)
 

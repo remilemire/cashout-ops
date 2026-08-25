@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import { isAdminRole } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -69,12 +70,15 @@ export function SubmissionPage() {
   if (detailQuery.isLoading) return <FullScreenSpinner />;
   if (!submission) return <ErrorBanner error={detailQuery.error} />;
 
-  // Admins can view anyone's submission; only the owner can act on it.
-  const isOwner = submission.submittedByUserId === user?.id;
-  const isAdminView = !isOwner;
-  const editable = isOwner && submission.status === "processing";
-  // Cancel stays available for the owner until the cashout is completed.
-  const canCancel = isOwner && submission.status !== "completed";
+  // The employee and any admin have the same powers on a submission; the
+  // admin-view presentation (back link, subtitle) keys on not being the
+  // employee.
+  const isEmployee = submission.employeeUserId === user?.id;
+  const isAdminView = !isEmployee;
+  const canAct = isEmployee || (user != null && isAdminRole(user.role));
+  const editable = canAct && submission.status === "processing";
+  // Cancel stays available until the cashout is completed.
+  const canCancel = canAct && submission.status !== "completed";
   const documents = submission.documents;
   const verifiedCount = documents.filter(
     (doc) => doc.analysis?.status === "verified",
@@ -111,7 +115,7 @@ export function SubmissionPage() {
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
         subtitle={
           isAdminView
-            ? `Submitted by ${submission.submittedBy.fullName} (${submission.submittedBy.email})`
+            ? `Submitted by ${submission.employee.fullName} (${submission.employee.email})`
             : undefined
         }
         action={

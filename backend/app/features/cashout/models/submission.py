@@ -29,7 +29,7 @@ class CashoutSubmission(Base):
         server_default=CashoutSubmissionStatus.PROCESSING.value,
     )
 
-    submitted_by_user_id: Mapped[uuid.UUID] = mapped_column(
+    employee_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"), nullable=False, index=True
     )
     submitted_at: Mapped[datetime] = mapped_column(
@@ -45,7 +45,27 @@ class CashoutSubmission(Base):
         server_default=func.now(),
     )
 
-    submitted_by: Mapped[User] = relationship()
+    # Who performed the most recent completion (an admin can complete another
+    # user's cashout), and who completed it first — set once, never
+    # overwritten. Bookkeeping only: no relationships until a consumer needs
+    # them.
+    completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    first_completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    # Three FKs point at users; the relationship must name the employee's.
+    employee: Mapped[User] = relationship(
+        foreign_keys="CashoutSubmission.employee_user_id"
+    )
 
     documents: Mapped[list[CashoutDocument]] = relationship(
         back_populates="cashout_submission", cascade="all, delete-orphan"

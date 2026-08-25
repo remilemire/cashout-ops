@@ -66,14 +66,14 @@ export function AdminSubmissionsPage() {
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-2.5">
                       <span className="bg-accent/15 text-accent-strong grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold">
-                        {initials(submission.submittedBy.fullName)}
+                        {initials(submission.employee.fullName)}
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate font-medium">
-                          {submission.submittedBy.fullName}
+                          {submission.employee.fullName}
                         </span>
                         <span className="text-ink-muted block truncate text-xs">
-                          {submission.submittedBy.email}
+                          {submission.employee.email}
                         </span>
                       </span>
                     </span>
