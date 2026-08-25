@@ -432,6 +432,40 @@ async def verify_analysis(
     return analysis
 
 
+async def unverify_analysis(
+    db: AsyncSession,
+    *,
+    analysis_id: UUID,
+    user: User,
+) -> CashoutDocumentAnalysis:
+    """Send a verified extraction back through verification (employee or admin).
+
+    Editing a verified extraction means re-verifying it: the verification
+    outcome (verified data, verifier, timestamp) is cleared and the analysis
+    returns to NEEDS_VERIFICATION, while the extraction fields stay untouched
+    so the verification form re-renders from them. Combined with unsubmit,
+    this is how an admin corrects an already-completed cashout.
+    """
+    analysis = await _get_analysis(db, analysis_id)
+
+    document = await _get_document(db, analysis.cashout_document_id)
+    submission = await _get_submission_for_actor(
+        db, submission_id=document.cashout_submission_id, actor=user
+    )
+    if submission.status is not CashoutSubmissionStatus.PROCESSING:
+        raise AppError("SUBMISSION_COMPLETED")
+
+    if analysis.status is not DocumentAnalysisStatus.VERIFIED:
+        raise AppError("ANALYSIS_NOT_VERIFIED")
+
+    analysis.status = DocumentAnalysisStatus.NEEDS_VERIFICATION
+    analysis.verified_data_json = None
+    analysis.verified_by_user_id = None
+    analysis.verified_at = None
+
+    return analysis
+
+
 # ================================
 # ------------- Data -------------
 # ================================

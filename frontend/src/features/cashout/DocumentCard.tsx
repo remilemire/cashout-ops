@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
   FileText,
+  Pencil,
   RefreshCw,
   ScanLine,
   Trash2,
@@ -64,6 +65,18 @@ export function DocumentCard({
 
   const retry = useMutation({
     mutationFn: () => cashoutApi.extractDocument(document.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    },
+  });
+
+  // "Edit" on a verified analysis: sends it back to needs-verification (the
+  // extraction fields survive, so the verification form re-renders from them).
+  const unverify = useMutation({
+    mutationFn: () => cashoutApi.unverifyAnalysis(analysis!.id),
     onSuccess: (updated) => {
       queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
       void queryClient.invalidateQueries({
@@ -197,11 +210,26 @@ export function DocumentCard({
       )}
 
       {analysis?.status === "needs_verification" && (
-        <VerificationForm
-          analysis={analysis}
-          submissionId={submissionId}
-          editable={editable}
-        />
+        <div className="space-y-2">
+          <VerificationForm
+            analysis={analysis}
+            submissionId={submissionId}
+            editable={editable}
+          />
+          {editable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-ink-muted"
+              onClick={() => retry.mutate()}
+              loading={retry.isPending}
+            >
+              <RefreshCw className="size-4" />
+              Retry extraction
+            </Button>
+          )}
+          <ErrorBanner error={retry.error} />
+        </div>
       )}
 
       {analysis?.status === "verified" && (
@@ -215,6 +243,17 @@ export function DocumentCard({
             Verified{" "}
             {analysis.verifiedAt ? formatDateTime(analysis.verifiedAt) : ""}
           </p>
+          {editable && (
+            <Button
+              variant="outline"
+              onClick={() => unverify.mutate()}
+              loading={unverify.isPending}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+          )}
+          <ErrorBanner error={unverify.error} />
         </div>
       )}
 

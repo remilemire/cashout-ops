@@ -24,6 +24,8 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       ...actual.cashoutApi,
       getAnalysis: vi.fn(),
       deleteDocument: vi.fn(),
+      unverifyAnalysis: vi.fn(),
+      extractDocument: vi.fn(),
     },
   };
 });
@@ -48,6 +50,8 @@ vi.mock("@/components/dialog", () => ({
 
 const getAnalysisMock = vi.mocked(cashoutApi.getAnalysis);
 const deleteDocumentMock = vi.mocked(cashoutApi.deleteDocument);
+const unverifyAnalysisMock = vi.mocked(cashoutApi.unverifyAnalysis);
+const extractDocumentMock = vi.mocked(cashoutApi.extractDocument);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
@@ -70,6 +74,14 @@ const analysis: CashoutDocumentAnalysis = {
   cashoutDocumentId: "document-1",
 };
 
+const needsVerificationAnalysis: CashoutDocumentAnalysis = {
+  ...analysis,
+  status: "needs_verification",
+  verifiedDataJson: null,
+  verifiedByUserId: null,
+  verifiedAt: null,
+};
+
 const cashoutDocument: CashoutDocument = {
   id: "document-1",
   createdAt: "2026-07-17T01:00:00Z",
@@ -82,7 +94,10 @@ const cashoutDocument: CashoutDocument = {
   analysis,
 };
 
-function renderCard(editable: boolean) {
+function renderCard(
+  editable: boolean,
+  document: CashoutDocument = cashoutDocument,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -90,7 +105,7 @@ function renderCard(editable: boolean) {
   render(
     <QueryClientProvider client={queryClient}>
       <DocumentCard
-        document={cashoutDocument}
+        document={document}
         submissionId="submission-1"
         editable={editable}
       />
@@ -101,8 +116,15 @@ function renderCard(editable: boolean) {
 beforeEach(() => {
   getAnalysisMock.mockReset();
   deleteDocumentMock.mockReset();
+  unverifyAnalysisMock.mockReset();
+  extractDocumentMock.mockReset();
   getAnalysisMock.mockResolvedValue(analysis);
   deleteDocumentMock.mockResolvedValue(undefined);
+  unverifyAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+  extractDocumentMock.mockResolvedValue({
+    ...needsVerificationAnalysis,
+    status: "extracting",
+  });
 });
 
 describe("DocumentCard", () => {
@@ -127,5 +149,33 @@ describe("DocumentCard", () => {
 
     await waitFor(() => expect(deleteDocumentMock).toHaveBeenCalledOnce());
     expect(deleteDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
+  });
+
+  it("edits a verified analysis by unverifying it", async () => {
+    renderCard(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(unverifyAnalysisMock).toHaveBeenCalledOnce());
+    expect(unverifyAnalysisMock.mock.calls[0]?.[0]).toBe("analysis-1");
+  });
+
+  it("hides the edit option when not editable", () => {
+    renderCard(false);
+
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("offers retry extraction while needs-verification", async () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    renderCard(true, {
+      ...cashoutDocument,
+      analysis: needsVerificationAnalysis,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry extraction" }));
+
+    await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
+    expect(extractDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
   });
 });

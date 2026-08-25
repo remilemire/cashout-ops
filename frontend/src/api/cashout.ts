@@ -56,6 +56,11 @@ export const cashoutApi = {
       method: "POST",
       json: input,
     }),
+  /** Send a verified analysis back to needs-verification for editing. */
+  unverifyAnalysis: (id: string) =>
+    api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/unverify`, {
+      method: "POST",
+    }),
 
   listData: () => api<CashoutData[]>("/cashout/data"),
 };

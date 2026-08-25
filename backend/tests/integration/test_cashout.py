@@ -24,6 +24,7 @@ from tests.support.cashout import (
     create_submission,
     poll_analysis,
     unsubmit_submission,
+    unverify_analysis,
     upload_document,
     verify_analysis,
 )
@@ -525,6 +526,146 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
 
 
 # ================================
+# ---------- Unverify ------------
+# ================================
+
+
+async def test_unverify_reopens_verification_for_editing(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The full edit loop: verify, unverify, re-verify with a correction,
+    # complete.
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+
+    # Unverify clears the verification outcome but keeps the extraction, so
+    # the verification form has fields to re-render.
+    reopened = await unverify_analysis(cashier_client, created["id"])
+    assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert reopened["verifiedDataJson"] is None
+    assert reopened["verifiedByUserId"] is None
+    assert reopened["verifiedAt"] is None
+    assert reopened["extractedDataJson"] == {"note": "cash $100"}
+
+    reverified = await verify_analysis(
+        cashier_client,
+        created["id"],
+        {"verifiedData": {"note": "cash $100 corrected"}},
+    )
+    assert reverified["status"] == DocumentAnalysisStatus.VERIFIED.value
+    assert reverified["verifiedDataJson"] == {"note": "cash $100 corrected"}
+
+    completed = await complete_submission(cashier_client, submission_id)
+    assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
+
+
+async def test_unverify_non_verified_analysis_conflicts(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    # Extracted but never verified: nothing to send back.
+
+    response = await cashier_client.post(
+        f"/api/cashout/analyses/{created['id']}/unverify",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "ANALYSIS_NOT_VERIFIED"
+
+
+async def test_unverify_after_completion_conflicts(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
+
+    # A completed cashout is frozen; it must be unsubmitted first.
+    response = await cashier_client.post(
+        f"/api/cashout/analyses/{created['id']}/unverify",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_COMPLETED"
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.VERIFIED.value
+
+
+async def test_unverify_requires_employee_or_admin(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    make_client: ClientFactory,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+
+    # Plain staff cannot edit someone else's cashout.
+    other = await make_client(email="other@test.com")
+    forbidden = await other.post(
+        f"/api/cashout/analyses/{created['id']}/unverify",
+        headers=csrf_headers(other),
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["code"] == "FORBIDDEN"
+
+    # An admin can, on anyone's submission.
+    reopened = await unverify_analysis(admin_client, created["id"])
+    assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+
+
+async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The admin correction flow: unsubmit reopens the cashout, unverify
+    # reopens one analysis, and re-completing reconciles fresh data.
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
+
+    await unsubmit_submission(admin_client, submission_id)
+    reopened = await unverify_analysis(admin_client, created["id"])
+    assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+
+    reverified = await verify_analysis(
+        admin_client,
+        created["id"],
+        {"verifiedData": {"note": "cash $90 (admin corrected)"}},
+    )
+    assert reverified["verifiedDataJson"] == {"note": "cash $90 (admin corrected)"}
+
+    recompleted = await complete_submission(admin_client, submission_id)
+    assert recompleted["status"] == CashoutSubmissionStatus.COMPLETED.value
+    detail = (
+        await admin_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["data"] is not None
+    assert detail["data"]["submissionId"] == submission_id
+
+
+# ================================
 # ------- Guard conditions -------
 # ================================
 
@@ -675,6 +816,32 @@ async def test_failed_extraction_and_retry(
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["errorCode"] is None
+
+
+async def test_retry_extraction_from_needs_verification(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # A retry is not reserved for FAILED: an unverified extraction can be
+    # re-run too (e.g. the cashier wants a fresh read of the document).
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+
+    retry = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        headers=csrf_headers(cashier_client),
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["status"] == DocumentAnalysisStatus.EXTRACTING.value
+
+    await drain_outbox()
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert analysis["extractedDataJson"] == {"note": "cash $100"}
 
 
 async def test_verify_twice_conflicts(
