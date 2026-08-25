@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError
+from app.features.cashout import service as cashout_service
 
 from . import repository
 from .model import User
@@ -40,6 +42,23 @@ async def owner_exists(db: AsyncSession) -> bool:
 
 
 async def create(db: AsyncSession, *, payload: UserCreate) -> User:
+    """Create a staff account, reviving a soft-deleted one at the address.
+
+    Reinviting a deleted email reuses its row (clearing deleted_at) rather
+    than inserting a duplicate — ix_users_email spans deleted rows, and
+    reuse keeps the old submissions' FKs pointing at the returned account.
+    The revived account gets the payload's name and is reset to STAFF: a
+    deleted admin must not silently regain admin by being reinvited. A live
+    duplicate email still falls through to the insert, whose unique-index
+    violation translates to EMAIL_TAKEN as before.
+    """
+    existing = await repository.find_by_email_include_deleted(db, email=payload.email)
+    if existing is not None and existing.deleted_at is not None:
+        existing.deleted_at = None
+        existing.full_name = payload.full_name
+        existing.role = UserRole.STAFF
+        return existing
+
     user = User(
         email=payload.email,
         full_name=payload.full_name,
@@ -82,11 +101,24 @@ async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User | No
 
 
 async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
+    """Delete a user: hard when possible, soft when submissions reference them.
+
+    An author's row cannot be removed (their submissions'
+    submitted_by_user_id FK still points at it), so those accounts are
+    deactivated by stamping deleted_at instead — every live-account lookup
+    excludes them, while submission history keeps rendering their name. The
+    owner cannot be deleted either way.
+    """
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
         raise AppError("USER_NOT_FOUND")
     if user.role is UserRole.OWNER:
         raise AppError("CANNOT_DELETE_OWNER")
+
+    if await cashout_service.user_has_submissions(db, user_id=user.id):
+        user.deleted_at = datetime.now(UTC)
+        return
+
     await repository.delete(db, user)
 
 

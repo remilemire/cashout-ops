@@ -73,6 +73,17 @@ async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> 
     await db.flush()
 
 
+async def user_has_submissions(db: AsyncSession, *, user_id: UUID) -> bool:
+    """Whether any submission (in any status) names the user as its author."""
+    stmt = select(
+        select(CashoutSubmission.id)
+        .where(CashoutSubmission.submitted_by_user_id == user_id)
+        .exists()
+    )
+
+    return bool((await db.execute(stmt)).scalar())
+
+
 # ================================
 # ---------- Documents -----------
 # ================================
@@ -163,6 +174,7 @@ __all__ = [
     "get_submission_with_details",
     "list_submissions",
     "delete_submission",
+    "user_has_submissions",
     "get_document",
     "list_storage_keys",
     "list_documents_with_analysis",

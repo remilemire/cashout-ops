@@ -48,3 +48,11 @@ class User(Base):
         default=UserRole.STAFF,
         server_default=UserRole.STAFF.value,
     )
+
+    # Soft-delete marker (appended last to match the add-user-soft-delete
+    # migration's physical column order). A user with cashout submissions is
+    # deactivated by setting this instead of being removed, so their
+    # submissions keep a valid author; NULL means the account is live.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
