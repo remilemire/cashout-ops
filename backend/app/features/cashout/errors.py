@@ -12,6 +12,7 @@ type ErrorCode = Literal[
     "DOCUMENT_NOT_FOUND",
     "ANALYSIS_NOT_FOUND",
     "SUBMISSION_COMPLETED",
+    "SUBMISSION_NOT_COMPLETED",
     "SUBMISSION_EMPTY",
     "SUBMISSION_UNVERIFIED",
     "SUBMISSION_HAS_DATA",
@@ -43,6 +44,11 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
         code="SUBMISSION_COMPLETED",
         kind="CONFLICT",
         message="This cashout has already been completed.",
+    ),
+    ErrorDefinition(
+        code="SUBMISSION_NOT_COMPLETED",
+        kind="CONFLICT",
+        message="Only a completed cashout can be unsubmitted.",
     ),
     ErrorDefinition(
         code="SUBMISSION_EMPTY",

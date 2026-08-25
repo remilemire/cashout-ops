@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.document_ai import DocumentClassification
 from app.features.cashout.extraction.types import CashoutDocumentClassification
+from app.features.cashout.models import CashoutDocument, CashoutSubmission
 from app.features.cashout.types import (
     CashoutSubmissionStatus,
     DocumentAnalysisStatus,
@@ -18,10 +23,11 @@ from tests.support.cashout import (
     configure_manual_note,
     create_submission,
     poll_analysis,
+    unsubmit_submission,
     upload_document,
     verify_analysis,
 )
-from tests.support.documents import SAMPLE_PDF_BYTES
+from tests.support.documents import SAMPLE_PDF_BYTES, SAMPLE_PNG_UPLOAD
 from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
@@ -173,6 +179,7 @@ async def test_data_table_is_admin_only(
 
 async def test_delete_empty_processing_submission(
     cashier_client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     submission_id = await create_submission(cashier_client)
 
@@ -185,13 +192,18 @@ async def test_delete_empty_processing_submission(
     assert response.content == b""
     missing = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     assert missing.status_code == 404
+    # No traces (no documents, no data, never completed): a hard delete —
+    # the row itself is gone, not merely stamped.
+    stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
+    assert (await db_session.execute(stmt)).scalar_one_or_none() is None
 
 
-async def test_delete_processing_submission_removes_documents(
+async def test_delete_processing_submission_with_documents_soft_deletes(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
+    db_session: AsyncSession,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
@@ -202,13 +214,30 @@ async def test_delete_processing_submission_removes_documents(
         f"/api/cashout/submissions/{submission_id}",
         headers=csrf_headers(cashier_client),
     )
-
     assert response.status_code == 204
-    assert storage.objects == {}
+    assert response.content == b""
+
+    # Gone from the API: list, detail, and (via the stranded submission) the
+    # analysis all behave as if the cashout never existed.
+    listed = (await cashier_client.get("/api/cashout/submissions")).json()
+    assert submission_id not in [entry["id"] for entry in listed]
+    missing = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert missing.status_code == 404
     missing_analysis = await cashier_client.get(
         f"/api/cashout/analyses/{analysis['id']}"
     )
     assert missing_analysis.status_code == 404
+
+    # But it was a soft delete: the submission row is stamped, its document
+    # row survives, and the stored bytes were not cleaned up.
+    stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.deleted_at is not None
+    document_stmt = select(CashoutDocument).where(
+        CashoutDocument.cashout_submission_id == UUID(submission_id)
+    )
+    assert (await db_session.execute(document_stmt)).scalar_one() is not None
+    assert storage.objects
 
 
 async def test_delete_completed_submission_is_restricted(
@@ -229,7 +258,7 @@ async def test_delete_completed_submission_is_restricted(
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "SUBMISSION_HAS_DATA"
+    assert response.json()["code"] == "SUBMISSION_COMPLETED"
     detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     assert detail.status_code == 200
     assert detail.json()["data"] is not None
@@ -358,6 +387,141 @@ async def test_delete_document_requires_employee_or_admin(
     ).json()
     assert detail["documents"] == []
     assert storage.objects == {}
+
+
+# ================================
+# ---------- Unsubmit ------------
+# ================================
+
+
+async def test_admin_unsubmit_reopens_completed_cashout(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_manual_note(ai_client)
+    cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
+    first_data_id = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()["data"]["id"]
+
+    # The admin reopens it: back to PROCESSING, the reconciled data is gone,
+    # the current completer clears — but the first completion stays on record.
+    reopened = await unsubmit_submission(admin_client, submission_id)
+    assert reopened["status"] == CashoutSubmissionStatus.PROCESSING.value
+    assert reopened["completedByUserId"] is None
+    assert reopened["firstCompletedByUserId"] == cashier_id
+
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["data"] is None
+    # The analyses stay verified — nothing to re-verify on re-completion.
+    assert (
+        detail["documents"][0]["analysis"]["status"]
+        == DocumentAnalysisStatus.VERIFIED.value
+    )
+
+    # The employee can edit again without any admin help: editability keys on
+    # PROCESSING, which the unsubmit restored.
+    second = await upload_document(
+        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    )
+    await verify_analysis(cashier_client, second["id"])
+
+    # Re-completing reconciles a fresh data row and re-stamps the completer.
+    recompleted = await complete_submission(cashier_client, submission_id)
+    assert recompleted["status"] == CashoutSubmissionStatus.COMPLETED.value
+    assert recompleted["completedByUserId"] == cashier_id
+    assert recompleted["firstCompletedByUserId"] == cashier_id
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["data"] is not None
+    assert detail["data"]["id"] != first_data_id
+
+
+async def test_unsubmit_is_admin_only(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
+
+    # The employee (plain staff) cannot reopen their own completed cashout —
+    # that is the point of the endpoint.
+    response = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/unsubmit",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == CashoutSubmissionStatus.COMPLETED.value
+
+
+async def test_unsubmit_processing_submission_conflicts(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+) -> None:
+    submission_id = await create_submission(cashier_client)
+
+    response = await admin_client.post(
+        f"/api/cashout/submissions/{submission_id}/unsubmit",
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_NOT_COMPLETED"
+
+
+async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    db_session: AsyncSession,
+) -> None:
+    # Complete once, unsubmit, then strip the cashout down to nothing: the
+    # completion on record (first_completed_by) still blocks a hard delete.
+    configure_manual_note(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    await complete_submission(cashier_client, submission_id)
+    await unsubmit_submission(admin_client, submission_id)
+
+    removed = await cashier_client.delete(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}",
+        headers=csrf_headers(cashier_client),
+    )
+    assert removed.status_code == 204, removed.text
+
+    response = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 204
+    missing = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert missing.status_code == 404
+    # Soft-deleted, not removed: the row survives with its completion history.
+    stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.deleted_at is not None
+    assert row.first_completed_by_user_id is not None
 
 
 # ================================

@@ -22,6 +22,10 @@ from .models import (
 # --------- Submissions ----------
 # ================================
 
+# Soft-deleted submissions (deleted_at set) behave as gone: every submission
+# lookup excludes them, which also strands their documents and analyses —
+# each service path resolves the submission first and now finds nothing.
+
 
 async def add_submission(db: AsyncSession, submission: CashoutSubmission) -> None:
     db.add(submission)
@@ -31,7 +35,11 @@ async def add_submission(db: AsyncSession, submission: CashoutSubmission) -> Non
 async def get_submission(
     db: AsyncSession, *, submission_id: UUID
 ) -> CashoutSubmission | None:
-    return await db.get(CashoutSubmission, submission_id)
+    stmt = select(CashoutSubmission).where(
+        CashoutSubmission.id == submission_id,
+        CashoutSubmission.deleted_at.is_(None),
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def get_submission_with_details(
@@ -46,7 +54,10 @@ async def get_submission_with_details(
             joinedload(CashoutSubmission.data),
             joinedload(CashoutSubmission.employee),
         )
-        .where(CashoutSubmission.id == submission_id)
+        .where(
+            CashoutSubmission.id == submission_id,
+            CashoutSubmission.deleted_at.is_(None),
+        )
     )
 
     return (await db.execute(stmt)).scalar_one_or_none()
@@ -58,6 +69,7 @@ async def list_submissions(
     stmt = (
         select(CashoutSubmission)
         .options(joinedload(CashoutSubmission.employee))
+        .where(CashoutSubmission.deleted_at.is_(None))
         .order_by(CashoutSubmission.submitted_at.desc())
     )
     if only_user_id is not None:
@@ -78,6 +90,8 @@ async def user_is_referenced(db: AsyncSession, *, user_id: UUID) -> bool:
 
     Covers all five user FKs across the feature: a submission's employee and
     its (first) completer, a document's uploader, and an analysis's verifier.
+    Deliberately counts soft-deleted submissions too — their rows (and FKs)
+    still exist, so the referenced user must stay a valid FK target.
     """
     submission_refs = select(CashoutSubmission.id).where(
         or_(
@@ -178,6 +192,20 @@ async def add_data(db: AsyncSession, data: CashoutData) -> None:
     db.add(data)
 
 
+async def find_data_by_submission(
+    db: AsyncSession, *, submission_id: UUID
+) -> CashoutData | None:
+    stmt = select(CashoutData).where(CashoutData.submission_id == submission_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def delete_data(db: AsyncSession, data: CashoutData) -> None:
+    await db.delete(data)
+    # Flush so the RESTRICT FK on cashout_data no longer sees the row when the
+    # submission itself is deleted in the same transaction.
+    await db.flush()
+
+
 async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
     stmt = select(CashoutData).order_by(CashoutData.created_at.desc())
     return (await db.execute(stmt)).scalars().all()
@@ -199,5 +227,7 @@ __all__ = [
     "find_analysis_by_document",
     "add_analysis",
     "add_data",
+    "find_data_by_submission",
+    "delete_data",
     "list_data",
 ]
