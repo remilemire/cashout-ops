@@ -12,7 +12,6 @@ from app.document_ai import DocumentRef
 from app.errors import AppError
 from app.features.cashout.documents.model import CashoutDocument
 from app.features.cashout.extraction import CashoutDocumentProcessor
-from app.features.cashout.schemas import CashoutAnalysisVerify
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
@@ -23,6 +22,7 @@ from app.integrations.ai import AIAnalysisError
 from . import repository
 from .messages import analysis_error_message
 from .model import CashoutDocumentAnalysis
+from .schemas import CashoutAnalysisVerify
 from .types import DocumentAnalysisStatus
 
 logger = logging.getLogger(__name__)
