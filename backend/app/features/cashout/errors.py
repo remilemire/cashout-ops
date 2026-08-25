@@ -17,6 +17,7 @@ type ErrorCode = Literal[
     "SUBMISSION_UNVERIFIED",
     "SUBMISSION_HAS_DATA",
     "ANALYSIS_VERIFIED",
+    "ANALYSIS_NOT_VERIFIED",
     "EXTRACTION_IN_PROGRESS",
     "EXTRACTION_FAILED",
     "DOCUMENT_TOO_LARGE",
@@ -69,6 +70,11 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
         code="ANALYSIS_VERIFIED",
         kind="CONFLICT",
         message="This analysis has already been verified.",
+    ),
+    ErrorDefinition(
+        code="ANALYSIS_NOT_VERIFIED",
+        kind="CONFLICT",
+        message="Only a verified analysis can be edited.",
     ),
     ErrorDefinition(
         code="EXTRACTION_IN_PROGRESS",

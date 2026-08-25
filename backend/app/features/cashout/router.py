@@ -407,6 +407,36 @@ async def verify_analysis(
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 
 
+@router.post(
+    "/analyses/{analysis_id}/unverify",
+    response_model=CashoutDocumentAnalysisOut,
+    responses=error_responses(
+        "ANALYSIS_NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "ANALYSIS_NOT_VERIFIED",
+        "VALIDATION_FAILED",
+    ),
+)
+async def unverify_analysis(
+    analysis_id: AnalysisId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CashoutDocumentAnalysisOut:
+    """Send a verified extraction back through verification for editing.
+
+    Clears the verification (verified data, verifier, timestamp) and returns
+    the analysis to `NEEDS_VERIFICATION`; the extraction fields are kept, so
+    the verification form re-renders from them. The submission's employee or
+    an admin may unverify, and only while the submission is `PROCESSING` —
+    combined with unsubmit, this is how an admin corrects an
+    already-completed cashout.
+    """
+    analysis = await cashout_service.unverify_analysis(
+        db, analysis_id=analysis_id, user=current_user
+    )
+    return CashoutDocumentAnalysisOut.model_validate(analysis)
+
+
 # ================================
 # ------------- Data -------------
 # ================================

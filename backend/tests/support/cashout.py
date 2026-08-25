@@ -91,6 +91,15 @@ async def verify_analysis(
     return response.json()
 
 
+async def unverify_analysis(client: AsyncClient, analysis_id: str) -> dict[str, Any]:
+    response = await client.post(
+        f"/api/cashout/analyses/{analysis_id}/unverify",
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 async def complete_submission(
     client: AsyncClient, submission_id: str
 ) -> dict[str, Any]:
@@ -119,6 +128,7 @@ __all__ = [
     "create_submission",
     "poll_analysis",
     "unsubmit_submission",
+    "unverify_analysis",
     "upload_document",
     "verify_analysis",
 ]
