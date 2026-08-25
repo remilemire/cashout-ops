@@ -465,12 +465,12 @@ describe("AdminUsersPage delete", () => {
     await waitFor(() => expect(listUsersMock).toHaveBeenCalledTimes(2));
   });
 
-  it("surfaces the conflict message when the user still has submissions", async () => {
+  it("closes the dialog and shows the banner when the delete fails", async () => {
     removeMock.mockRejectedValue(
       new ApiError(409, {
         kind: "CONFLICT",
         code: "CONFLICT",
-        message: "This user still has cashout submissions.",
+        message: "The request conflicts with the current state.",
       }),
     );
     renderPage();
@@ -481,8 +481,11 @@ describe("AdminUsersPage delete", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(
-      await screen.findByText("This user still has cashout submissions."),
+      await screen.findByText("The request conflicts with the current state."),
     ).toBeDefined();
+    // The dialog must not stay open on failure: it would sit on top of the
+    // banner and the admin would see nothing happen.
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(listUsersMock).toHaveBeenCalledOnce();
   });
 });
