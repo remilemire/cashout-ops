@@ -1,11 +1,10 @@
-# backend/app/features/cashout/dependencies.py
+# backend/app/features/cashout/documents/dependencies.py
 
-"""Per-user quotas on the AI-costly cashout endpoints.
+"""Per-user quota on the AI-costly upload endpoint.
 
-Every upload triggers an AI extraction, and re-extraction burns provider
-tokens on demand. These guards bound the spend a runaway script or a
-compromised account can incur — they are cost ceilings, not credential-
-guessing defenses (those live on the pre-session auth routes).
+Every upload triggers an AI extraction. This guard bounds the spend a
+runaway script or a compromised account can incur — a cost ceiling, not a
+credential-guessing defense (those live on the pre-session auth routes).
 """
 
 from __future__ import annotations
@@ -40,21 +39,4 @@ async def rate_limit_upload(
     )
 
 
-async def rate_limit_extract(
-    current_user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> None:
-    """Cap on-demand re-extractions per user."""
-    await enforce(
-        redis,
-        scope="cashout_extract_user",
-        identifier=str(current_user.id),
-        limit=settings.rate_limit.EXTRACTS_PER_USER_PER_HOUR,
-        window=_HOUR,
-    )
-
-
-__all__ = [
-    "rate_limit_extract",
-    "rate_limit_upload",
-]
+__all__ = ["rate_limit_upload"]

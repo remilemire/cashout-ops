@@ -1,84 +1,29 @@
 # backend/app/features/cashout/outbox.py
 
-"""Outbox message definitions and handlers for the cashout feature.
+"""Aggregated outbox surface for the cashout feature.
 
-The upload and re-extract services enqueue `cashout.run_extraction` in their
-request transaction; the handler runs the AI extraction at dispatch.
+Message definitions and handlers live with their owning sub-features; this
+module only collects and re-exports them for the outbox catalog and the
+composition root.
 """
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Literal
-from uuid import UUID
+from app.core.outbox import OutboxMessageDefinitionList
 
-from pydantic import BaseModel
-
-from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
-
-from .extraction import build_cashout_document_processor
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-    from app.integrations.ai import AIClient
-    from app.integrations.storage import DocumentStorageClient
-
-logger = logging.getLogger(__name__)
-
-
-type OutboxMessageType = Literal["cashout.run_extraction"]
-
-
-class RunExtraction(BaseModel):
-    document_id: UUID
-
-
-_run_extraction_message: OutboxMessageDefinition[OutboxMessageType, RunExtraction] = (
-    OutboxMessageDefinition("cashout.run_extraction", RunExtraction)
+from .analyses.outbox import (
+    OutboxMessageType as AnalysesOutboxMessageType,
+)
+from .analyses.outbox import RunExtractionOutboxHandler
+from .analyses.outbox import (
+    outbox_message_definitions as analyses_outbox_message_definitions,
 )
 
+type OutboxMessageType = AnalysesOutboxMessageType
+
 outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
-    _run_extraction_message
+    *analyses_outbox_message_definitions,
 ]
-
-
-class RunExtractionOutboxHandler:
-    """Runs the AI extraction for an uploaded document."""
-
-    message = _run_extraction_message
-
-    def __init__(
-        self,
-        sessionmaker: async_sessionmaker[AsyncSession],
-        ai: AIClient,
-        storage: DocumentStorageClient,
-    ) -> None:
-        self._sessionmaker = sessionmaker
-        # Built here rather than handed in: the processor holds no resource,
-        # so there is nothing for the composition root to own on its behalf.
-        self._processor = build_cashout_document_processor(ai, storage)
-
-    async def handle(self, payload: RunExtraction) -> None:
-        # Imported at call time: the outbox catalog imports this module, and
-        # the service will import the outbox to enqueue — a module-level
-        # service import would close that cycle.
-        from .service import run_extraction
-
-        await run_extraction(
-            self._sessionmaker,
-            document_id=payload.document_id,
-            processor=self._processor,
-        )
-
-    async def on_dead_letter(self, payload: RunExtraction) -> None:
-        # run_extraction already marks its analysis FAILED on any error, so
-        # there is nothing to clean up here beyond making the loss visible.
-        logger.error(
-            "Extraction outbox message dead-lettered for document %s",
-            payload.document_id,
-        )
-
 
 __all__ = [
     "OutboxMessageType",

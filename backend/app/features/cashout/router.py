@@ -1,5 +1,14 @@
 # backend/app/features/cashout/router.py
 
+"""The flow, per document: the cashier uploads it and immediately gets back an
+EXTRACTING analysis; the AI extraction runs in a background task and the
+client polls the analysis until it reaches NEEDS_VERIFICATION (or FAILED,
+retryable via the extract endpoint). The cashier verifies each analysis —
+optionally submitting corrections. Once every document is verified,
+completing the submission reconciles the analyses into a CashoutData row and
+closes the cashout (COMPLETED).
+"""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -19,8 +28,11 @@ from app.integrations.storage.dependencies import get_document_storage
 from app.lib.documents import DocumentContentType, read_document
 from app.security.dependencies import require_csrf
 
-from . import service as cashout_service
-from .dependencies import rate_limit_extract, rate_limit_upload
+from .analyses import service as analyses_service
+from .analyses.dependencies import rate_limit_extract
+from .data import service as data_service
+from .documents import service as documents_service
+from .documents.dependencies import rate_limit_upload
 from .extraction import CashoutDocumentProcessor
 from .extraction.dependencies import get_cashout_document_processor
 from .schemas import (
@@ -31,6 +43,7 @@ from .schemas import (
     CashoutSubmissionListOut,
     CashoutSubmissionOut,
 )
+from .submissions import service as submissions_service
 
 router = APIRouter(
     prefix="/cashout",
@@ -71,7 +84,9 @@ async def create_submission(
 
     Cashouts are not shift-locked; a cashier may open one at any time.
     """
-    submission = await cashout_service.create_submission(db, user_id=current_user.id)
+    submission = await submissions_service.create_submission(
+        db, user_id=current_user.id
+    )
     return CashoutSubmissionOut.model_validate(submission)
 
 
@@ -94,7 +109,7 @@ async def delete_submission(
     no traces (no documents, no data, never completed) is removed outright;
     anything else is soft-deleted and simply disappears from the API.
     """
-    await cashout_service.delete_submission(
+    await submissions_service.delete_submission(
         db,
         submission_id=submission_id,
         user=current_user,
@@ -111,7 +126,7 @@ async def list_submissions(
 
     Cashiers see their own submissions; admins see everyone's.
     """
-    submissions = await cashout_service.list_submissions(db, user=current_user)
+    submissions = await submissions_service.list_submissions(db, user=current_user)
     return [CashoutSubmissionListOut.model_validate(s) for s in submissions]
 
 
@@ -129,7 +144,7 @@ async def get_submission(
 
     Accessible to the submission's employee or an admin.
     """
-    submission = await cashout_service.get_submission(
+    submission = await submissions_service.get_submission(
         db, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionDetailOut.model_validate(submission)
@@ -157,7 +172,7 @@ async def complete_submission(
     moves the submission to `COMPLETED`. The submission's employee or an
     admin may complete it; the completing user is recorded.
     """
-    submission = await cashout_service.complete_submission(
+    submission = await submissions_service.complete_submission(
         db, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionOut.model_validate(submission)
@@ -182,7 +197,7 @@ async def unsubmit_submission(
     it again. The document analyses stay verified, so completing the cashout
     again regenerates the data from them.
     """
-    submission = await cashout_service.unsubmit_submission(
+    submission = await submissions_service.unsubmit_submission(
         db, submission_id=submission_id
     )
     return CashoutSubmissionOut.model_validate(submission)
@@ -241,7 +256,7 @@ async def upload_document(
         content_type=content_type,
         original_filename=file.filename or "upload",
     )
-    analysis = await cashout_service.upload_document(
+    analysis = await documents_service.upload_document(
         db,
         payload=payload,
         submission_id=submission_id,
@@ -270,7 +285,7 @@ async def delete_document(
     The submission's employee or an admin may remove documents, and only
     while the submission is still `PROCESSING`.
     """
-    await cashout_service.delete_document(
+    await documents_service.delete_document(
         db,
         document_id=document_id,
         user=current_user,
@@ -306,7 +321,7 @@ async def extract_document(
     poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
     cannot be re-run, nor one whose extraction is still in progress.
     """
-    analysis = await cashout_service.extract_document(
+    analysis = await analyses_service.restart_extraction(
         db,
         document_id=document_id,
         user=current_user,
@@ -339,7 +354,7 @@ async def get_document_content(
 
     Accessible to the submission's employee or an admin.
     """
-    document, data = await cashout_service.get_document_content(
+    document, data = await documents_service.get_document_content(
         db, document_id=document_id, user=current_user, storage=storage
     )
     filename = document.original_filename.replace('"', "")
@@ -371,7 +386,7 @@ async def get_analysis(
     `NEEDS_VERIFICATION` or `FAILED`. Accessible to the submission's employee
     or an admin.
     """
-    analysis = await cashout_service.get_analysis(
+    analysis = await analyses_service.get_analysis(
         db, analysis_id=analysis_id, user=current_user
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
@@ -401,7 +416,7 @@ async def verify_analysis(
     omit it to confirm the extraction as-is. The submission's employee or an
     admin may verify; the verifying user is recorded.
     """
-    analysis = await cashout_service.verify_analysis(
+    analysis = await analyses_service.verify_analysis(
         db, payload=payload, analysis_id=analysis_id, user=current_user
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
@@ -431,7 +446,7 @@ async def unverify_analysis(
     combined with unsubmit, this is how an admin corrects an
     already-completed cashout.
     """
-    analysis = await cashout_service.unverify_analysis(
+    analysis = await analyses_service.unverify_analysis(
         db, analysis_id=analysis_id, user=current_user
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
@@ -451,7 +466,7 @@ async def list_data(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[CashoutDataOut]:
     """List every reconciled cashout data row, newest first (admin only)."""
-    data = await cashout_service.list_data(db)
+    data = await data_service.list_data(db)
     return [CashoutDataOut.model_validate(row) for row in data]
 
 
