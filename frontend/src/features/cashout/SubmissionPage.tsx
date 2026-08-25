@@ -210,8 +210,8 @@ export function SubmissionPage() {
           setCancelOpen(false);
         }}
       >
-        This permanently deletes this cashout and any documents uploaded to it.
-        This can&rsquo;t be undone.
+        This removes this cashout and any documents uploaded to it. It
+        can&rsquo;t be undone.
       </ConfirmDialog>
 
       <ConfirmDialog

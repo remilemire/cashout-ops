@@ -131,8 +131,8 @@ export function CashoutsPage() {
           setPendingCancel(null);
         }}
       >
-        This permanently deletes cashout #{pendingCancel?.id.slice(0, 8)} and
-        any documents uploaded to it. This can&rsquo;t be undone.
+        This removes cashout #{pendingCancel?.id.slice(0, 8)} and any documents
+        uploaded to it. It can&rsquo;t be undone.
       </ConfirmDialog>
     </div>
   );
