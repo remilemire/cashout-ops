@@ -31,6 +31,7 @@ export function SubmissionPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [unsubmitOpen, setUnsubmitOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: cashoutKeys.submission(submissionId),
@@ -66,6 +67,16 @@ export function SubmissionPage() {
     },
   });
 
+  const unsubmit = useMutation({
+    mutationFn: () => cashoutApi.unsubmitSubmission(submissionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    },
+  });
+
   const submission = detailQuery.data;
   if (detailQuery.isLoading) return <FullScreenSpinner />;
   if (!submission) return <ErrorBanner error={detailQuery.error} />;
@@ -79,6 +90,9 @@ export function SubmissionPage() {
   const editable = canAct && submission.status === "processing";
   // Cancel stays available until the cashout is completed.
   const canCancel = canAct && submission.status !== "completed";
+  // Only an admin can reopen a completed cashout — never the employee alone.
+  const canUnsubmit =
+    user != null && isAdminRole(user.role) && submission.status === "completed";
   const documents = submission.documents;
   const verifiedCount = documents.filter(
     (doc) => doc.analysis?.status === "verified",
@@ -105,11 +119,21 @@ export function SubmissionPage() {
             Cancel cashout
           </Button>
         )}
+        {canUnsubmit && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setUnsubmitOpen(true)}
+          >
+            Unsubmit
+          </Button>
+        )}
       </div>
 
-      {/* The confirm dialog closes before the request settles, so a failed
-          cancel must surface out here. */}
+      {/* The confirm dialogs close before the request settles, so a failed
+          cancel or unsubmit must surface out here. */}
       <ErrorBanner error={cancel.error} />
+      <ErrorBanner error={unsubmit.error} />
 
       <PageHeader
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
@@ -188,6 +212,22 @@ export function SubmissionPage() {
       >
         This permanently deletes this cashout and any documents uploaded to it.
         This can&rsquo;t be undone.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={unsubmitOpen}
+        onClose={() => setUnsubmitOpen(false)}
+        title="Unsubmit cashout?"
+        confirmLabel="Unsubmit"
+        cancelLabel="Keep completed"
+        confirmTone="danger"
+        onConfirm={() => {
+          unsubmit.mutate();
+          setUnsubmitOpen(false);
+        }}
+      >
+        This reopens the cashout for editing and removes its reconciled data.
+        Completing it again will regenerate the data.
       </ConfirmDialog>
     </div>
   );

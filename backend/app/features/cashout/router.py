@@ -79,7 +79,7 @@ async def create_submission(
     "/submissions/{submission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(
-        "SUBMISSION_NOT_FOUND", "SUBMISSION_HAS_DATA", "VALIDATION_FAILED"
+        "SUBMISSION_NOT_FOUND", "SUBMISSION_COMPLETED", "VALIDATION_FAILED"
     ),
 )
 async def delete_submission(
@@ -88,9 +88,11 @@ async def delete_submission(
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
-    """Delete a submission that has no reconciled cashout data.
+    """Delete an incomplete submission; a completed one cannot be deleted.
 
-    The submission's employee or an admin may cancel it.
+    The submission's employee or an admin may cancel it. A submission with
+    no traces (no documents, no data, never completed) is removed outright;
+    anything else is soft-deleted and simply disappears from the API.
     """
     await cashout_service.delete_submission(
         db,
@@ -157,6 +159,31 @@ async def complete_submission(
     """
     submission = await cashout_service.complete_submission(
         db, submission_id=submission_id, user=current_user
+    )
+    return CashoutSubmissionOut.model_validate(submission)
+
+
+@router.post(
+    "/submissions/{submission_id}/unsubmit",
+    response_model=CashoutSubmissionOut,
+    dependencies=[Depends(require_admin)],
+    responses=error_responses(
+        "SUBMISSION_NOT_FOUND", "SUBMISSION_NOT_COMPLETED", "VALIDATION_FAILED"
+    ),
+)
+async def unsubmit_submission(
+    submission_id: SubmissionId,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CashoutSubmissionOut:
+    """Reopen a completed cashout for editing (admin only).
+
+    Removes the reconciled cashout data and moves the submission back to
+    `PROCESSING`, clearing who currently completed it — the employee can edit
+    it again. The document analyses stay verified, so completing the cashout
+    again regenerates the data from them.
+    """
+    submission = await cashout_service.unsubmit_submission(
+        db, submission_id=submission_id
     )
     return CashoutSubmissionOut.model_validate(submission)
 

@@ -102,11 +102,23 @@ async def complete_submission(
     return response.json()
 
 
+async def unsubmit_submission(
+    client: AsyncClient, submission_id: str
+) -> dict[str, Any]:
+    response = await client.post(
+        f"/api/cashout/submissions/{submission_id}/unsubmit",
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 __all__ = [
     "complete_submission",
     "configure_manual_note",
     "create_submission",
     "poll_analysis",
+    "unsubmit_submission",
     "upload_document",
     "verify_analysis",
 ]

@@ -70,14 +70,41 @@ async def delete_submission(
     user: User,
     storage: DocumentStorageClient,
 ) -> None:
-    """Delete a submission (employee or admin) unless reconciled data references it."""
+    """Delete a submission (employee or admin); a completed one never can be.
+
+    A PROCESSING submission with no traces at all — no documents, no
+    reconciled data, never completed — is removed outright. Anything else is
+    soft-deleted (deleted_at stamped): the row, its documents, analyses, and
+    stored files survive, but every lookup excludes it.
+    """
     submission = await _get_submission_for_actor(
         db, submission_id=submission_id, actor=user
     )
+    if submission.status is not CashoutSubmissionStatus.PROCESSING:
+        raise AppError("SUBMISSION_COMPLETED", "A completed cashout cannot be deleted.")
+
+    # The reconciled data is fully derived from the submission, so it goes
+    # with it — either path. In practice unsubmit already removed it (that is
+    # the only way a PROCESSING submission relates to a data row); the
+    # RESTRICT FK stays as the safety net should a future path forget.
+    data = await repository.find_data_by_submission(db, submission_id=submission.id)
+    if data is not None:
+        await repository.delete_data(db, data)
+
     storage_keys = await repository.list_storage_keys(db, submission_id=submission.id)
+    has_traces = (
+        bool(storage_keys)  # one key per document
+        or data is not None
+        or submission.first_completed_by_user_id is not None
+    )
+    if has_traces:
+        submission.deleted_at = datetime.now(UTC)
+        return
 
     await repository.delete_submission(db, submission)
 
+    # Vacuously empty here (no traces means no documents), kept so a future
+    # hard-delete path cannot leak stored files.
     for storage_key in storage_keys:
         await storage.delete(storage_key)
 
@@ -150,6 +177,30 @@ async def complete_submission(
     submission.completed_by_user_id = user.id
     if submission.first_completed_by_user_id is None:
         submission.first_completed_by_user_id = user.id
+
+    return submission
+
+
+async def unsubmit_submission(
+    db: AsyncSession, *, submission_id: UUID
+) -> CashoutSubmission:
+    """Reopen a completed cashout: drop its reconciled data, back to PROCESSING.
+
+    Admin-only (enforced at the route). The analyses stay VERIFIED, so
+    completing again reconciles them into a fresh data row.
+    """
+    submission = await _get_submission(db, submission_id)
+    if submission.status is not CashoutSubmissionStatus.COMPLETED:
+        raise AppError("SUBMISSION_NOT_COMPLETED")
+
+    data = await repository.find_data_by_submission(db, submission_id=submission.id)
+    if data is not None:
+        await repository.delete_data(db, data)
+
+    submission.status = CashoutSubmissionStatus.PROCESSING
+    # completed_by reflects the *current* completion, so it clears with it;
+    # first_completed_by is permanent bookkeeping and survives.
+    submission.completed_by_user_id = None
 
     return submission
 

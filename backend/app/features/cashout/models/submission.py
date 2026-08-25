@@ -62,6 +62,13 @@ class CashoutSubmission(Base):
         onupdate=func.now(),
     )
 
+    # Soft-delete marker: a submission with traces (documents, data, or a
+    # completion on record) is stamped rather than removed, so its history —
+    # and every user FK on it — stays intact. NULL means the row is live.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Three FKs point at users; the relationship must name the employee's.
     employee: Mapped[User] = relationship(
         foreign_keys="CashoutSubmission.employee_user_id"
