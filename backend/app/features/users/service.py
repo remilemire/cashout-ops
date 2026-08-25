@@ -101,13 +101,15 @@ async def bootstrap_owner(db: AsyncSession, *, payload: UserCreate) -> User | No
 
 
 async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
-    """Delete a user: hard when possible, soft when submissions reference them.
+    """Delete a user: hard when possible, soft when cashout rows reference them.
 
-    An author's row cannot be removed (their submissions'
-    submitted_by_user_id FK still points at it), so those accounts are
-    deactivated by stamping deleted_at instead — every live-account lookup
-    excludes them, while submission history keeps rendering their name. The
-    owner cannot be deleted either way.
+    A referenced row cannot be removed — a cashout FK still points at it:
+    their own submissions' employee_user_id, or (since admins can act on
+    others' cashouts) documents they uploaded, analyses they verified, and
+    completions they performed. Those accounts are deactivated by stamping
+    deleted_at instead — every live-account lookup excludes them, while
+    cashout history keeps rendering their name. The owner cannot be deleted
+    either way.
     """
     user = await repository.find_by_id(db, user_id=user_id)
     if user is None:
@@ -115,7 +117,7 @@ async def delete_by_id(db: AsyncSession, *, user_id: UUID) -> None:
     if user.role is UserRole.OWNER:
         raise AppError("CANNOT_DELETE_OWNER")
 
-    if await cashout_service.user_has_submissions(db, user_id=user.id):
+    if await cashout_service.user_is_referenced(db, user_id=user.id):
         user.deleted_at = datetime.now(UTC)
         return
 

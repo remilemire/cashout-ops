@@ -77,9 +77,13 @@ async def test_full_cashout_flow(
     assert verified["verifiedByUserId"] is not None
     assert verified["verifiedAt"] is not None
 
-    # Completing reconciles the verified analyses into a cashout data row.
+    # Completing reconciles the verified analyses into a cashout data row and
+    # records the completing user (the employee, completing their own).
     completed = await complete_submission(cashier_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
+    assert completed["completedByUserId"] == completed["employeeUserId"]
+    assert completed["firstCompletedByUserId"] == completed["employeeUserId"]
+    assert completed["updatedAt"] is not None
 
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
@@ -116,7 +120,7 @@ async def test_list_submissions_scoped_by_role(
 
     cashier_list = (await cashier_client.get("/api/cashout/submissions")).json()
     assert [s["id"] for s in cashier_list] == [mine]
-    assert cashier_list[0]["submittedBy"]["email"] == "cashier@test.com"
+    assert cashier_list[0]["employee"]["email"] == "cashier@test.com"
 
     admin_list = (await admin_client.get("/api/cashout/submissions")).json()
     assert {s["id"] for s in admin_list} == {mine, theirs}
@@ -232,22 +236,34 @@ async def test_delete_completed_submission_is_restricted(
     assert storage.objects
 
 
-async def test_delete_submission_requires_owner(
+async def test_delete_submission_requires_employee_or_admin(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
+    make_client: ClientFactory,
 ) -> None:
     submission_id = await create_submission(cashier_client)
 
+    # Plain staff cannot cancel someone else's cashout.
+    other = await make_client(email="other@test.com")
+    forbidden = await other.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(other),
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["code"] == "FORBIDDEN"
+    assert (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).status_code == 200
+
+    # An admin can.
     response = await admin_client.delete(
         f"/api/cashout/submissions/{submission_id}",
         headers=csrf_headers(admin_client),
     )
-
-    assert response.status_code == 403
-    assert response.json()["code"] == "FORBIDDEN"
+    assert response.status_code == 204, response.text
     assert (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
-    ).status_code == 200
+    ).status_code == 404
 
 
 async def test_delete_document_from_processing_submission(
@@ -305,29 +321,43 @@ async def test_delete_document_after_completion_conflicts(
     assert storage.objects
 
 
-async def test_delete_document_requires_owner(
+async def test_delete_document_requires_employee_or_admin(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
-    response = await admin_client.delete(
+    # Plain staff cannot remove a document from someone else's cashout.
+    other = await make_client(email="other@test.com")
+    forbidden = await other.delete(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
-        headers=csrf_headers(admin_client),
+        headers=csrf_headers(other),
     )
-
-    assert response.status_code == 403
-    assert response.json()["code"] == "FORBIDDEN"
+    assert forbidden.status_code == 403
+    assert forbidden.json()["code"] == "FORBIDDEN"
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert len(detail["documents"]) == 1
     assert storage.objects
+
+    # An admin can.
+    response = await admin_client.delete(
+        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        headers=csrf_headers(admin_client),
+    )
+    assert response.status_code == 204, response.text
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["documents"] == []
+    assert storage.objects == {}
 
 
 # ================================
@@ -523,10 +553,10 @@ async def test_complete_requires_every_analysis_verified(
     assert response.json()["code"] == "SUBMISSION_UNVERIFIED"
 
 
-async def test_complete_requires_owner(
+async def test_complete_requires_employee_or_admin(
     cashier_client: AsyncClient,
-    admin_client: AsyncClient,
     ai_client: FakeAIClient,
+    make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
     configure_manual_note(ai_client)
@@ -534,15 +564,69 @@ async def test_complete_requires_owner(
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
-    # Completion is the cashier's action; even an admin cannot close out
-    # someone else's cashout.
-    response = await admin_client.post(
+    # Plain staff cannot close out someone else's cashout (admins can — see
+    # test_admin_can_manage_another_users_submission).
+    other = await make_client(email="other@test.com")
+    response = await other.post(
         f"/api/cashout/submissions/{submission_id}/complete",
-        headers=csrf_headers(admin_client),
+        headers=csrf_headers(other),
     )
 
     assert response.status_code == 403
     assert response.json()["code"] == "FORBIDDEN"
+
+
+async def test_admin_can_manage_another_users_submission(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Admins have full control over every cashout: everything the employee
+    # can do on their own submission, an admin can do on anyone's — with the
+    # admin recorded as the acting user.
+    configure_manual_note(ai_client)
+    cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
+    admin_id = (await admin_client.get("/api/users/me")).json()["id"]
+    submission_id = await create_submission(cashier_client)
+
+    # Upload and retry extraction on the employee's behalf.
+    created = await upload_document(admin_client, submission_id, drain=drain_outbox)
+    retried = await admin_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        headers=csrf_headers(admin_client),
+    )
+    assert retried.status_code == 200, retried.text
+    await drain_outbox()
+    analysis = await poll_analysis(admin_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+
+    # Verify: the admin is recorded as the verifying user.
+    verified = await verify_analysis(admin_client, analysis["id"])
+    assert verified["verifiedByUserId"] == admin_id
+
+    # The document records the admin as its uploader; the submission keeps
+    # the cashier as its employee.
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["employeeUserId"] == cashier_id
+    assert detail["documents"][0]["uploadedByUserId"] == admin_id
+
+    # Complete: the admin is recorded as (first) completer.
+    completed = await complete_submission(admin_client, submission_id)
+    assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
+    assert completed["employeeUserId"] == cashier_id
+    assert completed["completedByUserId"] == admin_id
+    assert completed["firstCompletedByUserId"] == admin_id
+
+    # A completed cashout cannot be completed again — by anyone.
+    again = await admin_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        headers=csrf_headers(admin_client),
+    )
+    assert again.status_code == 409
+    assert again.json()["code"] == "SUBMISSION_COMPLETED"
 
 
 async def test_cannot_access_another_users_submission(
