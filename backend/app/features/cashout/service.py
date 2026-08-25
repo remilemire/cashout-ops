@@ -95,7 +95,7 @@ async def delete_submission(
     has_traces = (
         bool(storage_keys)  # one key per document
         or data is not None
-        or submission.first_completed_by_user_id is not None
+        or submission.first_completed_at is not None
     )
     if has_traces:
         submission.deleted_at = datetime.now(UTC)
@@ -159,10 +159,10 @@ async def complete_submission(
     await repository.add_data(db, _reconcile(submission.id, analyses))
     submission.status = CashoutSubmissionStatus.COMPLETED
     # Record the actual actor (the admin when an admin completes); the first
-    # completer is bookkeeping — set once, never overwritten.
+    # completion time is bookkeeping — set once, never overwritten.
     submission.completed_by_user_id = user.id
-    if submission.first_completed_by_user_id is None:
-        submission.first_completed_by_user_id = user.id
+    if submission.first_completed_at is None:
+        submission.first_completed_at = datetime.now(UTC)
 
     return submission
 
@@ -185,7 +185,7 @@ async def unsubmit_submission(
 
     submission.status = CashoutSubmissionStatus.PROCESSING
     # completed_by reflects the *current* completion, so it clears with it;
-    # first_completed_by is permanent bookkeeping and survives.
+    # first_completed_at is permanent bookkeeping and survives.
     submission.completed_by_user_id = None
 
     return submission

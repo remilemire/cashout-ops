@@ -78,7 +78,7 @@ const completedSubmission: CashoutSubmissionDetail = {
   employeeUserId: employee.id,
   submittedAt: "2026-07-16T01:00:00Z",
   completedByUserId: employee.id,
-  firstCompletedByUserId: employee.id,
+  firstCompletedAt: "2026-07-16T02:00:00Z",
   updatedAt: "2026-07-16T02:00:00Z",
   employee,
   documents: [],

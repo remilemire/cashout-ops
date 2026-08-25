@@ -152,8 +152,8 @@ export interface CashoutSubmission {
   submittedAt: string;
   /** Who performed the most recent completion (an admin may act for the employee). */
   completedByUserId: string | null;
-  /** Who completed it first; set once and never overwritten. */
-  firstCompletedByUserId: string | null;
+  /** When it was completed first; set once and never overwritten. */
+  firstCompletedAt: string | null;
   updatedAt: string;
 }
 

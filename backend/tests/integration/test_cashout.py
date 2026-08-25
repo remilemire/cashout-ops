@@ -89,7 +89,7 @@ async def test_full_cashout_flow(
     completed = await complete_submission(cashier_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
     assert completed["completedByUserId"] == completed["employeeUserId"]
-    assert completed["firstCompletedByUserId"] == completed["employeeUserId"]
+    assert completed["firstCompletedAt"] is not None
     assert completed["updatedAt"] is not None
 
     detail = (
@@ -406,7 +406,9 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
-    await complete_submission(cashier_client, submission_id)
+    completed = await complete_submission(cashier_client, submission_id)
+    first_completed_at = completed["firstCompletedAt"]
+    assert first_completed_at is not None
     first_data_id = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()["data"]["id"]
@@ -416,7 +418,7 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     reopened = await unsubmit_submission(admin_client, submission_id)
     assert reopened["status"] == CashoutSubmissionStatus.PROCESSING.value
     assert reopened["completedByUserId"] is None
-    assert reopened["firstCompletedByUserId"] == cashier_id
+    assert reopened["firstCompletedAt"] == first_completed_at
 
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
@@ -439,7 +441,7 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     recompleted = await complete_submission(cashier_client, submission_id)
     assert recompleted["status"] == CashoutSubmissionStatus.COMPLETED.value
     assert recompleted["completedByUserId"] == cashier_id
-    assert recompleted["firstCompletedByUserId"] == cashier_id
+    assert recompleted["firstCompletedAt"] == first_completed_at
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
@@ -496,7 +498,7 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
     db_session: AsyncSession,
 ) -> None:
     # Complete once, unsubmit, then strip the cashout down to nothing: the
-    # completion on record (first_completed_by) still blocks a hard delete.
+    # completion on record (first_completed_at) still blocks a hard delete.
     configure_manual_note(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
@@ -522,7 +524,7 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
     stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.deleted_at is not None
-    assert row.first_completed_by_user_id is not None
+    assert row.first_completed_at is not None
 
 
 # ================================
@@ -944,12 +946,13 @@ async def test_admin_can_manage_another_users_submission(
     assert detail["employeeUserId"] == cashier_id
     assert detail["documents"][0]["uploadedByUserId"] == admin_id
 
-    # Complete: the admin is recorded as (first) completer.
+    # Complete: the admin is recorded as the completer, and the first
+    # completion time is stamped.
     completed = await complete_submission(admin_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
     assert completed["employeeUserId"] == cashier_id
     assert completed["completedByUserId"] == admin_id
-    assert completed["firstCompletedByUserId"] == admin_id
+    assert completed["firstCompletedAt"] is not None
 
     # A completed cashout cannot be completed again — by anyone.
     again = await admin_client.post(

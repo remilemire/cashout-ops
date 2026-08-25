@@ -22,7 +22,7 @@ class CashoutSubmissionOut(BaseOut):
     employee_user_id: uuid.UUID
     submitted_at: UtcDateTime
     completed_by_user_id: uuid.UUID | None = None
-    first_completed_by_user_id: uuid.UUID | None = None
+    first_completed_at: UtcDateTime | None = None
     updated_at: UtcDateTime
 
 

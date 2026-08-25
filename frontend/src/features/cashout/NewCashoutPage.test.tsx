@@ -33,7 +33,7 @@ const submission: CashoutSubmission = {
   employeeUserId: "user-1",
   submittedAt: "2026-07-17T00:00:00Z",
   completedByUserId: null,
-  firstCompletedByUserId: null,
+  firstCompletedAt: null,
   updatedAt: "2026-07-17T00:00:00Z",
 };
 

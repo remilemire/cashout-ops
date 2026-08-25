@@ -46,13 +46,9 @@ class CashoutSubmission(Base):
     )
 
     # Who performed the most recent completion (an admin can complete another
-    # user's cashout), and who completed it first — set once, never
-    # overwritten. Bookkeeping only: no relationships until a consumer needs
-    # them.
+    # user's cashout). Bookkeeping only: no relationship until a consumer
+    # needs it.
     completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True
-    )
-    first_completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
@@ -69,7 +65,15 @@ class CashoutSubmission(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Three FKs point at users; the relationship must name the employee's.
+    # When the cashout was completed for the first time — set once, never
+    # overwritten (unlike completed_by_user_id it survives unsubmit), and the
+    # marker that blocks hard deletion. Last to match the migrations' physical
+    # column order.
+    first_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Two FKs point at users; the relationship must name the employee's.
     employee: Mapped[User] = relationship(
         foreign_keys="CashoutSubmission.employee_user_id"
     )
