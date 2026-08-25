@@ -22,8 +22,10 @@ from app.infrastructure.outbox import service as outbox_service
 from app.integrations.ai import AIAnalysisError
 from app.integrations.storage import DocumentStorageClient
 
-from . import repository
+from .analyses import repository as analyses_repository
 from .analyses.messages import analysis_error_message
+from .data import repository as data_repository
+from .documents import repository as documents_repository
 from .extraction import CashoutDocumentProcessor
 from .models import (
     CashoutData,
@@ -32,6 +34,7 @@ from .models import (
     CashoutSubmission,
 )
 from .schemas import CashoutAnalysisVerify
+from .submissions import repository as submissions_repository
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +59,7 @@ async def create_submission(db: AsyncSession, *, user_id: UUID) -> CashoutSubmis
         employee_user_id=user_id,
         submitted_at=datetime.now(UTC),
     )
-    await repository.add_submission(db, submission)
+    await submissions_repository.add_submission(db, submission)
 
     return submission
 
@@ -85,11 +88,15 @@ async def delete_submission(
     # with it — either path. In practice unsubmit already removed it (that is
     # the only way a PROCESSING submission relates to a data row); the
     # RESTRICT FK stays as the safety net should a future path forget.
-    data = await repository.find_data_by_submission(db, submission_id=submission.id)
+    data = await data_repository.find_data_by_submission(
+        db, submission_id=submission.id
+    )
     if data is not None:
-        await repository.delete_data(db, data)
+        await data_repository.delete_data(db, data)
 
-    storage_keys = await repository.list_storage_keys(db, submission_id=submission.id)
+    storage_keys = await submissions_repository.list_storage_keys(
+        db, submission_id=submission.id
+    )
     has_traces = (
         bool(storage_keys)  # one key per document
         or data is not None
@@ -99,7 +106,7 @@ async def delete_submission(
         submission.deleted_at = datetime.now(UTC)
         return
 
-    await repository.delete_submission(db, submission)
+    await submissions_repository.delete_submission(db, submission)
 
     # Vacuously empty here (no traces means no documents), kept so a future
     # hard-delete path cannot leak stored files.
@@ -110,7 +117,7 @@ async def delete_submission(
 async def get_submission(
     db: AsyncSession, *, submission_id: UUID, user: User
 ) -> CashoutSubmission:
-    submission = await repository.get_submission_with_details(
+    submission = await submissions_repository.get_submission_with_details(
         db, submission_id=submission_id
     )
     if submission is None:
@@ -128,7 +135,7 @@ async def list_submissions(
     Newest first."""
     is_admin = user.role in (UserRole.ADMIN, UserRole.OWNER)
     only_user_id = None if is_admin else user.id
-    return await repository.list_submissions(db, only_user_id=only_user_id)
+    return await submissions_repository.list_submissions(db, only_user_id=only_user_id)
 
 
 async def complete_submission(
@@ -141,7 +148,7 @@ async def complete_submission(
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
 
-    documents = await repository.list_documents_with_analysis(
+    documents = await submissions_repository.list_documents_with_analysis(
         db, submission_id=submission.id
     )
     if not documents:
@@ -154,7 +161,7 @@ async def complete_submission(
             raise AppError("SUBMISSION_UNVERIFIED")
         analyses.append(analysis)
 
-    await repository.add_data(db, _reconcile(submission.id, analyses))
+    await data_repository.add_data(db, _reconcile(submission.id, analyses))
     submission.status = CashoutSubmissionStatus.COMPLETED
     # Record the actual actor (the admin when an admin completes); the first
     # completion time is bookkeeping — set once, never overwritten.
@@ -177,9 +184,11 @@ async def unsubmit_submission(
     if submission.status is not CashoutSubmissionStatus.COMPLETED:
         raise AppError("SUBMISSION_NOT_COMPLETED")
 
-    data = await repository.find_data_by_submission(db, submission_id=submission.id)
+    data = await data_repository.find_data_by_submission(
+        db, submission_id=submission.id
+    )
     if data is not None:
-        await repository.delete_data(db, data)
+        await data_repository.delete_data(db, data)
 
     submission.status = CashoutSubmissionStatus.PROCESSING
     # completed_by reflects the *current* completion, so it clears with it;
@@ -235,7 +244,7 @@ async def upload_document(
         cashout_submission_id=submission.id,
     )
 
-    await repository.add_document(db, document)
+    await documents_repository.add_document(db, document)
     await storage.write(document.storage_key, payload.data)
 
     analysis = await _reset_analysis(db, document=document, processor=processor)
@@ -264,7 +273,7 @@ async def delete_document(
             "SUBMISSION_COMPLETED", "Documents cannot be removed after completion."
         )
 
-    await repository.delete_document(db, document)
+    await documents_repository.delete_document(db, document)
     await storage.delete(document.storage_key)
 
 
@@ -330,7 +339,9 @@ async def run_extraction(
     """
     async with sessionmaker() as db:
         try:
-            document = await repository.get_document(db, document_id=document_id)
+            document = await documents_repository.get_document(
+                db, document_id=document_id
+            )
             if document is None:
                 # Deleted between the request committing and this job running;
                 # the cascade removed its analysis too — nothing to update.
@@ -345,7 +356,7 @@ async def run_extraction(
     # Unexpected failure above: record it so the analysis doesn't sit in
     # EXTRACTING forever (which would block retries).
     async with sessionmaker() as db:
-        analysis = await repository.find_analysis_by_document(
+        analysis = await analyses_repository.find_analysis_by_document(
             db, document_id=document_id
         )
         if (
@@ -457,7 +468,7 @@ async def unverify_analysis(
 
 async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
     """Every reconciled cashout data row, newest first (admin table)."""
-    return await repository.list_data(db)
+    return await data_repository.list_data(db)
 
 
 # ================================
@@ -466,21 +477,23 @@ async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
 
 
 async def _get_submission(db: AsyncSession, submission_id: UUID) -> CashoutSubmission:
-    submission = await repository.get_submission(db, submission_id=submission_id)
+    submission = await submissions_repository.get_submission(
+        db, submission_id=submission_id
+    )
     if submission is None:
         raise AppError("SUBMISSION_NOT_FOUND")
     return submission
 
 
 async def _get_document(db: AsyncSession, document_id: UUID) -> CashoutDocument:
-    document = await repository.get_document(db, document_id=document_id)
+    document = await documents_repository.get_document(db, document_id=document_id)
     if document is None:
         raise AppError("DOCUMENT_NOT_FOUND")
     return document
 
 
 async def _get_analysis(db: AsyncSession, analysis_id: UUID) -> CashoutDocumentAnalysis:
-    analysis = await repository.get_analysis(db, analysis_id=analysis_id)
+    analysis = await analyses_repository.get_analysis(db, analysis_id=analysis_id)
     if analysis is None:
         raise AppError("ANALYSIS_NOT_FOUND")
     return analysis
@@ -519,7 +532,9 @@ async def _apply_extraction(
     classification is not a failure, it simply has no extracted data. A
     provider failure lands it in FAILED with error_code/error_message.
     """
-    analysis = await repository.find_analysis_by_document(db, document_id=document.id)
+    analysis = await analyses_repository.find_analysis_by_document(
+        db, document_id=document.id
+    )
     if analysis is None:
         # Unreachable in practice: the reset created the row before this ran.
         raise RuntimeError("analysis missing for document under extraction")
@@ -565,7 +580,9 @@ async def _reset_analysis(
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
     """Create the document's analysis row, or reset it in place for a retry."""
-    analysis = await repository.find_analysis_by_document(db, document_id=document.id)
+    analysis = await analyses_repository.find_analysis_by_document(
+        db, document_id=document.id
+    )
 
     if analysis is not None:
         if analysis.status is DocumentAnalysisStatus.VERIFIED:
@@ -581,7 +598,7 @@ async def _reset_analysis(
             model=processor.model,
             cashout_document_id=document.id,
         )
-        await repository.add_analysis(db, analysis)
+        await analyses_repository.add_analysis(db, analysis)
         return analysis
 
     analysis.provider = processor.provider
