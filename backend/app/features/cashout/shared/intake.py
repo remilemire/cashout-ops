@@ -4,9 +4,9 @@
 
 That workflow spans two sub-features — documents stores the file, analyses
 extracts it — so it lives here: neither sub-feature's service depends on the
-other, and routers make a single call. Every route that enqueues
-`cashout.run_extraction` enters through this module. Only routers call it;
-services never import it.
+other, and the namespace root's router makes a single call. Every route that
+enqueues `cashout.run_extraction` enters through this module. Only the root
+router calls it; sub-feature modules never import it.
 """
 
 from __future__ import annotations
@@ -63,9 +63,9 @@ async def restart_extraction(
     user: User,
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
-    # Pure delegation: the behavior lives wholly in the analyses service. It
-    # enters here because the documents router owns the URL, and routers call
-    # their own sub-feature's service or shared/ — never a sibling's service.
+    # Pure delegation: the behavior lives wholly in the analyses service. The
+    # indirection is kept so both extraction entry points enter through this
+    # workflow and the root router never reaches into sub-feature services.
     return await analyses_service.restart_extraction(
         db, document_id=document_id, user=user, processor=processor
     )

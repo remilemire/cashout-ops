@@ -16,14 +16,14 @@ from app.infrastructure.db.dependencies import get_db
 from . import service as analyses_service
 from .schemas import CashoutAnalysisVerify, CashoutDocumentAnalysisOut
 
-router = APIRouter(prefix="/analyses")
+router = APIRouter()
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 
 
 @router.get(
-    "/{analysis_id}",
+    "/analyses/{analysis_id}",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses("ANALYSIS_NOT_FOUND", "VALIDATION_FAILED"),
 )
@@ -45,7 +45,7 @@ async def get_analysis(
 
 
 @router.post(
-    "/{analysis_id}/verify",
+    "/analyses/{analysis_id}/verify",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
         "ANALYSIS_NOT_FOUND",
@@ -75,7 +75,7 @@ async def verify_analysis(
 
 
 @router.post(
-    "/{analysis_id}/unverify",
+    "/analyses/{analysis_id}/unverify",
     response_model=CashoutDocumentAnalysisOut,
     responses=error_responses(
         "ANALYSIS_NOT_FOUND",
