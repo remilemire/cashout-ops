@@ -31,8 +31,8 @@ async def upload_document(
 ) -> CashoutDocument:
     """Validate and store an uploaded document on an incomplete submission.
 
-    Storage only: the AI extraction is started by the intake workflow
-    (`shared/intake.py`), which calls this and then starts extraction on the
+    Storage only: the AI extraction is started by the document-intake workflow
+    (`shared/workflows.py`), which calls this and then starts extraction on the
     stored document in the same transaction.
     """
     submission = await _get_submission_for_actor(

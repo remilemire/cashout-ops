@@ -1,6 +1,6 @@
-# backend/app/features/cashout/shared/intake.py
+# backend/app/features/cashout/shared/workflows.py
 
-"""The document-intake workflow: receiving a document and getting it analyzed.
+"""Cross-sub-feature workflows: receiving a document and getting it analyzed.
 
 That workflow spans two sub-features — documents stores the file, analyses
 extracts it — so it lives here: neither sub-feature's service depends on the

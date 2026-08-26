@@ -35,7 +35,7 @@ from .documents.router import router as documents_router
 from .documents.types import DocumentUpload
 from .extraction import CashoutDocumentProcessor
 from .extraction.dependencies import get_cashout_document_processor
-from .shared import intake
+from .shared import workflows
 from .submissions.router import router as submissions_router
 
 # Every cashout route requires a session and (on unsafe methods) CSRF; the
@@ -64,9 +64,9 @@ router.include_router(analyses_router)
 # The reconciled cashout data (admin table).
 router.include_router(data_router)
 
-# The intake workflow's HTTP entry points: these routes cross sub-feature URL
-# spaces and coordinate across sub-features, so they live at the namespace
-# root and call shared/intake — mirroring auth's root logout → shared/access.
+# The document workflows' HTTP entry points: these routes cross sub-feature
+# URL spaces and coordinate across sub-features, so they live at the namespace
+# root and call shared/workflows — mirroring auth's root logout → shared/access.
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
@@ -121,7 +121,7 @@ async def upload_document(
         content_type=content_type,
         original_filename=file.filename or "upload",
     )
-    analysis = await intake.upload_document(
+    analysis = await workflows.upload_document(
         db,
         payload=payload,
         submission_id=submission_id,
@@ -160,7 +160,7 @@ async def extract_document(
     poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
     cannot be re-run, nor one whose extraction is still in progress.
     """
-    analysis = await intake.restart_extraction(
+    analysis = await workflows.restart_extraction(
         db,
         document_id=document_id,
         user=current_user,
