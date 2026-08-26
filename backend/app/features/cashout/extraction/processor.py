@@ -34,51 +34,13 @@ Distinguish carefully:
 """
 
 _EXTRACT_INSTRUCTIONS = """
-The supplied documents relate to restaurant cashout and end-of-shift reconciliation workflows.
+The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale or payment-terminal report (e.g. TouchBistro, Paystone), a card or merchant receipt, a server cashout sheet, a tip or tip-out record, a daily cash sheet, or a handwritten calculation. Similar values may repeat across sections.
 
-Documents may include:
+Interpret fields by their accounting meaning and keep distinct concepts distinct — gross vs. net vs. total sales, individual tenders, collected vs. declared tips, tip-outs, refunds/voids/discounts, expected vs. submitted vs. owed vs. due cash, shortages vs. overages, transaction vs. settlement totals, and subtotal vs. tax vs. tip vs. final charged amount. Do not combine values from different documents or sections, and do not assume two similarly named totals represent the same accounting value.
 
-* point-of-sale shift or sales reports;
-* payment-terminal transaction reports;
-* debit and credit card receipts;
-* merchant and customer receipts;
-* server cashout sheets;
-* handwritten cashout calculations;
-* tip and tip-out records;
-* daily cash sheets;
-* discount, void, refund, or correction records;
-* TouchBistro reports;
-* Paystone reports.
+For monetary values: preserve negative signs and explicit credits, treat amounts as Canadian dollars unless the document specifies another currency, do not convert currencies, do not recompute printed totals, and flag apparent inconsistencies rather than correcting them silently.
 
-Documents may be photographed, scanned, cropped, rotated, handwritten, faded, or partially obscured. Several values may appear similar or may be repeated in different sections.
-
-Interpret fields according to their accounting meaning. Keep these concepts distinct:
-
-* gross sales, net sales, and total sales;
-* food, liquor, and other sales categories;
-* cash, debit, credit, gift card, cheque, and other tenders;
-* collected tips and declared tips;
-* tip-outs and tip-out categories;
-* refunds, voids, discounts, and corrections;
-* expected cash, cash submitted, cash owed, and cash due;
-* shortages, overages, and reconciliation differences;
-* transaction totals and settlement totals;
-* employee names, server numbers, terminal numbers, shift dates, and report dates.
-
-Do not combine values from different documents or sections unless explicitly requested. Do not assume two similarly named totals represent the same accounting value.
-
-When extracting monetary values:
-
-* Preserve negative signs and explicit credits.
-* Do not include currency symbols in numeric fields unless the schema expects strings.
-* Treat values as Canadian dollars when the document clearly belongs to this cashout workflow and does not specify another currency.
-* Do not convert currencies.
-* Do not recompute printed totals unless explicitly requested.
-* Flag apparent inconsistencies rather than correcting them silently.
-
-Handwritten values may represent corrections or final accepted amounts. Prefer them over printed values only when the document clearly indicates that they replace or amend the printed value.
-
-Receipts may contain both transaction amounts and gratuities. Do not treat the final charged amount, subtotal, tax, and tip as interchangeable.
+Handwritten values may be corrections or final accepted amounts; prefer them over printed values only when the document clearly indicates they replace or amend the printed value.
 """
 
 
