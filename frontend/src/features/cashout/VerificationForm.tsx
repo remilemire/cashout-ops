@@ -73,11 +73,11 @@ export function VerificationForm({
     <div className="space-y-3">
       <div className="flex gap-4">
         <ConfidenceMeter
-          label="Classification"
+          label="Classification confidence"
           value={analysis.classificationConfidence}
         />
         <ConfidenceMeter
-          label="Extraction"
+          label="Extraction confidence"
           value={analysis.extractionConfidence}
         />
       </div>
