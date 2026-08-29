@@ -5,19 +5,17 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.errors import error_responses
 from app.features.auth.shared import access
 from app.features.users.schemas import UserOut
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.time_floor import time_floor
 
 from . import service as email_challenges_service
 from .dependencies import (
+    challenge_time_floor,
     rate_limit_initiate_email,
     rate_limit_initiate_ip,
     rate_limit_verify_code_ip,
@@ -36,14 +34,29 @@ from .schemas import (
 # Rate limits are attached per route via the feature's guard dependencies;
 # see .dependencies for why each flow pairs per-identifier and per-IP caps.
 #
-# Every handler pads its work to CHALLENGE_TIME_FLOOR_MS via `time_floor`, so
-# response timing cannot reveal whether an address has an account or a
-# challenge id is real (the decoy path does far less work than the real one).
-# What runs outside the floor cannot leak around it: the rate-limit
-# dependencies hash the address before any lookup, so their cost is identical
-# either way, and the get_db commit runs in dependency teardown after the
-# response is sent.
-router = APIRouter(prefix="/email-challenges", tags=["auth"])
+# Every response is padded to CHALLENGE_TIME_FLOOR_MS by the router-wide
+# `challenge_time_floor` dependency, so response timing cannot reveal whether
+# an address has an account or a challenge id is real (the decoy path does
+# far less work than the real one). Function-scoped and solved first, the
+# floor brackets everything account-dependent: rate limiting, body-field
+# validation, the handler, response serialization, and — because teardown is
+# LIFO and the session is `DbSession` — the pre-response commit, whose cost
+# differs between the real and decoy paths. Error responses (429, field
+# 422s, rejected challenges) unwind through the floor and are padded too.
+# The one unpadded path is a malformed-JSON body, rejected before
+# dependencies run — identical for real and decoy input, since nothing
+# account-dependent has executed by then.
+#
+# Committing before the response also means a commit failure surfaces as an
+# error instead of hiding behind an already-sent 202/200: the outbox insert
+# and the owner bootstrap flush in-request, but the COMMIT itself only
+# happens in the session teardown. The floor must therefore exceed the real
+# path's tail including the commit; see CHALLENGE_TIME_FLOOR_MS.
+router = APIRouter(
+    prefix="/email-challenges",
+    tags=["auth"],
+    dependencies=[Depends(challenge_time_floor, scope="function")],
+)
 
 
 @router.post(
@@ -58,7 +71,7 @@ router = APIRouter(prefix="/email-challenges", tags=["auth"])
 )
 async def start_login(
     payload: EmailChallengeStart,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> EmailChallengeStartOut:
     """Start a passwordless login by emailing a sign-in link.
@@ -68,10 +81,9 @@ async def start_login(
     For a real account the link is emailed once the request commits, via the
     transactional outbox.
     """
-    async with time_floor(settings.auth.CHALLENGE_TIME_FLOOR_MS):
-        challenge_id = await email_challenges_service.initiate(
-            db, redis, email=payload.email
-        )
+    challenge_id = await email_challenges_service.initiate(
+        db, redis, email=payload.email
+    )
     return EmailChallengeStartOut(challenge_id=challenge_id)
 
 
@@ -95,10 +107,9 @@ async def verify_link(
     Single-use — a second click of the emailed link fails — while the
     challenge survives; sign-in completes via `/email-challenges/verify-code`.
     """
-    async with time_floor(settings.auth.CHALLENGE_TIME_FLOOR_MS):
-        code = await email_challenges_service.consume_link(
-            redis, challenge_id=payload.challenge_id, token=payload.token
-        )
+    code = await email_challenges_service.consume_link(
+        redis, challenge_id=payload.challenge_id, token=payload.token
+    )
     return EmailChallengeVerifyLinkOut(code=code)
 
 
@@ -115,7 +126,7 @@ async def verify_link(
 async def verify_code(
     response: Response,
     payload: EmailChallengeVerifyCode,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> UserOut:
     """Complete login in the tab that initiated the challenge.
@@ -123,11 +134,10 @@ async def verify_code(
     Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable)
     cookies. Consumes the challenge — it is single use.
     """
-    # The session grant sits inside the floor too, so a successful sign-in
-    # and a rejected one are padded to the same shared minimum.
-    async with time_floor(settings.auth.CHALLENGE_TIME_FLOOR_MS):
-        user = await email_challenges_service.consume_code(
-            db, redis, challenge_id=payload.challenge_id, code=payload.code
-        )
-        await access.grant(redis, response, user_id=user.id)
+    # The router-wide floor covers the session grant too, so a successful
+    # sign-in and a rejected one are padded to the same shared minimum.
+    user = await email_challenges_service.consume_code(
+        db, redis, challenge_id=payload.challenge_id, code=payload.code
+    )
+    await access.grant(redis, response, user_id=user.id)
     return UserOut.model_validate(user)

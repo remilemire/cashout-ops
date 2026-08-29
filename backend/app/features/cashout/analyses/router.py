@@ -6,12 +6,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import error_responses
 from app.features.auth.dependencies import get_current_user
 from app.features.users.model import User
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 
 from . import service as analyses_service
 from .schemas import CashoutAnalysisVerify, CashoutDocumentAnalysisOut
@@ -29,7 +28,7 @@ AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 )
 async def get_analysis(
     analysis_id: AnalysisId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
     """Poll a document analysis for its extraction progress.
@@ -59,7 +58,7 @@ async def get_analysis(
 async def verify_analysis(
     analysis_id: AnalysisId,
     payload: CashoutAnalysisVerify,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
     """Confirm an extraction, optionally submitting corrected values.
@@ -86,7 +85,7 @@ async def verify_analysis(
 )
 async def unverify_analysis(
     analysis_id: AnalysisId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
     """Send a verified extraction back through verification for editing.

@@ -6,12 +6,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import error_responses
 from app.features.auth.dependencies import get_current_user, require_admin
 from app.features.users.model import User
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.integrations.storage import DocumentStorageClient
 from app.integrations.storage.dependencies import get_document_storage
 
@@ -35,7 +34,7 @@ SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
     status_code=status.HTTP_201_CREATED,
 )
 async def create_submission(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionOut:
     """Open a new cashout submission (status `PROCESSING`).
@@ -57,7 +56,7 @@ async def create_submission(
 )
 async def delete_submission(
     submission_id: SubmissionId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
@@ -77,7 +76,7 @@ async def delete_submission(
 
 @router.get("/submissions", response_model=list[CashoutSubmissionListOut])
 async def list_submissions(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[CashoutSubmissionListOut]:
     """List submissions, newest first, with the submitting user.
@@ -95,7 +94,7 @@ async def list_submissions(
 )
 async def get_submission(
     submission_id: SubmissionId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionDetailOut:
     """Return a submission with its documents (analyses included) and data.
@@ -122,7 +121,7 @@ async def get_submission(
 async def complete_submission(
     submission_id: SubmissionId,
     payload: CashoutSubmissionComplete,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionOut:
     """Close out the cashout once every document analysis is verified.
@@ -147,7 +146,7 @@ async def complete_submission(
 )
 async def unsubmit_submission(
     submission_id: SubmissionId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> CashoutSubmissionOut:
     """Reopen a completed cashout for editing (admin only).
 

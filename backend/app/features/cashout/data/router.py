@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.auth.dependencies import require_admin
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 
 from . import service as data_service
 from .schemas import CashoutDataOut
@@ -22,7 +19,7 @@ router = APIRouter()
     dependencies=[Depends(require_admin)],
 )
 async def list_data(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> list[CashoutDataOut]:
     """List every reconciled cashout data row, newest first (admin only)."""
     data = await data_service.list_data(db)

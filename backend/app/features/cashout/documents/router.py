@@ -6,12 +6,11 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import error_responses
 from app.features.auth.dependencies import get_current_user
 from app.features.users.model import User
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.integrations.storage import DocumentStorageClient
 from app.integrations.storage.dependencies import get_document_storage
 from app.lib.documents import DocumentContentType
@@ -33,7 +32,7 @@ DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
 )
 async def delete_document(
     document_id: DocumentId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
@@ -66,7 +65,7 @@ _DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
 )
 async def get_document_content(
     document_id: DocumentId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> Response:

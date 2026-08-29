@@ -6,11 +6,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, error_responses
 from app.features.auth.shared import access
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
 from app.integrations.oauth import OAuthClient, OAuthIssuer
@@ -96,7 +95,7 @@ async def start_oauth(
 async def oauth_callback(
     issuer: OAuthIssuer,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
     oauth_client: Annotated[OAuthClient, Depends(get_oauth_client)],
     code: str | None = None,

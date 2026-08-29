@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 
 from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.document_ai import DocumentClassification
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
@@ -368,3 +370,64 @@ async def test_manual_entry_requires_employee_or_admin(
     )
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert entered["verifiedByUserId"] == admin_id
+
+
+async def test_commit_failure_surfaces_as_error_not_phantom_success(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """A failure at commit time must reach the client as the translated error.
+
+    The conversion's UPDATE never flushes during the request, so its first
+    trip to the database is the commit in get_db's teardown. Because the
+    session is function-scoped (`DbSession`), that commit runs before the
+    response is sent: the client gets the translated integrity error and the
+    row keeps its pre-request state. Under request-scoped teardown the 200
+    with a VERIFIED body was already on the wire when the commit failed — the
+    UI showed success while the row stayed FAILED (a silent lost write).
+    """
+    from app.integrations.ai import AIAnalysisError, AIErrorCode
+
+    ai_client.error = AIAnalysisError(AIErrorCode.DOCUMENT_REJECTED, "boom")
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    # The incident's stale schema: provider NOT NULL. The manual conversion
+    # nulls provider, violating it — but only at commit, since nothing
+    # flushes on this path.
+    async with db_sessionmaker() as db:
+        await db.execute(
+            text(
+                "ALTER TABLE cashout_document_analyses"
+                " ALTER COLUMN provider SET NOT NULL"
+            )
+        )
+        await db.commit()
+    try:
+        response = await cashier_client.post(
+            f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+            json=manual_entry_body(),
+            headers=csrf_headers(cashier_client),
+        )
+
+        # The not-null violation (SQLSTATE 23502) arrives through the shared
+        # error contract, not as an apparent success.
+        assert response.status_code == 422, response.text
+        assert response.json()["code"] == "VALIDATION_FAILED"
+
+        # The transaction rolled back whole: the analysis still reads FAILED.
+        analysis = await poll_analysis(cashier_client, created["id"])
+        assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
+    finally:
+        # The schema fixture is session-scoped; put the column back so other
+        # tests see the real schema.
+        async with db_sessionmaker() as db:
+            await db.execute(
+                text(
+                    "ALTER TABLE cashout_document_analyses"
+                    " ALTER COLUMN provider DROP NOT NULL"
+                )
+            )
+            await db.commit()

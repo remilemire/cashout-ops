@@ -5,15 +5,20 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import AsyncIterator
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.features.auth.email_challenges.dependencies import challenge_time_floor
 from app.features.users.model import User
 from app.features.users.types import UserRole
+from app.infrastructure.db.dependencies import get_db
 from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
@@ -677,3 +682,85 @@ async def test_every_challenge_response_holds_the_time_floor(
         status, took = await elapsed(path, payload)
         assert status == 401
         assert took >= 0.08, f"{path} returned in {took * 1000:.1f}ms"
+
+
+async def test_commit_lands_inside_the_floor_before_the_response(
+    app: FastAPI,
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """The request commit runs inside the floor's window, not after it.
+
+    The floor is a router-wide function-scoped dependency entered before the
+    session, so teardown (LIFO) commits first and pads second — the commit's
+    cost cannot leak around the pad. Overrides inherit the declaration site's
+    scope, so these recording stand-ins land in the same exit stack as the
+    real dependencies.
+    """
+    await create_user(db_session, email=CASHIER_EMAIL)
+    events: list[str] = []
+
+    async def recording_get_db() -> AsyncIterator[AsyncSession]:
+        async with db_sessionmaker() as session:
+            try:
+                yield session
+                await session.commit()
+                events.append("commit")
+            except BaseException:
+                await session.rollback()
+                raise
+
+    async def recording_floor() -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            events.append("floor_exit")
+
+    app.dependency_overrides[get_db] = recording_get_db
+    app.dependency_overrides[challenge_time_floor] = recording_floor
+
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": CASHIER_EMAIL}
+    )
+
+    assert response.status_code == 202, response.text
+    assert events == ["commit", "floor_exit"]
+
+
+async def test_commit_failure_is_an_error_response_not_a_silent_202(
+    app: FastAPI,
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    drain_outbox: OutboxDrain,
+) -> None:
+    """A failed commit surfaces as an error; the 202 vouches for the commit.
+
+    The 202 stays noncommittal about whether an email will be sent (real and
+    decoy are indistinguishable), but it is only sent once the transaction —
+    including the enqueued outbox message — has committed. A commit failure
+    must therefore reach the client instead of hiding behind an already-sent
+    success.
+    """
+    await create_user(db_session, email=CASHIER_EMAIL)
+
+    async def failing_commit_get_db() -> AsyncIterator[AsyncSession]:
+        async with db_sessionmaker() as session:
+            yield session
+            await session.rollback()
+            # A driver-level failure with no diag/sqlstate: the translator
+            # falls through to INTERNAL.
+            raise IntegrityError("stmt", None, Exception("commit failed"))
+
+    app.dependency_overrides[get_db] = failing_commit_get_db
+
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": CASHIER_EMAIL}
+    )
+
+    assert response.status_code == 500, response.text
+    assert response.json()["code"] == "INTERNAL"
+    # The transaction never committed, so its outbox insert rolled back with
+    # it: nothing is delivered, and no email goes out.
+    assert await drain_outbox() == 0

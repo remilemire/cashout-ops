@@ -6,7 +6,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import error_responses
 from app.features.auth.dependencies import (
@@ -14,7 +13,7 @@ from app.features.auth.dependencies import (
     require_admin,
     require_owner,
 )
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.security.dependencies import require_csrf
 
 from . import service as users_service
@@ -44,7 +43,7 @@ def get_me(
     responses=error_responses("FORBIDDEN"),
 )
 async def list_users(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> list[UserOut]:
     """List every user, newest first (admin only)."""
     users = await users_service.list_users(db)
@@ -60,7 +59,7 @@ async def list_users(
 )
 async def create_user(
     payload: UserCreate,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> UserOut:
     """Create a staff account (admin only).
 
@@ -83,7 +82,7 @@ UserId = Annotated[UUID, Path(description="User ID.")]
 async def update_user(
     user_id: UserId,
     payload: UserUpdate,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> UserOut:
     """Update a user's name (admin only).
 
@@ -107,7 +106,7 @@ async def update_user(
 async def promote_user(
     user_id: UserId,
     actor: Annotated[User, Depends(require_admin)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> UserOut:
     """Grant a user admin access (admin only; idempotent)."""
     user = await users_service.promote_admin(db, user_id=user_id, actor=actor)
@@ -127,7 +126,7 @@ async def promote_user(
 async def demote_user(
     user_id: UserId,
     actor: Annotated[User, Depends(require_admin)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> UserOut:
     """Revoke a user's admin access (admin only; idempotent)."""
     user = await users_service.demote_admin(db, user_id=user_id, actor=actor)
@@ -147,7 +146,7 @@ async def demote_user(
 )
 async def delete_user(
     user_id: UserId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> None:
     """Delete a user (admin only): the account is always deactivated.
 
@@ -173,7 +172,7 @@ async def delete_user(
 async def transfer_ownership(
     user_id: UserId,
     actor: Annotated[User, Depends(require_owner)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
 ) -> UserOut:
     """Transfer ownership to an admin (owner only); returns the new owner."""
     user = await users_service.transfer_ownership(db, actor=actor, new_owner_id=user_id)

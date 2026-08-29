@@ -17,13 +17,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Path, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.errors import AppError, error_responses
 from app.features.auth.dependencies import get_current_user
 from app.features.users.model import User
-from app.infrastructure.db.dependencies import get_db
+from app.infrastructure.db.dependencies import DbSession
 from app.integrations.storage import DocumentStorageClient
 from app.integrations.storage.dependencies import get_document_storage
 from app.lib.documents import DocumentContentType, read_document
@@ -99,7 +98,7 @@ DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
 async def upload_document(
     submission_id: SubmissionId,
     file: UploadFile,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
     processor: Annotated[
@@ -160,7 +159,7 @@ async def upload_manual_document(
     submission_id: SubmissionId,
     file: UploadFile,
     payload: Annotated[str, Form(description="JSON object: `{classification, data}`.")],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> CashoutDocumentAnalysisOut:
@@ -211,7 +210,7 @@ async def upload_manual_document(
 async def enter_manual_document(
     document_id: DocumentId,
     payload: CashoutDocumentManualEntry,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
     """Replace a document's analysis with manually entered details.
@@ -248,7 +247,7 @@ async def enter_manual_document(
 )
 async def extract_document(
     document_id: DocumentId,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
