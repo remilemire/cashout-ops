@@ -236,10 +236,14 @@ export function DocumentCard({
 
         {analysis?.status === "verified" && (
           <div className="space-y-2">
-            <FieldList data={analysis.verifiedDataJson ?? {}} />
+            <FieldList
+              data={analysis.verifiedDataJson ?? {}}
+              schemaName={analysis.schemaName}
+            />
             <CorrectionNote
               extracted={analysis.extractedDataJson}
               verified={analysis.verifiedDataJson}
+              schemaName={analysis.schemaName}
             />
             <p className="text-ink-muted text-xs">
               Verified{" "}
@@ -288,9 +292,11 @@ export function DocumentCard({
 function CorrectionNote({
   extracted,
   verified,
+  schemaName,
 }: {
   extracted: Record<string, unknown> | null;
   verified: Record<string, unknown> | null;
+  schemaName: string | null;
 }) {
   if (!extracted || !verified) return null;
   if (JSON.stringify(extracted) === JSON.stringify(verified)) return null;
@@ -300,7 +306,7 @@ function CorrectionNote({
         Corrected from the original extraction — show it
       </summary>
       <div className="border-line mt-2 rounded-lg border p-2">
-        <FieldList data={extracted} />
+        <FieldList data={extracted} schemaName={schemaName} />
       </div>
     </details>
   );

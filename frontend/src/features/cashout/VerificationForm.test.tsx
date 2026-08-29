@@ -46,7 +46,10 @@ const analysis: CashoutDocumentAnalysis = {
   cashoutDocumentId: "document-1",
 };
 
-function renderForm(editable = true) {
+function renderForm(
+  editable = true,
+  override: CashoutDocumentAnalysis = analysis,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -55,7 +58,7 @@ function renderForm(editable = true) {
   );
   return render(
     <VerificationForm
-      analysis={analysis}
+      analysis={override}
       submissionId="submission-1"
       editable={editable}
     />,
@@ -90,7 +93,7 @@ describe("VerificationForm", () => {
   it("sends type-coerced corrections when a field was edited", async () => {
     renderForm();
 
-    fireEvent.change(screen.getByLabelText("Grand total transaction count"), {
+    fireEvent.change(screen.getByLabelText("Orders"), {
       target: { value: "41" },
     });
     fireEvent.click(
@@ -112,5 +115,64 @@ describe("VerificationForm", () => {
 
     expect(screen.queryByRole("button", { name: /verify/i })).toBeNull();
     expect(screen.getByText("1234.56")).toBeDefined();
+  });
+
+  it("labels fields from the schema registry without group headings for a single group", () => {
+    renderForm();
+
+    expect(screen.getByLabelText("Grand total")).toBeDefined();
+    expect(screen.getByLabelText("Orders")).toBeDefined();
+    // The awkward auto-humanized key label is gone.
+    expect(screen.queryByText("Grand total transaction count")).toBeNull();
+    // ServerSummary is a single "Totals" group, so it stays a flat list.
+    expect(screen.queryByText("Totals")).toBeNull();
+  });
+
+  it("groups TouchBistro fields under headings in curated order", () => {
+    renderForm(true, {
+      ...analysis,
+      classification: "touchbistro_report",
+      schemaName: "TouchBistroReportData",
+      extractedDataJson: {
+        card_tip_total: "80.00",
+        total_net_sales: "1500.00",
+        cash_payment_total: "200.00",
+        food_net_sales: "1000.00",
+        card_transaction_count: 42,
+        drink_net_sales: "500.00",
+        card_payment_total: "1300.00",
+      },
+      issues: null,
+    });
+
+    expect(screen.getByText("Sales")).toBeDefined();
+    expect(screen.getByText("Payments")).toBeDefined();
+    expect(screen.getByText("Tips")).toBeDefined();
+
+    const labels = screen
+      .getAllByRole("textbox")
+      .map((input) => input.getAttribute("aria-label"));
+    expect(labels).toEqual([
+      "Food net sales",
+      "Drink net sales",
+      "Total net sales",
+      "Cash payments",
+      "Card payments",
+      "Card orders",
+      "Card tips",
+    ]);
+  });
+
+  it("renders unknown keys through the humanized fallback", () => {
+    renderForm(true, {
+      ...analysis,
+      extractedDataJson: {
+        ...analysis.extractedDataJson,
+        mystery_field: "??",
+      },
+    });
+
+    expect(screen.getByText("Other")).toBeDefined();
+    expect(screen.getByLabelText("Mystery field")).toBeDefined();
   });
 });

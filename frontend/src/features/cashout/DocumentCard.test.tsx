@@ -172,6 +172,33 @@ describe("DocumentCard", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
+  it("labels the verified summary from the schema registry", () => {
+    renderCard(false);
+
+    expect(screen.getByText("Grand total")).toBeDefined();
+    expect(screen.getByText("Orders")).toBeDefined();
+    expect(screen.queryByText("Grand total transaction count")).toBeNull();
+  });
+
+  it("keeps curated labels on the original extraction inside the correction note", () => {
+    const corrected: CashoutDocumentAnalysis = {
+      ...analysis,
+      verifiedDataJson: {
+        grand_total: "1200.00",
+        grand_total_transaction_count: 42,
+      },
+    };
+    getAnalysisMock.mockResolvedValue(corrected);
+    renderCard(false, { ...cashoutDocument, analysis: corrected });
+
+    expect(
+      screen.getByText(/corrected from the original extraction/i),
+    ).toBeDefined();
+    // Once in the verified summary, once in the correction note's extraction.
+    expect(screen.getAllByText("Grand total")).toHaveLength(2);
+    expect(screen.getAllByText("Orders")).toHaveLength(2);
+  });
+
   it("offers retry extraction while needs-verification", async () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {

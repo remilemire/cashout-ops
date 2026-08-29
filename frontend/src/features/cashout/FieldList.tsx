@@ -1,26 +1,47 @@
 // frontend/src/features/cashout/FieldList.tsx
 
-import { displayValue, fieldLabel } from "@/lib/format";
+import { displayValue } from "@/lib/format";
+
+import { groupFields } from "./fields";
 
 /** Read-only key/value rendering of an extracted or verified data object. */
-export function FieldList({ data }: { data: Record<string, unknown> }) {
-  const entries = Object.entries(data);
-  if (entries.length === 0) {
+export function FieldList({
+  data,
+  schemaName,
+}: {
+  data: Record<string, unknown>;
+  schemaName?: string | null;
+}) {
+  const groups = groupFields(schemaName, data);
+  if (groups.length === 0) {
     return <p className="text-ink-muted text-sm">No extracted fields.</p>;
   }
+  // A single group renders as today's flat list, headings only differentiate.
+  const showHeadings = groups.length > 1;
   return (
-    <dl className="divide-line divide-y">
-      {entries.map(([key, value]) => (
-        <div
-          key={key}
-          className="flex items-baseline justify-between gap-4 py-1.5 text-sm first:pt-0 last:pb-0"
-        >
-          <dt className="text-ink-muted">{fieldLabel(key)}</dt>
-          <dd className="text-right font-medium break-all tabular-nums">
-            {displayValue(value) || "—"}
-          </dd>
+    <div className="space-y-3">
+      {groups.map((group) => (
+        <div key={group.heading ?? "other"}>
+          {showHeadings && group.heading != null && (
+            <p className="text-ink-muted mb-1 text-xs font-medium">
+              {group.heading}
+            </p>
+          )}
+          <dl className="divide-line divide-y">
+            {group.fields.map(({ key, label }) => (
+              <div
+                key={key}
+                className="flex items-baseline justify-between gap-4 py-1.5 text-sm first:pt-0 last:pb-0"
+              >
+                <dt className="text-ink-muted">{label}</dt>
+                <dd className="text-right font-medium break-all tabular-nums">
+                  {displayValue(data[key]) || "—"}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       ))}
-    </dl>
+    </div>
   );
 }

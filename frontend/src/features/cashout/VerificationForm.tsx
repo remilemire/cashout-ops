@@ -8,9 +8,10 @@ import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import type { CashoutDocumentAnalysis, FieldIssue } from "@/api/types";
 import { Button, ConfidenceMeter, ErrorBanner } from "@/components/ui";
 import { cx } from "@/lib/cx";
-import { buildVerifiedData, displayValue, fieldLabel } from "@/lib/format";
+import { buildVerifiedData, displayValue } from "@/lib/format";
 
 import { FieldList } from "./FieldList";
+import { fieldLabelFor, groupFields } from "./fields";
 
 /**
  * The cashier's review step: extracted fields (editable), the issues the AI
@@ -42,6 +43,10 @@ export function VerificationForm({
     (issue) =>
       !Object.keys(extracted).some((key) => issuesFor(key).includes(issue)),
   );
+
+  const groups = groupFields(analysis.schemaName, extracted);
+  // A single group renders as today's flat list, headings only differentiate.
+  const showHeadings = groups.length > 1;
 
   const verifiedData = buildVerifiedData(extracted, edits);
   const changedCount = verifiedData
@@ -86,7 +91,10 @@ export function VerificationForm({
           <ul className="text-ink-muted mt-1 ml-5 list-disc">
             {generalIssues.map((issue, index) => (
               <li key={index}>
-                <strong>{fieldLabel(issue.path)}</strong>: {issue.message}
+                <strong>
+                  {fieldLabelFor(analysis.schemaName, issue.path)}
+                </strong>
+                : {issue.message}
               </li>
             ))}
           </ul>
@@ -95,49 +103,60 @@ export function VerificationForm({
 
       {editable ? (
         <>
-          <div className="space-y-2.5">
-            {Object.entries(extracted).map(([key, value]) => {
-              const fieldIssues = issuesFor(key);
-              const edited = key in edits && edits[key] !== displayValue(value);
-              return (
-                <label key={key} className="block">
-                  <span className="mb-1 flex items-center gap-2 text-sm font-medium">
-                    {fieldLabel(key)}
-                    {edited && (
-                      <span className="text-accent-strong text-xs font-normal">
-                        edited
+          <div className="space-y-3">
+            {groups.map((group) => (
+              <div key={group.heading ?? "other"} className="space-y-2.5">
+                {showHeadings && group.heading != null && (
+                  <p className="text-ink-muted text-xs font-medium">
+                    {group.heading}
+                  </p>
+                )}
+                {group.fields.map(({ key, label }) => {
+                  const value = extracted[key];
+                  const fieldIssues = issuesFor(key);
+                  const edited =
+                    key in edits && edits[key] !== displayValue(value);
+                  return (
+                    <label key={key} className="block">
+                      <span className="mb-1 flex items-center gap-2 text-sm font-medium">
+                        {label}
+                        {edited && (
+                          <span className="text-accent-strong text-xs font-normal">
+                            edited
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  <input
-                    aria-label={fieldLabel(key)}
-                    className={cx(
-                      "bg-surface min-h-11 w-full rounded-lg border px-3 text-sm",
-                      "focus:ring-accent/50 outline-none focus:ring-2",
-                      fieldIssues.length > 0 && !edited
-                        ? "border-warning"
-                        : "border-line",
-                    )}
-                    value={edits[key] ?? displayValue(value)}
-                    onChange={(event) =>
-                      setEdits((prev) => ({
-                        ...prev,
-                        [key]: event.target.value,
-                      }))
-                    }
-                  />
-                  {fieldIssues.map((issue, index) => (
-                    <span
-                      key={index}
-                      className="text-warning mt-1 flex items-center gap-1 text-xs"
-                    >
-                      <AlertTriangle className="size-3" />
-                      {issue.message}
-                    </span>
-                  ))}
-                </label>
-              );
-            })}
+                      <input
+                        aria-label={label}
+                        className={cx(
+                          "bg-surface min-h-11 w-full rounded-lg border px-3 text-sm",
+                          "focus:ring-accent/50 outline-none focus:ring-2",
+                          fieldIssues.length > 0 && !edited
+                            ? "border-warning"
+                            : "border-line",
+                        )}
+                        value={edits[key] ?? displayValue(value)}
+                        onChange={(event) =>
+                          setEdits((prev) => ({
+                            ...prev,
+                            [key]: event.target.value,
+                          }))
+                        }
+                      />
+                      {fieldIssues.map((issue, index) => (
+                        <span
+                          key={index}
+                          className="text-warning mt-1 flex items-center gap-1 text-xs"
+                        >
+                          <AlertTriangle className="size-3" />
+                          {issue.message}
+                        </span>
+                      ))}
+                    </label>
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           <ErrorBanner error={verify.error} />
@@ -152,7 +171,7 @@ export function VerificationForm({
           </div>
         </>
       ) : (
-        <FieldList data={extracted} />
+        <FieldList data={extracted} schemaName={analysis.schemaName} />
       )}
     </div>
   );
