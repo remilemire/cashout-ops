@@ -23,8 +23,8 @@ _ANALYSIS_ERROR_MESSAGES: dict[str, str] = {
         "The document could not be read. Please retry or re-upload a clearer copy."
     ),
     AIErrorCode.OUTPUT_LIMIT_REACHED.value: (
-        "This document was too large for the AI to read in full. Try splitting "
-        "it up and uploading it in smaller parts."
+        "This document was too large for the AI to read in full. Try cropping "
+        "the image to just the report."
     ),
     AIErrorCode.UNSUPPORTED_FILE_TYPE.value: ("This file type isn't supported."),
 }
