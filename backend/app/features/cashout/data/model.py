@@ -7,10 +7,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, Uuid, func
+from sqlalchemy import ARRAY, Computed, DateTime, ForeignKey, Numeric, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.infrastructure.db.models import Base
+from app.infrastructure.db.models import Base, enum_column
+
+from .types import TipoutDepartment
 
 if TYPE_CHECKING:
     from app.features.cashout.submissions.model import CashoutSubmission
@@ -25,13 +27,120 @@ class CashoutData(Base):
 
     __tablename__ = "cashout_data"
 
-    # TODO(document-ai): placeholder columns. The real reconciled fields follow
-    # from the per-document extraction schemas — replace these to match, and
-    # fill them in this sub-feature's service.reconcile.
-    daily_tipout: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    net_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    cash_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    card_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Extracted / source values.
+    #
+    # TODO(document-ai): nullable only until service.reconcile populates them
+    # off the verified analyses — make them NOT NULL in the same change. A row
+    # with these null is an unreconciled cashout, and every tipout generated
+    # below it is null too.
+    food_net_sales: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    drink_net_sales: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    total_net_sales: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+
+    card_payment_total: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    cash_payment_total: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    card_tip_total: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+
+    # User-selected business inputs: which departments this cashout tips
+    # out to. A department left out keeps its tipout column null, so this
+    # list and those columns say the same thing two ways.
+    tipout_departments: Mapped[list[TipoutDepartment]] = mapped_column(
+        ARRAY(enum_column(TipoutDepartment, "tipout_department")),
+        nullable=False,
+        default=list,
+    )
+
+    # Calculated values
+    bar_tipout: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN 'bar'::tipout_department = ANY(tipout_departments)
+                THEN drink_net_sales * bar_tipout_rate
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+    kitchen_tipout: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN 'kitchen'::tipout_department = ANY(tipout_departments)
+                THEN food_net_sales * kitchen_tipout_rate
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+    expo_tipout: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN 'expo'::tipout_department = ANY(tipout_departments)
+                THEN total_net_sales * expo_tipout_rate
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+    host_tipout: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN 'host'::tipout_department = ANY(tipout_departments)
+                THEN total_net_sales * host_tipout_rate
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+
+    cash_owed_to_house: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN cash_payment_total > card_tip_total
+                THEN cash_payment_total - card_tip_total
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+
+    cash_owed_to_employee: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed("""
+            CASE
+                WHEN card_tip_total > cash_payment_total
+                THEN card_tip_total - cash_payment_total
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
+
+    # Tipout-rate snapshots: the rates in force when this cashout closed,
+    # copied off settings.tipout so a later rate change cannot restate it.
+    #
+    # Numeric(6, 4), not (12, 2): these are fractions of sales, not amounts, so
+    # cent precision would round a 3.5% rate (0.0350) to 4%.
+    bar_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    kitchen_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    expo_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    host_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
 
     submission_id: Mapped[uuid.UUID] = mapped_column(
         # Name the FK explicitly: cashout/errors.py maps it to SUBMISSION_HAS_DATA,

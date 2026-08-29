@@ -14,6 +14,7 @@ from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     complete_submission,
+    completion_body,
     configure_server_summary,
     create_submission,
     unsubmit_submission,
@@ -317,6 +318,7 @@ async def test_complete_requires_every_analysis_verified(
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
+        json=completion_body(),
         headers=csrf_headers(cashier_client),
     )
 
@@ -340,6 +342,7 @@ async def test_complete_requires_employee_or_admin(
     other = await make_client(email="other@test.com")
     response = await other.post(
         f"/api/cashout/submissions/{submission_id}/complete",
+        json=completion_body(),
         headers=csrf_headers(other),
     )
 

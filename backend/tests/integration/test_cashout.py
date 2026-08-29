@@ -15,6 +15,7 @@ from tests.support.api import csrf_headers
 from tests.support.cashout import (
     SERVER_SUMMARY_EXTRACTED,
     complete_submission,
+    completion_body,
     configure_server_summary,
     create_submission,
     poll_analysis,
@@ -182,6 +183,7 @@ async def test_admin_can_manage_another_users_submission(
     # A completed cashout cannot be completed again — by anyone.
     again = await admin_client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
+        json=completion_body(),
         headers=csrf_headers(admin_client),
     )
     assert again.status_code == 409

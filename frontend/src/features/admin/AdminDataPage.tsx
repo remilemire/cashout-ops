@@ -5,6 +5,7 @@ import { Database } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import type { CashoutData } from "@/api/types";
 import {
   Card,
   EmptyState,
@@ -16,6 +17,23 @@ import { formatDateTime } from "@/lib/format";
 
 function money(value: string | null): string {
   return value != null ? `$${value}` : "—";
+}
+
+/**
+ * The row's tipouts added up. Null when none was calculated — an unreconciled
+ * cashout, or one that tipped out to nobody — so the cell reads "—" rather
+ * than a misleading $0.00.
+ */
+function totalTipout(row: CashoutData): string | null {
+  const amounts = [
+    row.barTipout,
+    row.kitchenTipout,
+    row.expoTipout,
+    row.hostTipout,
+  ].filter((value): value is string => value != null);
+
+  if (amounts.length === 0) return null;
+  return amounts.reduce((sum, value) => sum + Number(value), 0).toFixed(2);
 }
 
 export function AdminDataPage() {
@@ -49,16 +67,14 @@ export function AdminDataPage() {
                 <th className="px-4 py-2.5 font-medium">Created</th>
                 <th className="px-4 py-2.5 font-medium">Submission</th>
                 <th className="px-4 py-2.5 text-right font-medium">
-                  Daily tipout
+                  Net sales
+                </th>
+                <th className="px-4 py-2.5 text-right font-medium">Tipouts</th>
+                <th className="px-4 py-2.5 text-right font-medium">
+                  Owed to house
                 </th>
                 <th className="px-4 py-2.5 text-right font-medium">
-                  Net total
-                </th>
-                <th className="px-4 py-2.5 text-right font-medium">
-                  Cash total
-                </th>
-                <th className="px-4 py-2.5 text-right font-medium">
-                  Card total
+                  Owed to employee
                 </th>
               </tr>
             </thead>
@@ -75,16 +91,16 @@ export function AdminDataPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(row.dailyTipout)}
+                    {money(row.totalNetSales)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(row.netTotal)}
+                    {money(totalTipout(row))}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(row.cashTotal)}
+                    {money(row.cashOwedToHouse)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(row.cardTotal)}
+                    {money(row.cashOwedToEmployee)}
                   </td>
                 </tr>
               ))}
@@ -94,7 +110,8 @@ export function AdminDataPage() {
       )}
 
       <p className="text-ink-muted text-xs">
-        Totals populate once the extraction schemas are finalized.
+        Figures populate once reconciliation is implemented; cashouts completed
+        before then show no amounts.
       </p>
     </div>
   );

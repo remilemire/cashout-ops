@@ -9,12 +9,14 @@ steps rather than HTTP plumbing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient
 
 from app.document_ai import DocumentAnalysis, DocumentClassification, FieldIssue
+from app.features.cashout.data.types import TipoutDepartment
 from app.features.cashout.extraction.schemas import ServerSummaryReportData
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 
@@ -47,6 +49,15 @@ def configure_server_summary(ai_client: FakeAIClient) -> None:
         confidence=0.9,
         issues=[FieldIssue(path="grand_total", message="partially legible")],
     )
+
+
+def completion_body(
+    tipout_departments: Sequence[TipoutDepartment] = (TipoutDepartment.KITCHEN,),
+) -> dict[str, Any]:
+    """The completion payload, for tests that post to the endpoint directly."""
+    return {
+        "tipoutDepartments": [department.value for department in tipout_departments]
+    }
 
 
 async def create_submission(client: AsyncClient) -> str:
@@ -111,10 +122,22 @@ async def unverify_analysis(client: AsyncClient, analysis_id: str) -> dict[str, 
 
 
 async def complete_submission(
-    client: AsyncClient, submission_id: str
+    client: AsyncClient,
+    submission_id: str,
+    *,
+    tipout_departments: Sequence[TipoutDepartment] = (
+        TipoutDepartment.KITCHEN,
+        TipoutDepartment.BAR,
+    ),
 ) -> dict[str, Any]:
+    """Close out a cashout, tipping out to `tipout_departments`.
+
+    The default picks two of the four so the unselected ones stay NULL, which
+    is what records that they were not tipped out.
+    """
     response = await client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
+        json=completion_body(tipout_departments),
         headers=csrf_headers(client),
     )
     assert response.status_code == 200, response.text
@@ -135,6 +158,7 @@ async def unsubmit_submission(
 __all__ = [
     "SERVER_SUMMARY_EXTRACTED",
     "complete_submission",
+    "completion_body",
     "configure_server_summary",
     "create_submission",
     "poll_analysis",

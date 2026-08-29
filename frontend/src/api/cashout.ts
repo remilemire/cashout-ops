@@ -7,6 +7,7 @@ import type {
   CashoutSubmission,
   CashoutSubmissionDetail,
   CashoutSubmissionListItem,
+  CompleteSubmissionInput,
   VerifyAnalysisInput,
 } from "./types";
 
@@ -17,9 +18,10 @@ export const cashoutApi = {
     api<CashoutSubmission>("/cashout/submissions", { method: "POST" }),
   getSubmission: (id: string) =>
     api<CashoutSubmissionDetail>(`/cashout/submissions/${id}`),
-  completeSubmission: (id: string) =>
+  completeSubmission: (id: string, input: CompleteSubmissionInput) =>
     api<CashoutSubmission>(`/cashout/submissions/${id}/complete`, {
       method: "POST",
+      json: input,
     }),
   /** Cancel an incomplete cashout: deletes it and its uploaded documents. */
   cancelSubmission: (id: string) =>

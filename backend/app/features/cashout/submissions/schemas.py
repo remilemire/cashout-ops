@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from app.core.schemas import BaseOut, UtcDateTime
+from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.cashout.data.schemas import CashoutDataOut
+from app.features.cashout.data.types import TipoutDepartment
 from app.features.cashout.documents.schemas import CashoutDocumentOut
 from app.features.users.schemas import UserOut
 
@@ -33,8 +34,13 @@ class CashoutSubmissionDetailOut(CashoutSubmissionOut):
     data: CashoutDataOut | None = None
 
 
+class CashoutSubmissionComplete(BaseIn):
+    tipout_departments: set[TipoutDepartment]
+
+
 __all__ = [
     "CashoutSubmissionDetailOut",
     "CashoutSubmissionListOut",
     "CashoutSubmissionOut",
+    "CashoutSubmissionComplete",
 ]

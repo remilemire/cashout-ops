@@ -195,14 +195,52 @@ export interface CashoutDocument {
   analysis: CashoutDocumentAnalysis | null;
 }
 
-/** Reconciled totals; placeholder fields until reconciliation is implemented. */
+export type TipoutDepartment = "bar" | "kitchen" | "expo" | "host";
+
+export const TIPOUT_DEPARTMENTS: TipoutDepartment[] = [
+  "bar",
+  "kitchen",
+  "expo",
+  "host",
+];
+
+/** The reconciled result of a completed cashout. Amounts are decimal strings. */
 export interface CashoutData {
   id: string;
   createdAt: string;
-  dailyTipout: string | null;
-  netTotal: string | null;
-  cashTotal: string | null;
-  cardTotal: string | null;
+
+  /**
+   * Reconciled off the verified analyses — null on a cashout completed before
+   * reconciliation was implemented, which leaves the tipouts below null too.
+   */
+  foodNetSales: string | null;
+  drinkNetSales: string | null;
+  totalNetSales: string | null;
+  cardPaymentTotal: string | null;
+  cashPaymentTotal: string | null;
+  cardTipTotal: string | null;
+
+  /**
+   * Which departments this cashout tipped out to, and the rates it closed
+   * against. The rates are the row's own snapshot, so a later rate change
+   * never restates a cashout that has already closed.
+   */
+  tipoutDepartments: TipoutDepartment[];
+  barTipoutRate: string;
+  kitchenTipoutRate: string;
+  expoTipoutRate: string;
+  hostTipoutRate: string;
+
+  /** Null for a department that was not tipped out. */
+  barTipout: string | null;
+  kitchenTipout: string | null;
+  expoTipout: string | null;
+  hostTipout: string | null;
+
+  /** At most one side is set: whichever way the cash/card-tip balance fell. */
+  cashOwedToHouse: string | null;
+  cashOwedToEmployee: string | null;
+
   submissionId: string;
 }
 
@@ -210,6 +248,11 @@ export interface CashoutSubmissionDetail extends CashoutSubmission {
   employee: User;
   documents: CashoutDocument[];
   data: CashoutData | null;
+}
+
+export interface CompleteSubmissionInput {
+  /** The departments this cashout tips out to; the rest are left untipped. */
+  tipoutDepartments: TipoutDepartment[];
 }
 
 export interface VerifyAnalysisInput {

@@ -26,6 +26,7 @@ from app.core.config import (
     RedisSettings,
     Settings,
     StorageSettings,
+    TipoutSettings,
 )
 
 # `Settings(_env_file=None)` alone would not cut .env: each group is built by
@@ -70,6 +71,7 @@ def make_test_settings() -> Settings:
         "redis": RedisSettings(**_NO_DOTENV, URL="redis://unused:6379/0"),
         # The default provider (LOCAL) requires a directory.
         "storage": StorageSettings(**_NO_DOTENV, LOCAL_DIR=Path("storage/documents")),
+        "tipout": TipoutSettings(**_NO_DOTENV),
     }
     # A settings group added to Settings but not to `groups` would fall back to
     # its default_factory and silently re-read .env; fail loudly instead.

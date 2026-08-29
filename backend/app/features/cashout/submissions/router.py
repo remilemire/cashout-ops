@@ -17,6 +17,7 @@ from app.integrations.storage.dependencies import get_document_storage
 
 from . import service as submissions_service
 from .schemas import (
+    CashoutSubmissionComplete,
     CashoutSubmissionDetailOut,
     CashoutSubmissionListOut,
     CashoutSubmissionOut,
@@ -120,6 +121,7 @@ async def get_submission(
 )
 async def complete_submission(
     submission_id: SubmissionId,
+    payload: CashoutSubmissionComplete,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionOut:
@@ -130,7 +132,7 @@ async def complete_submission(
     admin may complete it; the completing user is recorded.
     """
     submission = await submissions_service.complete_submission(
-        db, submission_id=submission_id, user=current_user
+        db, payload=payload, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionOut.model_validate(submission)
 

@@ -18,6 +18,7 @@ from app.integrations.storage import DocumentStorageClient
 
 from . import repository
 from .model import CashoutSubmission
+from .schemas import CashoutSubmissionComplete
 from .types import CashoutSubmissionStatus
 
 
@@ -101,7 +102,11 @@ async def list_submissions(
 
 
 async def complete_submission(
-    db: AsyncSession, *, submission_id: UUID, user: User
+    db: AsyncSession,
+    *,
+    payload: CashoutSubmissionComplete,
+    submission_id: UUID,
+    user: User,
 ) -> CashoutSubmission:
     """Reconcile the verified analyses into a CashoutData and close the cashout."""
     submission = await _get_submission_for_actor(
@@ -123,7 +128,12 @@ async def complete_submission(
             raise AppError("SUBMISSION_UNVERIFIED")
         analyses.append(analysis)
 
-    await data_service.reconcile(db, submission_id=submission.id, analyses=analyses)
+    await data_service.reconcile(
+        db,
+        submission_id=submission.id,
+        analyses=analyses,
+        tipout_departments=payload.tipout_departments,
+    )
     submission.status = CashoutSubmissionStatus.COMPLETED
     # Record the actual actor (the admin when an admin completes); the first
     # completion time is bookkeeping — set once, never overwritten.

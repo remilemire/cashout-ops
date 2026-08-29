@@ -10,9 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors.translators import translate_integrity_error
-from app.features.cashout.models import CashoutData, CashoutSubmission
+from app.features.cashout.models import CashoutSubmission
 from app.features.users.types import UserRole
-from tests.support.factories import create_user
+from tests.support.factories import build_cashout_data, create_user
 
 
 async def test_translate_real_postgres_restrict_violation_maps_constraint(
@@ -25,7 +25,7 @@ async def test_translate_real_postgres_restrict_violation_maps_constraint(
     )
     db_session.add(submission)
     await db_session.flush()
-    db_session.add(CashoutData(submission_id=submission.id))
+    db_session.add(build_cashout_data(submission.id))
     await db_session.commit()
 
     with pytest.raises(IntegrityError) as caught:

@@ -6,7 +6,8 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import { isAdminRole } from "@/api/types";
+import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
+import type { TipoutDepartment } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -18,6 +19,7 @@ import {
   FullScreenSpinner,
   PageHeader,
 } from "@/components/ui";
+import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
 
 import { DataCard } from "./DataCard";
@@ -50,7 +52,8 @@ export function SubmissionPage() {
   });
 
   const complete = useMutation({
-    mutationFn: () => cashoutApi.completeSubmission(submissionId),
+    mutationFn: (tipoutDepartments: TipoutDepartment[]) =>
+      cashoutApi.completeSubmission(submissionId, { tipoutDepartments }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
@@ -194,7 +197,7 @@ export function SubmissionPage() {
           allVerified={allVerified}
           pending={complete.isPending}
           error={complete.error}
-          onComplete={() => complete.mutate()}
+          onComplete={(departments) => complete.mutate(departments)}
         />
       )}
 
@@ -233,9 +236,17 @@ export function SubmissionPage() {
   );
 }
 
+const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
+  bar: "Bar",
+  kitchen: "Kitchen",
+  expo: "Expo",
+  host: "Host",
+};
+
 /**
  * The post-verification prompt: once every document is verified the cashier
- * can close the cashout out, or keep uploading through the zone above it.
+ * picks who this shift tips out to and closes the cashout, or keeps uploading
+ * through the zone above it.
  */
 function CompletePrompt({
   allVerified,
@@ -246,8 +257,10 @@ function CompletePrompt({
   allVerified: boolean;
   pending: boolean;
   error: unknown;
-  onComplete: () => void;
+  onComplete: (tipoutDepartments: TipoutDepartment[]) => void;
 }) {
+  const [selected, setSelected] = useState<TipoutDepartment[]>([]);
+
   if (!allVerified) {
     return (
       <Card className="space-y-2">
@@ -261,6 +274,13 @@ function CompletePrompt({
     );
   }
 
+  const toggle = (department: TipoutDepartment) =>
+    setSelected((current) =>
+      current.includes(department)
+        ? current.filter((value) => value !== department)
+        : [...current, department],
+    );
+
   return (
     <Card className="border-accent/40 space-y-3">
       <p className="flex items-center gap-2 font-medium">
@@ -271,7 +291,45 @@ function CompletePrompt({
         Add another end-of-shift document above, or complete the cashout to
         reconcile everything.
       </p>
-      <Button className="w-full" loading={pending} onClick={onComplete}>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Tip out to</legend>
+        <p className="text-ink-muted text-xs">
+          Select every department this shift tips out to. Each one is calculated
+          at the rate in force today.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {TIPOUT_DEPARTMENTS.map((department) => {
+            const checked = selected.includes(department);
+            return (
+              <label
+                key={department}
+                className={cx(
+                  "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+                  "transition-colors",
+                  checked
+                    ? "border-accent bg-accent/10 font-medium"
+                    : "border-edge bg-surface-2",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-accent size-4"
+                  checked={checked}
+                  onChange={() => toggle(department)}
+                />
+                {DEPARTMENT_LABELS[department]}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <Button
+        className="w-full"
+        loading={pending}
+        onClick={() => onComplete(selected)}
+      >
         Complete cashout
       </Button>
       <ErrorBanner error={error} />

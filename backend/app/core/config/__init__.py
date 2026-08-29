@@ -16,6 +16,7 @@ from .outbox import OutboxSettings
 from .rate_limit import RateLimitSettings
 from .redis import RedisSettings
 from .storage import StorageSettings
+from .tipout import TipoutSettings
 
 
 class Settings(BaseSettings):
@@ -42,6 +43,7 @@ class Settings(BaseSettings):
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     redis: RedisSettings = Field(default_factory=lambda: RedisSettings())  # pyright: ignore[reportCallIssue]
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    tipout: TipoutSettings = Field(default_factory=TipoutSettings)
 
 
 settings = Settings()
