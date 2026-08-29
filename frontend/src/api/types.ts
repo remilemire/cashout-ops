@@ -143,6 +143,13 @@ export type DocumentContentType =
   | "image/webp"
   | "application/pdf";
 
+export const DOCUMENT_CONTENT_TYPES: DocumentContentType[] = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+];
+
 export interface CashoutSubmission {
   id: string;
   createdAt: string;

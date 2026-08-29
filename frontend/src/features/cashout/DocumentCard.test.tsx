@@ -26,6 +26,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       deleteDocument: vi.fn(),
       unverifyAnalysis: vi.fn(),
       extractDocument: vi.fn(),
+      uploadDocument: vi.fn(),
     },
   };
 });
@@ -52,6 +53,7 @@ const getAnalysisMock = vi.mocked(cashoutApi.getAnalysis);
 const deleteDocumentMock = vi.mocked(cashoutApi.deleteDocument);
 const unverifyAnalysisMock = vi.mocked(cashoutApi.unverifyAnalysis);
 const extractDocumentMock = vi.mocked(cashoutApi.extractDocument);
+const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
@@ -108,7 +110,7 @@ function renderCard(
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <DocumentCard
         document={document}
@@ -124,6 +126,7 @@ beforeEach(() => {
   deleteDocumentMock.mockReset();
   unverifyAnalysisMock.mockReset();
   extractDocumentMock.mockReset();
+  uploadDocumentMock.mockReset();
   getAnalysisMock.mockResolvedValue(analysis);
   deleteDocumentMock.mockResolvedValue(undefined);
   unverifyAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
@@ -210,6 +213,60 @@ describe("DocumentCard", () => {
 
     await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
     expect(extractDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
+  });
+
+  it("uploads a replacement image after a failed extraction", async () => {
+    const failedAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      status: "failed",
+      classification: null,
+      extractedDataJson: null,
+      verifiedDataJson: null,
+      errorCode: "output_limit_reached",
+      errorMessage: "This document was too large for the AI to read in full.",
+    };
+    getAnalysisMock.mockResolvedValue(failedAnalysis);
+    const uploadedAnalysis: CashoutDocumentAnalysis = {
+      ...needsVerificationAnalysis,
+      id: "analysis-2",
+      status: "extracting",
+      cashoutDocumentId: "document-2",
+    };
+    uploadDocumentMock.mockResolvedValue(uploadedAnalysis);
+    const { container } = renderCard(true, {
+      ...cashoutDocument,
+      analysis: failedAnalysis,
+    });
+
+    expect(screen.getByRole("button", { name: "Replace image" })).toBeDefined();
+    const file = new File(["cropped"], "cropped.jpg", { type: "image/jpeg" });
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    // The new document uploads first; only then is the failed one removed.
+    await waitFor(() => expect(deleteDocumentMock).toHaveBeenCalledOnce());
+    expect(uploadDocumentMock).toHaveBeenCalledWith("submission-1", file);
+    expect(deleteDocumentMock).toHaveBeenCalledWith("document-1");
+  });
+
+  it("hides reupload after a failed extraction when not editable", () => {
+    const failedAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      status: "failed",
+      extractedDataJson: null,
+      verifiedDataJson: null,
+      errorCode: "output_limit_reached",
+    };
+    getAnalysisMock.mockResolvedValue(failedAnalysis);
+    renderCard(false, { ...cashoutDocument, analysis: failedAnalysis });
+
+    expect(
+      screen.getByText("Extraction failed (output_limit_reached)"),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Replace image" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Retry extraction" }),
+    ).toBeNull();
   });
 
   it("corrects the classification and re-runs the extraction", async () => {

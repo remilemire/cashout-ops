@@ -15,12 +15,15 @@ export function Dialog({
   title,
   children,
   dismissible = true,
+  maxWidth = "max-w-sm",
 }: {
   open: boolean;
   onClose?: () => void;
   title: string;
   children: ReactNode;
   dismissible?: boolean;
+  /** Width cap as a Tailwind class; replaces (never merges with) the default. */
+  maxWidth?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -40,7 +43,8 @@ export function Dialog({
       }}
       onClose={() => onClose?.()}
       className={cx(
-        "border-line bg-surface text-ink m-auto w-[calc(100vw-2rem)] max-w-sm",
+        "border-line bg-surface text-ink m-auto w-[calc(100vw-2rem)]",
+        maxWidth,
         "rounded-2xl border p-5 shadow-lg backdrop:bg-black/50",
         // Fade + slight zoom on open/close. Discrete display/overlay
         // transitions keep the closing dialog rendered until the fade ends;

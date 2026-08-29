@@ -8,12 +8,14 @@ import {
   RefreshCw,
   ScanLine,
   Trash2,
+  Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import {
   CASHOUT_DOCUMENT_CLASSIFICATIONS,
+  DOCUMENT_CONTENT_TYPES,
   type CashoutDocument,
   type CashoutDocumentClassification,
 } from "@/api/types";
@@ -82,6 +84,32 @@ export function DocumentCard({
     mutationFn: () => cashoutApi.extractDocument(document.id),
     onSuccess: (updated) => {
       queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    },
+  });
+
+  // Replace a document whose extraction failed with a better shot of it
+  // (e.g. cropped after an output-limit failure). Upload before delete: a
+  // rejected upload (unsupported type, too large, identical bytes) leaves
+  // the failed original in place.
+  const reuploadRef = useRef<HTMLInputElement>(null);
+  const reupload = useMutation({
+    mutationFn: async (file: File) => {
+      const uploaded = await cashoutApi.uploadDocument(submissionId, file);
+      await cashoutApi.deleteDocument(document.id);
+      return uploaded;
+    },
+    onSuccess: (uploaded) => {
+      queryClient.setQueryData(cashoutKeys.analysis(uploaded.id), uploaded);
+      // The old document's analysis is gone with it — drop its cache entry so
+      // nothing keeps polling a 404.
+      if (initial) {
+        queryClient.removeQueries({
+          queryKey: cashoutKeys.analysis(initial.id),
+        });
+      }
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
       });
@@ -254,17 +282,38 @@ export function DocumentCard({
               )}
             </div>
             {editable && (
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => retry.mutate()}
-                loading={retry.isPending}
-              >
-                <RefreshCw className="size-4" />
-                Retry extraction
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  onClick={() => retry.mutate()}
+                  loading={retry.isPending}
+                >
+                  <RefreshCw className="size-4" />
+                  Retry extraction
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => reuploadRef.current?.click()}
+                  loading={reupload.isPending}
+                >
+                  <Upload className="size-4" />
+                  Replace image
+                </Button>
+                <input
+                  ref={reuploadRef}
+                  type="file"
+                  accept={DOCUMENT_CONTENT_TYPES.join(",")}
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file && !reupload.isPending) reupload.mutate(file);
+                    event.target.value = "";
+                  }}
+                />
+              </div>
             )}
             <ErrorBanner error={retry.error} />
+            <ErrorBanner error={reupload.error} />
           </div>
         )}
 
@@ -345,6 +394,8 @@ export function DocumentCard({
         open={classifyOpen}
         onClose={() => setClassifyOpen(false)}
         title="Correct document type"
+        // Wide enough for the action row to keep both labels on one line.
+        maxWidth="max-w-md"
       >
         <div className="space-y-4">
           <p className="text-ink-muted text-sm">

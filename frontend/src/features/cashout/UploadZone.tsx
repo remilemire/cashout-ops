@@ -3,10 +3,11 @@
 import { Camera, FolderOpen, UploadCloud } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { DOCUMENT_CONTENT_TYPES } from "@/api/types";
 import { Button, ErrorBanner } from "@/components/ui";
 import { cx } from "@/lib/cx";
 
-const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,application/pdf";
+const ACCEPTED_TYPES = DOCUMENT_CONTENT_TYPES.join(",");
 
 /**
  * Mobile-first document intake: camera capture and file picker buttons, with
