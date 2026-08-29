@@ -26,6 +26,22 @@ class CashoutDocumentAnalysis(Base):
 
     __tablename__ = "cashout_document_analyses"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    # One analysis per document: a retry resets this row in place rather than
+    # appending an attempt.
+    cashout_document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cashout_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
     provider: Mapped[AIProvider] = mapped_column(
         enum_column(AIProvider, "ai_provider"), nullable=False
     )
@@ -77,24 +93,6 @@ class CashoutDocumentAnalysis(Base):
     )
     verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )
-
-    # One analysis per document: a retry resets this row in place rather than
-    # appending an attempt.
-    cashout_document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("cashout_documents.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-
-    # Last to match the migrations' column order (metadata orders columns by
-    # declaration, and the inherited Entity columns used to land last).
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
     )
 
     cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analysis")

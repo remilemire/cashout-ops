@@ -31,6 +31,19 @@ class CashoutDocument(Base):
         ),
     )
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    cashout_submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cashout_submissions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     # The classified document type lives on the analysis
     # (CashoutDocumentAnalysis.classification), not here.
     content_type: Mapped[DocumentContentType] = mapped_column(
@@ -48,21 +61,6 @@ class CashoutDocument(Base):
     )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
-    )
-
-    cashout_submission_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("cashout_submissions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    # Last to match the migrations' column order (metadata orders columns by
-    # declaration, and the inherited Entity columns used to land last).
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
     )
 
     cashout_submission: Mapped[CashoutSubmission] = relationship(

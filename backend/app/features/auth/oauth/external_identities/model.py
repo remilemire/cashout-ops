@@ -37,6 +37,13 @@ class ExternalIdentity(Base):
         ),
     )
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -46,11 +53,3 @@ class ExternalIdentity(Base):
     )
 
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    # id/created_at last to match the migration's physical column order.
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )

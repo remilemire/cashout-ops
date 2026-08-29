@@ -28,19 +28,16 @@ class User(Base):
         ),
     )
 
-    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    # id/created_at before role to match the migrations' physical column order
-    # (metadata orders columns by declaration; role was appended by the
-    # add-user-role migration after is_admin was dropped).
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
+
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
 
     role: Mapped[UserRole] = mapped_column(
         enum_column(UserRole, "user_role"),
@@ -49,10 +46,9 @@ class User(Base):
         server_default=UserRole.STAFF.value,
     )
 
-    # Soft-delete marker (appended last to match the add-user-soft-delete
-    # migration's physical column order). A user with cashout submissions is
-    # deactivated by setting this instead of being removed, so their
-    # submissions keep a valid author; NULL means the account is live.
+    # Soft-delete marker: a user with cashout submissions is deactivated by
+    # setting this instead of being removed, so their submissions keep a valid
+    # author; NULL means the account is live.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

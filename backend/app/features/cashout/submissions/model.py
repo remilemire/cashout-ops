@@ -22,6 +22,19 @@ if TYPE_CHECKING:
 class CashoutSubmission(Base):
     __tablename__ = "cashout_submissions"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
     status: Mapped[CashoutSubmissionStatus] = mapped_column(
         enum_column(CashoutSubmissionStatus, "cashout_submission_status"),
         nullable=False,
@@ -36,40 +49,24 @@ class CashoutSubmission(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    # Last to match the migrations' column order (metadata orders columns by
-    # declaration, and the inherited Entity columns used to land last).
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
     # Who performed the most recent completion (an admin can complete another
     # user's cashout). Bookkeeping only: no relationship until a consumer
     # needs it.
     completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+
+    # When the cashout was completed for the first time — set once, never
+    # overwritten (unlike completed_by_user_id it survives unsubmit), and the
+    # marker that blocks hard deletion.
+    first_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Soft-delete marker: a submission with traces (documents, data, or a
     # completion on record) is stamped rather than removed, so its history —
     # and every user FK on it — stays intact. NULL means the row is live.
     deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    # When the cashout was completed for the first time — set once, never
-    # overwritten (unlike completed_by_user_id it survives unsubmit), and the
-    # marker that blocks hard deletion. Last to match the migrations' physical
-    # column order.
-    first_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

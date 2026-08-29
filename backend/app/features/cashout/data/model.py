@@ -27,6 +27,26 @@ class CashoutData(Base):
 
     __tablename__ = "cashout_data"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        # Name the FK explicitly: cashout/errors.py maps it to SUBMISSION_HAS_DATA,
+        # and the ON DELETE RESTRICT violation reports the constraint name.
+        ForeignKey(
+            "cashout_submissions.id",
+            ondelete="RESTRICT",
+            name="cashout_data_submission_id_fkey",
+        ),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
     # Extracted / source values.
     #
     # TODO(document-ai): nullable only until service.reconcile populates them
@@ -141,27 +161,5 @@ class CashoutData(Base):
     kitchen_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
     expo_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
     host_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
-
-    submission_id: Mapped[uuid.UUID] = mapped_column(
-        # Name the FK explicitly: cashout/errors.py maps it to SUBMISSION_HAS_DATA,
-        # and the ON DELETE RESTRICT violation reports the constraint name.
-        ForeignKey(
-            "cashout_submissions.id",
-            ondelete="RESTRICT",
-            name="cashout_data_submission_id_fkey",
-        ),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-
-    # Last to match the migrations' column order (metadata orders columns by
-    # declaration, and the inherited Entity columns used to land last).
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
 
     submission: Mapped[CashoutSubmission] = relationship(back_populates="data")
