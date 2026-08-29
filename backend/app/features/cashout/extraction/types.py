@@ -10,12 +10,8 @@ from enum import StrEnum
 # processor folds a null classification into it — so a completed analysis
 # always has a classification.
 class CashoutDocumentClassification(StrEnum):
-    TOUCHBISTRO_SERVER_SHIFT_REPORT = "touchbistro_server_shift_report"
-    PAYSTONE_TERMINAL_REPORT = "paystone_terminal_report"
-    PAYMENT_RECEIPT = "payment_receipt"
-    DAILY_TIP_OUT_SHEET = "daily_tip_out_sheet"
-    DAILY_CASH_SUMMARY = "daily_cash_summary"
-    MANUAL_NOTE = "manual_note"
+    TOUCHBISTRO_REPORT = "touchbistro_report"
+    SERVER_SUMMARY_REPORT = "server_summary_report"
     UNKNOWN = "unknown"
 
 

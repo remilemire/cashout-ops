@@ -10,8 +10,9 @@ from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
+    SERVER_SUMMARY_EXTRACTED,
     complete_submission,
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     poll_analysis,
     unverify_analysis,
@@ -28,7 +29,7 @@ async def test_verify_without_corrections_confirms_extraction(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
@@ -45,7 +46,7 @@ async def test_unverify_reopens_verification_for_editing(
 ) -> None:
     # The full edit loop: verify, unverify, re-verify with a correction,
     # complete.
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -57,15 +58,18 @@ async def test_unverify_reopens_verification_for_editing(
     assert reopened["verifiedDataJson"] is None
     assert reopened["verifiedByUserId"] is None
     assert reopened["verifiedAt"] is None
-    assert reopened["extractedDataJson"] == {"note": "cash $100"}
+    assert reopened["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
 
     reverified = await verify_analysis(
         cashier_client,
         created["id"],
-        {"verifiedData": {"note": "cash $100 corrected"}},
+        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1200.00"}},
     )
     assert reverified["status"] == DocumentAnalysisStatus.VERIFIED.value
-    assert reverified["verifiedDataJson"] == {"note": "cash $100 corrected"}
+    assert reverified["verifiedDataJson"] == {
+        **SERVER_SUMMARY_EXTRACTED,
+        "grand_total": "1200.00",
+    }
 
     completed = await complete_submission(cashier_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
@@ -76,7 +80,7 @@ async def test_unverify_non_verified_analysis_conflicts(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     # Extracted but never verified: nothing to send back.
@@ -95,7 +99,7 @@ async def test_unverify_after_completion_conflicts(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -120,7 +124,7 @@ async def test_unverify_requires_employee_or_admin(
     make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -197,7 +201,7 @@ async def test_failed_extraction_and_retry(
 
     # Retry once the provider recovers.
     ai_client.error = None
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     retry = await cashier_client.post(
         f"/api/cashout/documents/{analysis['cashoutDocumentId']}/extract",
         headers=csrf_headers(cashier_client),
@@ -219,7 +223,7 @@ async def test_retry_extraction_from_needs_verification(
 ) -> None:
     # A retry is not reserved for FAILED: an unverified extraction can be
     # re-run too (e.g. the cashier wants a fresh read of the document).
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
@@ -235,7 +239,7 @@ async def test_retry_extraction_from_needs_verification(
     await drain_outbox()
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert analysis["extractedDataJson"] == {"note": "cash $100"}
+    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
 
 
 async def test_verify_twice_conflicts(
@@ -243,7 +247,7 @@ async def test_verify_twice_conflicts(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])

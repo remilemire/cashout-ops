@@ -12,9 +12,9 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from app.document_ai import DocumentClassification
-from app.features.cashout.extraction.schemas import ManualNoteData
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.integrations.ai.anthropic import AnthropicAIClient
 from app.integrations.ai.gemini import GeminiAIClient
@@ -31,6 +31,14 @@ from tests.support.fakes.sdk import (
 Classification = DocumentClassification[CashoutDocumentClassification]
 
 
+class _Extracted(BaseModel):
+    """Stand-in response model — the fakes under test are domain-agnostic."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str
+
+
 def test_unit_marker_auto_applied(request: pytest.FixtureRequest) -> None:
     # FixtureRequest.node is an un-annotated abstract property; cast to the
     # concrete item type and ignore the one unavoidably-untyped access.
@@ -40,7 +48,7 @@ def test_unit_marker_auto_applied(request: pytest.FixtureRequest) -> None:
 
 async def test_fake_ai_client_returns_canned_output_and_records_calls() -> None:
     classification = Classification(
-        value=CashoutDocumentClassification.MANUAL_NOTE, confidence=0.95
+        value=CashoutDocumentClassification.SERVER_SUMMARY_REPORT, confidence=0.95
     )
     ai = FakeAIClient(classification=classification)
 
@@ -53,21 +61,21 @@ async def test_fake_ai_client_returns_canned_output_and_records_calls() -> None:
 
 
 async def test_fake_anthropic_matches_adapter_surface() -> None:
-    note = ManualNoteData(note="ok")
+    note = _Extracted(note="ok")
     fake = FakeAnthropic(response=FakeParsedMessage("end_turn", note))
     client = AnthropicAIClient(fake, model="claude-test")  # type: ignore[arg-type]
 
-    result = await client.analyze("text", ManualNoteData, max_tokens=512)
+    result = await client.analyze("text", _Extracted, max_tokens=512)
 
     assert result is note
     assert fake.messages.calls[0]["max_tokens"] == 512
 
 
 async def test_fake_openai_matches_adapter_surface() -> None:
-    note = ManualNoteData(note="ok")
+    note = _Extracted(note="ok")
     client = OpenAIAIClient(FakeOpenAI(parsed=note), model="gpt-test")  # type: ignore[arg-type]
 
-    result = await client.analyze("text", ManualNoteData, max_tokens=512)
+    result = await client.analyze("text", _Extracted, max_tokens=512)
 
     assert result is note
 
@@ -76,6 +84,6 @@ async def test_fake_gemini_matches_adapter_surface() -> None:
     fake = FakeGemini(response=FakeGeminiResponse(parsed={"note": "ok"}))
     client = GeminiAIClient(fake, model="gemini-test")  # type: ignore[arg-type]
 
-    result = await client.analyze("text", ManualNoteData, max_tokens=512)
+    result = await client.analyze("text", _Extracted, max_tokens=512)
 
-    assert result == ManualNoteData(note="ok")
+    assert result == _Extracted(note="ok")

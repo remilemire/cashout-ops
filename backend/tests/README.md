@@ -38,7 +38,7 @@ tests/
     factories.py         direct DB seeding: create_user
     cashout.py           workflow drivers: create_submission, upload_document,
                          poll_analysis, verify_analysis, complete_submission,
-                         configure_manual_note
+                         configure_server_summary
     documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads
     fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient
       sdk/               SDK-shaped fakes for the provider adapter unit tests

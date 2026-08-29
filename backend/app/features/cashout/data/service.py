@@ -21,8 +21,7 @@ async def reconcile(
 ) -> CashoutData:
     """Build the submission's data row from its verified analyses and add it."""
     # TODO(document-ai): real reconciliation (cross-checking totals between the
-    # verified analyses) once the extraction schemas define real fields. Until
-    # then the placeholder columns stay NULL.
+    # verified analyses). Until then the placeholder columns stay NULL.
     _ = analyses
     data = CashoutData(submission_id=submission_id)
     await repository.add_data(db, data)

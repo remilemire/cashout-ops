@@ -8,26 +8,16 @@ from app.document_ai import ClassificationHint
 
 from .schemas import (
     CashoutDocumentSchema,
-    DailyCashSummaryData,
-    DailyTipOutSheetData,
-    ManualNoteData,
-    PaymentReceiptData,
-    PaystoneTerminalReportData,
-    TouchBistroServerShiftReportData,
+    ServerSummaryReportData,
+    TouchBistroReportData,
 )
 from .types import CashoutDocumentClassification
 
 CASHOUT_DOCUMENT_SCHEMAS: Mapping[
     CashoutDocumentClassification, type[CashoutDocumentSchema]
 ] = {
-    CashoutDocumentClassification.TOUCHBISTRO_SERVER_SHIFT_REPORT: (
-        TouchBistroServerShiftReportData
-    ),
-    CashoutDocumentClassification.PAYSTONE_TERMINAL_REPORT: PaystoneTerminalReportData,
-    CashoutDocumentClassification.PAYMENT_RECEIPT: PaymentReceiptData,
-    CashoutDocumentClassification.DAILY_TIP_OUT_SHEET: DailyTipOutSheetData,
-    CashoutDocumentClassification.DAILY_CASH_SUMMARY: DailyCashSummaryData,
-    CashoutDocumentClassification.MANUAL_NOTE: ManualNoteData,
+    CashoutDocumentClassification.TOUCHBISTRO_REPORT: TouchBistroReportData,
+    CashoutDocumentClassification.SERVER_SUMMARY_REPORT: ServerSummaryReportData,
 }
 
 # UNKNOWN deliberately has no entry: a document the model can't place has
@@ -40,50 +30,20 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[
 CASHOUT_CLASSIFICATION_HINTS: Mapping[
     CashoutDocumentClassification, ClassificationHint
 ] = {
-    CashoutDocumentClassification.TOUCHBISTRO_SERVER_SHIFT_REPORT: ClassificationHint(
+    CashoutDocumentClassification.TOUCHBISTRO_REPORT: ClassificationHint(
         markers=(
-            "TouchBistro branding at the top",
-            "sales broken into menu categories (food, liquor, ...)",
-            "tender totals, tips, and voids/discounts",
-            "titled a shift, server, or sales report",
-        ),
-        anti_markers=(
-            "per-card-brand settlement totals",
-            "batch or terminal identifiers",
+            "titled Whiskey District / End of Day",
+            "Sales Totals, Payment and Refund Totals, and Credit Card Tips Report sections",
+            "Created on an iPad using TouchBistro Pro near the bottom",
         ),
     ),
-    CashoutDocumentClassification.PAYSTONE_TERMINAL_REPORT: ClassificationHint(
+    CashoutDocumentClassification.SERVER_SUMMARY_REPORT: ClassificationHint(
         markers=(
-            "a Paystone batch, settlement, or day-close report",
-            "card transaction counts and totals per card brand",
-            "terminal or batch identifiers",
+            "titled SERVER SUMMARY REPORT",
+            "END OF REPORT at the bottom",
+            "CREDIT, DEBIT, and GRAND TOTALS sections",
+            "uppercase headers",
         ),
-        anti_markers=("a menu or sales-category breakdown",),
-    ),
-    CashoutDocumentClassification.PAYMENT_RECEIPT: ClassificationHint(
-        markers=(
-            "a single card transaction amount",
-            '"Debit Terminal" or a terminal identifier near the bottom',
-            "an authorization code and card details",
-            "possibly tip and total lines",
-        ),
-        anti_markers=("multiple transactions or batch totals",),
-    ),
-    CashoutDocumentClassification.DAILY_TIP_OUT_SHEET: ClassificationHint(
-        markers=(
-            "rows of tip-out recipients or categories (kitchen, bar, ...)",
-            "amounts often handwritten onto a printed template",
-        ),
-    ),
-    CashoutDocumentClassification.DAILY_CASH_SUMMARY: ClassificationHint(
-        markers=(
-            "expected cash, counted or submitted cash",
-            "floats and shortage/overage amounts",
-        ),
-    ),
-    CashoutDocumentClassification.MANUAL_NOTE: ClassificationHint(
-        markers=("free-form handwritten notes or calculations",),
-        anti_markers=("an underlying printed template or form",),
     ),
 }
 

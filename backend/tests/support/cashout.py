@@ -9,12 +9,13 @@ steps rather than HTTP plumbing.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient
 
 from app.document_ai import DocumentAnalysis, DocumentClassification, FieldIssue
-from app.features.cashout.extraction.schemas import ManualNoteData
+from app.features.cashout.extraction.schemas import ServerSummaryReportData
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 
 from .api import csrf_headers
@@ -27,15 +28,24 @@ if TYPE_CHECKING:
     from .fixtures.outbox import OutboxDrain
 
 
-def configure_manual_note(ai_client: FakeAIClient, note: str = "cash $100") -> None:
-    """Point the fake AI at a MANUAL_NOTE classification + extraction result."""
+_EXTRACTED = ServerSummaryReportData(
+    grand_total=Decimal("1234.56"), grand_total_transaction_count=42
+)
+
+# The same payload as the API serializes it, for asserting on responses:
+# Decimal lands in JSONB as a string.
+SERVER_SUMMARY_EXTRACTED = _EXTRACTED.model_dump(mode="json")
+
+
+def configure_server_summary(ai_client: FakeAIClient) -> None:
+    """Point the fake AI at a SERVER_SUMMARY_REPORT classification + extraction."""
     ai_client.classification = DocumentClassification[CashoutDocumentClassification](
-        value=CashoutDocumentClassification.MANUAL_NOTE, confidence=0.95
+        value=CashoutDocumentClassification.SERVER_SUMMARY_REPORT, confidence=0.95
     )
-    ai_client.extraction = DocumentAnalysis[ManualNoteData](
-        data=ManualNoteData(note=note),
+    ai_client.extraction = DocumentAnalysis[ServerSummaryReportData](
+        data=_EXTRACTED,
         confidence=0.9,
-        issues=[FieldIssue(path="note", message="partially legible")],
+        issues=[FieldIssue(path="grand_total", message="partially legible")],
     )
 
 
@@ -123,8 +133,9 @@ async def unsubmit_submission(
 
 
 __all__ = [
+    "SERVER_SUMMARY_EXTRACTED",
     "complete_submission",
-    "configure_manual_note",
+    "configure_server_summary",
     "create_submission",
     "poll_analysis",
     "unsubmit_submission",

@@ -25,9 +25,9 @@ class CashoutData(Base):
 
     __tablename__ = "cashout_data"
 
-    # TODO(document-ai): placeholder columns. The real reconciled fields depend
-    # on the per-document extraction schemas (still dummy) — replace these once
-    # those are defined, and fill them in this sub-feature's service.reconcile.
+    # TODO(document-ai): placeholder columns. The real reconciled fields follow
+    # from the per-document extraction schemas — replace these to match, and
+    # fill them in this sub-feature's service.reconcile.
     daily_tipout: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     net_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     cash_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)

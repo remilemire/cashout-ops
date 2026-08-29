@@ -13,8 +13,9 @@ from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
+    SERVER_SUMMARY_EXTRACTED,
     complete_submission,
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     poll_analysis,
     unsubmit_submission,
@@ -32,7 +33,7 @@ async def test_full_cashout_flow(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
 
     submission_id = await create_submission(cashier_client)
 
@@ -44,11 +45,16 @@ async def test_full_cashout_flow(
     # Polling picks up the background extraction's outcome.
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert analysis["classification"] == CashoutDocumentClassification.MANUAL_NOTE.value
+    assert (
+        analysis["classification"]
+        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+    )
     assert analysis["classificationConfidence"] == 0.95
-    assert analysis["extractedDataJson"] == {"note": "cash $100"}
+    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
     assert analysis["extractionConfidence"] == 0.9
-    assert analysis["issues"] == [{"path": "note", "message": "partially legible"}]
+    assert analysis["issues"] == [
+        {"path": "grand_total", "message": "partially legible"}
+    ]
 
     # The detail view embeds each document's analysis.
     detail = (
@@ -59,17 +65,20 @@ async def test_full_cashout_flow(
     assert document["analysis"]["id"] == analysis["id"]
     assert (
         document["analysis"]["classification"]
-        == CashoutDocumentClassification.MANUAL_NOTE.value
+        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
     )
 
     # The cashier verifies with a correction.
     verified = await verify_analysis(
         cashier_client,
         analysis["id"],
-        {"verifiedData": {"note": "cash $100 confirmed"}},
+        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1234.00"}},
     )
     assert verified["status"] == DocumentAnalysisStatus.VERIFIED.value
-    assert verified["verifiedDataJson"] == {"note": "cash $100 confirmed"}
+    assert verified["verifiedDataJson"] == {
+        **SERVER_SUMMARY_EXTRACTED,
+        "grand_total": "1234.00",
+    }
     assert verified["verifiedByUserId"] is not None
     assert verified["verifiedAt"] is not None
 
@@ -96,7 +105,7 @@ async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
 ) -> None:
     # The admin correction flow: unsubmit reopens the cashout, unverify
     # reopens one analysis, and re-completing reconciles fresh data.
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -109,9 +118,12 @@ async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
     reverified = await verify_analysis(
         admin_client,
         created["id"],
-        {"verifiedData": {"note": "cash $90 (admin corrected)"}},
+        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "999.00"}},
     )
-    assert reverified["verifiedDataJson"] == {"note": "cash $90 (admin corrected)"}
+    assert reverified["verifiedDataJson"] == {
+        **SERVER_SUMMARY_EXTRACTED,
+        "grand_total": "999.00",
+    }
 
     recompleted = await complete_submission(admin_client, submission_id)
     assert recompleted["status"] == CashoutSubmissionStatus.COMPLETED.value
@@ -131,7 +143,7 @@ async def test_admin_can_manage_another_users_submission(
     # Admins have full control over every cashout: everything the employee
     # can do on their own submission, an admin can do on anyone's — with the
     # admin recorded as the acting user.
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
     admin_id = (await admin_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
@@ -182,7 +194,7 @@ async def test_cannot_access_another_users_submission(
     make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 

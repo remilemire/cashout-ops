@@ -9,7 +9,7 @@ from app.core.config import settings
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     complete_submission,
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     upload_document,
     verify_analysis,
@@ -26,7 +26,7 @@ async def test_document_content_served_to_owner_and_admin(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     url = f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
@@ -46,7 +46,7 @@ async def test_delete_document_from_processing_submission(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
@@ -75,7 +75,7 @@ async def test_delete_document_after_completion_conflicts(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, analysis["id"])
@@ -103,7 +103,7 @@ async def test_delete_document_requires_employee_or_admin(
     make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
@@ -178,7 +178,7 @@ async def test_upload_rejects_duplicate_document(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     await upload_document(cashier_client, submission_id, drain=drain_outbox)
     stored_before = len(storage.objects)

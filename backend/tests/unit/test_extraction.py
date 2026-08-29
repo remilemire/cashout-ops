@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 
@@ -27,8 +28,8 @@ from app.features.cashout.extraction.registry import (
     CASHOUT_DOCUMENT_SCHEMAS,
 )
 from app.features.cashout.extraction.schemas import (
-    ManualNoteData,
-    TouchBistroServerShiftReportData,
+    ServerSummaryReportData,
+    TouchBistroReportData,
 )
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.integrations.ai import (
@@ -72,23 +73,28 @@ async def _build_processor(
 
 async def test_processor_classifies_and_extracts() -> None:
     processor, ref = await _build_processor(
-        classification=_classification(CashoutDocumentClassification.MANUAL_NOTE),
-        extraction=DocumentAnalysis[ManualNoteData](
-            data=ManualNoteData(note="cash short $5"),
+        classification=_classification(
+            CashoutDocumentClassification.SERVER_SUMMARY_REPORT
+        ),
+        extraction=DocumentAnalysis[ServerSummaryReportData](
+            data=ServerSummaryReportData(
+                grand_total=Decimal("1234.56"), grand_total_transaction_count=42
+            ),
             confidence=0.8,
-            issues=[FieldIssue(path="note", message="handwriting was unclear")],
+            issues=[FieldIssue(path="grand_total", message="the print was faint")],
         ),
     )
 
     result = await processor.process(ref)
 
-    assert result.classification is CashoutDocumentClassification.MANUAL_NOTE
+    assert result.classification is CashoutDocumentClassification.SERVER_SUMMARY_REPORT
     assert result.classification_confidence == 0.9
-    assert isinstance(result.data, ManualNoteData)
-    assert result.data.note == "cash short $5"
+    assert isinstance(result.data, ServerSummaryReportData)
+    assert result.data.grand_total == Decimal("1234.56")
+    assert result.data.grand_total_transaction_count == 42
     assert result.confidence == 0.8
-    assert result.issues[0].path == "note"
-    assert result.schema_name == "ManualNoteData"
+    assert result.issues[0].path == "grand_total"
+    assert result.schema_name == "ServerSummaryReportData"
 
 
 @pytest.mark.parametrize(
@@ -127,9 +133,14 @@ async def test_processor_layers_domain_instructions_on_both_calls() -> None:
     storage = FakeDocumentStorage()
     await storage.write("doc-key", b"file-bytes")
     ai = FakeAIClient(
-        classification=_classification(CashoutDocumentClassification.MANUAL_NOTE),
-        extraction=DocumentAnalysis[ManualNoteData](
-            data=ManualNoteData(note="cash short $5"), confidence=0.8
+        classification=_classification(
+            CashoutDocumentClassification.SERVER_SUMMARY_REPORT
+        ),
+        extraction=DocumentAnalysis[ServerSummaryReportData](
+            data=ServerSummaryReportData(
+                grand_total=Decimal("1234.56"), grand_total_transaction_count=42
+            ),
+            confidence=0.8,
         ),
     )
     processor = CashoutDocumentProcessor(
@@ -150,13 +161,15 @@ async def test_processor_layers_domain_instructions_on_both_calls() -> None:
     assert classify_instructions is not None
     assert "# Additional instructions" in classify_instructions
     # Classification hints render keyed by enum value with their markers.
-    assert "touchbistro_server_shift_report" in classify_instructions
-    assert "TouchBistro branding at the top" in classify_instructions
+    assert "touchbistro_report" in classify_instructions
+    assert "Created on an iPad using TouchBistro Pro near the bottom" in (
+        classify_instructions
+    )
     assert extract_instructions is not None
     assert "# Additional instructions" in extract_instructions
     # Field hints harvested from the schema render per-field guidance.
-    assert "* note — " in extract_instructions
-    assert "the main handwritten text" in extract_instructions
+    assert "* grand_total — " in extract_instructions
+    assert "beside Grand Total" in extract_instructions
 
     # Each operation runs under its own output-token budget.
     assert classify_max_tokens == 111
@@ -403,7 +416,7 @@ def test_every_registered_schema_field_declares_a_hint() -> None:
 def test_field_hints_stay_out_of_the_json_schema() -> None:
     # Hints must not grow the provider schema payloads (unlike Field
     # descriptions, which land in the JSON schema).
-    schema = json.dumps(TouchBistroServerShiftReportData.model_json_schema())
+    schema = json.dumps(TouchBistroReportData.model_json_schema())
     assert "FieldHint" not in schema
     assert "Gross Sales" not in schema
 

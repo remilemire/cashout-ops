@@ -130,12 +130,8 @@ export type DocumentAnalysisStatus =
   | "failed";
 
 export type CashoutDocumentClassification =
-  | "touchbistro_server_shift_report"
-  | "paystone_terminal_report"
-  | "payment_receipt"
-  | "daily_tip_out_sheet"
-  | "daily_cash_summary"
-  | "manual_note"
+  | "touchbistro_report"
+  | "server_summary_report"
   | "unknown";
 
 export type DocumentContentType =
@@ -199,7 +195,7 @@ export interface CashoutDocument {
   analysis: CashoutDocumentAnalysis | null;
 }
 
-/** Reconciled totals; placeholder fields until the extraction schemas are real. */
+/** Reconciled totals; placeholder fields until reconciliation is implemented. */
 export interface CashoutData {
   id: string;
   createdAt: string;

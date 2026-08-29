@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 from tests.support.cashout import (
     complete_submission,
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     upload_document,
     verify_analysis,
@@ -21,7 +21,7 @@ async def test_data_table_is_admin_only(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict
@@ -15,137 +16,110 @@ class CashoutDocumentSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# TODO(document-ai): Every field below is a placeholder so the pipeline runs
-# end to end. The real observable fields and monetary conventions per document
-# type have NOT been implemented yet — replace them before trusting extracted
-# data.
-
-
-class TouchBistroServerShiftReportData(CashoutDocumentSchema):
-    net_sales: Annotated[
-        float | None,
+class ServerSummaryReportData(CashoutDocumentSchema):
+    grand_total: Annotated[
+        Decimal,
         FieldHint(
-            labels=("Net Sales",),
-            anti_anchors=("Gross Sales", "category subtotals"),
+            sections=("GRAND TOTALS",),
+            anchors=("beside Grand Total", "last row", "last column"),
+            anti_anchors=("CREDIT", "DEBIT", "TOTAL CREDIT"),
         ),
-    ] = None
-    total_tips: Annotated[
-        float | None,
+    ]
+    grand_total_transaction_count: Annotated[
+        int,
         FieldHint(
-            labels=("Total Tips", "Tips"),
-            anti_anchors=("Declared Tips", "tip-out amounts"),
+            sections=("GRAND TOTALS",),
+            anchors=("beside Grand Total", "last row", "middle column"),
+            anti_anchors=("CREDIT", "DEBIT", "TOTAL CREDIT"),
         ),
-    ] = None
-    cash_owed: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Cash Owed", "Cash Due"),
-            anti_anchors=("Expected Cash", "Cash Submitted"),
-        ),
-    ] = None
+    ]
 
 
-class PaystoneTerminalReportData(CashoutDocumentSchema):
-    card_total: Annotated[
-        float | None,
+class TouchBistroReportData(CashoutDocumentSchema):
+    drinks_net_sales: Annotated[
+        Decimal,
         FieldHint(
-            labels=("Total", "Settlement Total"),
-            sections=("batch or settlement totals",),
-            anti_anchors=("per-card-brand subtotals",),
+            labels=("Net Sales:",),
+            sections=("Sales Totals", "Total Drinks"),
+            anchors=("below Gross Sales", "second row", "right side"),
+            anti_anchors=(
+                "Total Gift Cards",
+                "Total Food",
+                "Subtotal",
+                "Food and Drink Tax Collected",
+                "Total",
+            ),
         ),
-    ] = None
-    tip_total: Annotated[
-        float | None,
+    ]
+    food_net_sales: Annotated[
+        Decimal,
         FieldHint(
-            labels=("Tip", "Tips"),
-            sections=("batch or settlement totals",),
-            anti_anchors=("per-transaction tip lines",),
+            labels=("Net Sales:",),
+            sections=("Sales Totals", "Total Food"),
+            anchors=("below Gross Sales", "second row", "right side"),
+            anti_anchors=(
+                "Total Gift Cards",
+                "Total Drinks",
+                "Subtotal",
+                "Food and Drink Tax Collected",
+                "Total",
+            ),
         ),
-    ] = None
-    transaction_count: Annotated[
-        int | None,
+    ]
+    total_net_sales: Annotated[
+        Decimal,
         FieldHint(
-            labels=("Count", "Transactions"),
-            anchors=("beside the batch or settlement totals",),
+            labels=("Net Sales (incl tax):",),
+            sections=("Sales Totals", "Total"),
+            anchors=("right side",),
+            anti_anchors=(
+                "Total Gift Cards",
+                "Total Drinks",
+                "Total Food",
+                "Subtotal",
+                "Food and Drink Tax Collected",
+            ),
         ),
-    ] = None
+    ]
+
+    card_transaction_count: Annotated[
+        int,
+        FieldHint(
+            labels=("Orders:",),
+            sections=("Payment and Refund Totals", "Card"),
+            anchors=("below Cash transaction count",),
+            anti_anchors=("Total Payments", "Total Refunds"),
+        ),
+    ]
+
+    cash_payment_total: Annotated[
+        Decimal,
+        FieldHint(
+            labels=("Total:",),
+            sections=("Payment and Refund Totals", "Cash"),
+            anchors=("one row", "right side"),
+            anti_anchors=("Card", "Total Payments"),
+        ),
+    ]
+    card_payment_total: Annotated[
+        Decimal,
+        FieldHint(
+            labels=("Total:",),
+            sections=("Payment and Refund Totals", "Card"),
+            anchors=("below Subtotal:", "below Tips:", "third row", "right side"),
+            anti_anchors=("Cash", "Total Payments"),
+        ),
+    ]
+
+    card_tip_total: Annotated[
+        Decimal,
+        FieldHint(
+            labels=("Total:",),
+            sections=("Credit Card Tips Report", "Total Credit Card Tips"),
+            anchors=("right side",),
+            anti_anchors=("Tips (Card)", "Tips (Gift Card)"),
+        ),
+    ]
 
 
-class PaymentReceiptData(CashoutDocumentSchema):
-    amount: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Amount", "Purchase"),
-            anti_anchors=("Tip", "Total"),
-        ),
-    ] = None
-    tip_amount: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Tip", "Gratuity"),
-            anchors=("often handwritten below the printed amount",),
-        ),
-    ] = None
-    payment_method: Annotated[
-        str | None,
-        FieldHint(labels=("Card Type", "Account Type"), sections=("card details",)),
-    ] = None
-
-
-class DailyTipOutSheetData(CashoutDocumentSchema):
-    tip_out_total: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Total",),
-            anchors=("grand total row, often handwritten at the bottom",),
-        ),
-    ] = None
-    support_staff_share: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Support", "Kitchen"),
-            anchors=("the recipient or category rows",),
-        ),
-    ] = None
-
-
-class DailyCashSummaryData(CashoutDocumentSchema):
-    opening_float: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Opening Float", "Float"),
-            anti_anchors=("Closing Float",),
-        ),
-    ] = None
-    cash_deposits: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Cash Deposit", "Deposits"),
-            anti_anchors=("Expected Cash",),
-        ),
-    ] = None
-    closing_float: Annotated[
-        float | None,
-        FieldHint(
-            labels=("Closing Float",),
-            anti_anchors=("Opening Float",),
-        ),
-    ] = None
-
-
-class ManualNoteData(CashoutDocumentSchema):
-    note: Annotated[
-        str | None,
-        FieldHint(anchors=("the main handwritten text, including any arithmetic",)),
-    ] = None
-
-
-__all__ = [
-    "CashoutDocumentSchema",
-    "DailyCashSummaryData",
-    "DailyTipOutSheetData",
-    "ManualNoteData",
-    "PaymentReceiptData",
-    "PaystoneTerminalReportData",
-    "TouchBistroServerShiftReportData",
-]
+__all__ = ["CashoutDocumentSchema", "ServerSummaryReportData", "TouchBistroReportData"]

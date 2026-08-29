@@ -20,7 +20,7 @@ from app.features.auth.email_challenges.dependencies import MAX_LINK_ATTEMPTS
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     upload_document,
 )
@@ -221,7 +221,7 @@ async def test_upload_documents_per_user_is_limited(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings.rate_limit, "UPLOADS_PER_USER_PER_HOUR", 2)
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
 
     # Two uploads with distinct bytes (duplicate checksums are rejected)
@@ -256,7 +256,7 @@ async def test_extract_per_user_is_limited(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings.rate_limit, "EXTRACTS_PER_USER_PER_HOUR", 1)
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     url = f"/api/cashout/documents/{created['cashoutDocumentId']}/extract"

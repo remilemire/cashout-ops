@@ -26,12 +26,17 @@ const analysis: CashoutDocumentAnalysis = {
   provider: "anthropic",
   model: "test-model",
   status: "needs_verification",
-  classification: "manual_note",
+  classification: "server_summary_report",
   classificationConfidence: 0.95,
-  schemaName: "ManualNoteData",
-  extractedDataJson: { note: "cash $100", total: 12.5 },
+  schemaName: "ServerSummaryReportData",
+  // grand_total is a Decimal, so the API serializes it as a string; the count
+  // stays a JSON number. Both types are exercised by the coercion test below.
+  extractedDataJson: {
+    grand_total: "1234.56",
+    grand_total_transaction_count: 42,
+  },
   extractionConfidence: 0.7,
-  issues: [{ path: "note", message: "partially legible" }],
+  issues: [{ path: "grand_total", message: "partially legible" }],
   errorCode: null,
   errorMessage: null,
   completedAt: "2026-07-17T00:01:00Z",
@@ -85,8 +90,8 @@ describe("VerificationForm", () => {
   it("sends type-coerced corrections when a field was edited", async () => {
     renderForm();
 
-    fireEvent.change(screen.getByLabelText("Total"), {
-      target: { value: "13" },
+    fireEvent.change(screen.getByLabelText("Grand total transaction count"), {
+      target: { value: "41" },
     });
     fireEvent.click(
       screen.getByRole("button", { name: /verify with 1 correction/i }),
@@ -94,7 +99,10 @@ describe("VerificationForm", () => {
 
     await waitFor(() =>
       expect(verifyMock).toHaveBeenCalledWith("analysis-1", {
-        verifiedData: { note: "cash $100", total: 13 },
+        verifiedData: {
+          grand_total: "1234.56",
+          grand_total_transaction_count: 41,
+        },
       }),
     );
   });
@@ -103,6 +111,6 @@ describe("VerificationForm", () => {
     renderForm(false);
 
     expect(screen.queryByRole("button", { name: /verify/i })).toBeNull();
-    expect(screen.getByText("cash $100")).toBeDefined();
+    expect(screen.getByText("1234.56")).toBeDefined();
   });
 });

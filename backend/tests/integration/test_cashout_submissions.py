@@ -14,7 +14,7 @@ from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     complete_submission,
-    configure_manual_note,
+    configure_server_summary,
     create_submission,
     unsubmit_submission,
     upload_document,
@@ -68,7 +68,7 @@ async def test_delete_processing_submission_with_documents_soft_deletes(
     drain_outbox: OutboxDrain,
     db_session: AsyncSession,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
@@ -109,7 +109,7 @@ async def test_delete_completed_submission_is_restricted(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, analysis["id"])
@@ -169,7 +169,7 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
@@ -222,7 +222,7 @@ async def test_unsubmit_is_admin_only(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -267,7 +267,7 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
 ) -> None:
     # Complete once, unsubmit, then strip the cashout down to nothing: the
     # completion on record (first_completed_at) still blocks a hard delete.
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
@@ -309,7 +309,7 @@ async def test_complete_requires_every_analysis_verified(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     await upload_document(
         cashier_client, submission_id, drain=drain_outbox
@@ -330,7 +330,7 @@ async def test_complete_requires_employee_or_admin(
     make_client: ClientFactory,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_manual_note(ai_client)
+    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])

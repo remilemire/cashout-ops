@@ -28,13 +28,12 @@ Use unknown for anything else, including unrelated photos and documents too degr
 
 Distinguish carefully:
 
-* A terminal report aggregates many transactions or batch totals; a payment receipt shows exactly one transaction.
-* A TouchBistro report is organized around sales and menu categories; a Paystone report is organized around card transactions and settlement.
-* Handwriting alone does not make a document a manual_note: tip-out sheets and cash summaries are often filled in by hand on printed templates. Use manual_note only when there is no underlying form.
+* A touchbistro_report is the point-of-sale end-of-day report, organized around sales categories and payment totals; a server_summary_report is the payment-terminal summary, organized around card transaction counts and totals.
+* Both cover the same shift and repeat similar amounts, so classify on the document's own layout and headings rather than on the values it reports.
 """
 
 _EXTRACT_INSTRUCTIONS = """
-The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale or payment-terminal report (e.g. TouchBistro, Paystone), a card or merchant receipt, a server cashout sheet, a tip or tip-out record, a daily cash sheet, or a handwritten calculation. Similar values may repeat across sections.
+The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale end-of-day report or a payment-terminal server summary. Similar values may repeat across sections.
 
 Interpret fields by their accounting meaning and keep distinct concepts distinct — gross vs. net vs. total sales, individual tenders, collected vs. declared tips, tip-outs, refunds/voids/discounts, expected vs. submitted vs. owed vs. due cash, shortages vs. overages, transaction vs. settlement totals, and subtotal vs. tax vs. tip vs. final charged amount. Do not combine values from different documents or sections, and do not assume two similarly named totals represent the same accounting value.
 
@@ -98,8 +97,8 @@ class CashoutDocumentProcessor:
                 schema_name=None,
             )
 
-        # TODO(document-ai): Add deterministic validation once the schemas
-        # define real fields (totals reconcile, amounts non-negative, ...).
+        # TODO(document-ai): Add deterministic validation over the extracted
+        # data (totals reconcile, amounts non-negative, ...).
         analysis = await self._documents.process(
             document, schema, instructions=_EXTRACT_INSTRUCTIONS
         )
