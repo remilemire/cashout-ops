@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.features.cashout.analyses.model import CashoutDocumentAnalysis
     from app.features.cashout.documents.types import DocumentUpload
     from app.features.cashout.extraction import CashoutDocumentProcessor
+    from app.features.cashout.extraction.types import CashoutDocumentClassification
     from app.features.users.model import User
     from app.integrations.storage import DocumentStorageClient
 
@@ -62,12 +63,17 @@ async def restart_extraction(
     document_id: UUID,
     user: User,
     processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
 ) -> CashoutDocumentAnalysis:
     # Pure delegation: the behavior lives wholly in the analyses service. The
     # indirection is kept so both extraction entry points enter through this
     # workflow and the root router never reaches into sub-feature services.
     return await analyses_service.restart_extraction(
-        db, document_id=document_id, user=user, processor=processor
+        db,
+        document_id=document_id,
+        user=user,
+        processor=processor,
+        classification=classification,
     )
 
 

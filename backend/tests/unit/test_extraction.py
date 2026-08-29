@@ -120,6 +120,66 @@ async def test_processor_unknown_returns_no_data(
     assert result.schema_name is None
 
 
+async def test_processor_supplied_classification_skips_classify() -> None:
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", b"file-bytes")
+    # No classification configured: a classify call would fail the fake.
+    ai = FakeAIClient(
+        extraction=DocumentAnalysis[ServerSummaryReportData](
+            data=ServerSummaryReportData(
+                grand_total=Decimal("1234.56"), grand_total_transaction_count=42
+            ),
+            confidence=0.8,
+        ),
+    )
+    processor = CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
+        )
+    )
+    ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
+
+    result = await processor.process(
+        ref, classification=CashoutDocumentClassification.SERVER_SUMMARY_REPORT
+    )
+
+    # The one AI call is the extraction into the supplied type's schema.
+    (call,) = ai.calls
+    (_, response_model, _, _) = call
+    assert response_model is DocumentAnalysis[ServerSummaryReportData]
+    assert result.classification is CashoutDocumentClassification.SERVER_SUMMARY_REPORT
+    # The supplied value is an assertion, not a model score: no confidence.
+    assert result.classification_confidence is None
+    assert isinstance(result.data, ServerSummaryReportData)
+    assert result.confidence == 0.8
+    assert result.schema_name == "ServerSummaryReportData"
+
+
+async def test_processor_supplied_unknown_makes_no_ai_calls() -> None:
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", b"file-bytes")
+    # Nothing configured: any AI call would fail the fake.
+    ai = FakeAIClient()
+    processor = CashoutDocumentProcessor(
+        DocumentAIClient(
+            ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
+        )
+    )
+    ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
+
+    result = await processor.process(
+        ref, classification=CashoutDocumentClassification.UNKNOWN
+    )
+
+    assert ai.calls == []
+    assert result.classification is CashoutDocumentClassification.UNKNOWN
+    assert result.classification_confidence is None
+    assert result.data is None
+    assert result.confidence is None
+    assert result.issues == []
+    assert result.schema_name is None
+
+
 async def test_processor_propagates_ai_error() -> None:
     processor, ref = await _build_processor(
         error=AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, "provider down"),

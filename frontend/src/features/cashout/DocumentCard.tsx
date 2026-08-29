@@ -12,8 +12,13 @@ import {
 import { useEffect, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import type { CashoutDocument } from "@/api/types";
+import {
+  CASHOUT_DOCUMENT_CLASSIFICATIONS,
+  type CashoutDocument,
+  type CashoutDocumentClassification,
+} from "@/api/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Dialog } from "@/components/dialog";
 import { Button, Card, ErrorBanner, Spinner } from "@/components/ui";
 import { enumLabel, formatDateTime } from "@/lib/format";
 
@@ -37,6 +42,9 @@ export function DocumentCard({
 }) {
   const queryClient = useQueryClient();
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [classifyOpen, setClassifyOpen] = useState(false);
+  const [classification, setClassification] =
+    useState<CashoutDocumentClassification>("unknown");
   const initial = document.analysis;
 
   // Poll the analysis while the AI extraction runs in the background.
@@ -65,6 +73,19 @@ export function DocumentCard({
 
   const retry = useMutation({
     mutationFn: () => cashoutApi.extractDocument(document.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    },
+  });
+
+  // The user corrects a misclassification: the backend re-extracts as the
+  // chosen type (skipping the AI classify step) and the card polls as usual.
+  const reclassify = useMutation({
+    mutationFn: (value: CashoutDocumentClassification) =>
+      cashoutApi.extractDocument(document.id, { classification: value }),
     onSuccess: (updated) => {
       queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
       void queryClient.invalidateQueries({
@@ -103,6 +124,10 @@ export function DocumentCard({
 
   const isImage = document.contentType.startsWith("image/");
   const contentUrl = cashoutApi.documentContentUrl(document.id);
+  // Correcting the classification only makes sense on a settled, unverified
+  // extraction; other states keep the plain label.
+  const canCorrectClassification =
+    editable && analysis?.status === "needs_verification";
 
   return (
     <>
@@ -131,11 +156,29 @@ export function DocumentCard({
 
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{document.originalFilename}</p>
-            <p className="text-ink-muted text-xs">
-              {analysis?.classification
-                ? enumLabel(analysis.classification)
-                : "Not classified yet"}
-            </p>
+            <div className="flex items-center">
+              <p className="text-ink-muted text-xs">
+                {analysis?.classification
+                  ? enumLabel(analysis.classification)
+                  : "Not classified yet"}
+              </p>
+              {canCorrectClassification && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Correct document type"
+                  title="Correct document type"
+                  className="text-ink-muted hover:text-ink -my-2 px-1.5"
+                  loading={reclassify.isPending}
+                  onClick={() => {
+                    setClassification(analysis?.classification ?? "unknown");
+                    setClassifyOpen(true);
+                  }}
+                >
+                  <Pencil className="size-3" />
+                </Button>
+              )}
+            </div>
             <a
               href={contentUrl}
               target="_blank"
@@ -231,6 +274,7 @@ export function DocumentCard({
               }
             />
             <ErrorBanner error={retry.error} />
+            <ErrorBanner error={reclassify.error} />
           </div>
         )}
 
@@ -284,6 +328,61 @@ export function DocumentCard({
         This permanently deletes {document.originalFilename} and its extracted
         data from this cashout. This can&rsquo;t be undone.
       </ConfirmDialog>
+
+      <Dialog
+        open={classifyOpen}
+        onClose={() => setClassifyOpen(false)}
+        title="Correct document type"
+      >
+        <div className="space-y-4">
+          <p className="text-ink-muted text-sm">
+            Re-runs the extraction as the selected type, replacing the current
+            extracted values.
+          </p>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">
+              Document type
+            </span>
+            <select
+              className="bg-surface border-line focus:ring-accent/50 min-h-11 w-full rounded-lg border px-3 text-sm outline-none focus:ring-2"
+              value={classification}
+              onChange={(event) =>
+                setClassification(
+                  event.target.value as CashoutDocumentClassification,
+                )
+              }
+            >
+              {CASHOUT_DOCUMENT_CLASSIFICATIONS.map((value) => (
+                <option key={value} value={value}>
+                  {enumLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setClassifyOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              // Re-running with the same type would be the plain retry —
+              // don't fire an identical extraction from a "correction".
+              disabled={classification === analysis?.classification}
+              onClick={() => {
+                reclassify.mutate(classification);
+                setClassifyOpen(false);
+              }}
+            >
+              <RefreshCw className="size-4" />
+              Re-run extraction
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </>
   );
 }

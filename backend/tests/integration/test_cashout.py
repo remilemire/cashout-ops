@@ -190,6 +190,118 @@ async def test_admin_can_manage_another_users_submission(
     assert again.json()["code"] == "SUBMISSION_COMPLETED"
 
 
+async def test_extract_with_corrected_classification_skips_ai_classify(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    # Only the extraction stays configured: a classify call would now fail the
+    # fake (and land the analysis FAILED), so a NEEDS_VERIFICATION outcome
+    # proves the corrected rerun skipped it.
+    ai_client.classification = None
+    response = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        json={
+            "classification": CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+        },
+        headers=csrf_headers(cashier_client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == DocumentAnalysisStatus.EXTRACTING.value
+    await drain_outbox()
+
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert (
+        analysis["classification"]
+        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+    )
+    # The corrected value is the user's assertion, not a model score.
+    assert analysis["classificationConfidence"] is None
+    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert analysis["extractionConfidence"] == 0.9
+
+
+async def test_extract_with_corrected_unknown_clears_extraction_without_ai(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    # Nothing stays configured: any AI call at all would fail the fake, so a
+    # completed analysis proves the UNKNOWN correction made none.
+    ai_client.classification = None
+    ai_client.extraction = None
+    response = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        json={"classification": CashoutDocumentClassification.UNKNOWN.value},
+        headers=csrf_headers(cashier_client),
+    )
+    assert response.status_code == 200, response.text
+    await drain_outbox()
+
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert analysis["classification"] == CashoutDocumentClassification.UNKNOWN.value
+    assert analysis["classificationConfidence"] is None
+    assert analysis["extractedDataJson"] is None
+    assert analysis["schemaName"] is None
+
+
+async def test_extract_without_body_still_runs_the_full_pipeline(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    # The pre-existing retry: no body at all.
+    response = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        headers=csrf_headers(cashier_client),
+    )
+    assert response.status_code == 200, response.text
+    await drain_outbox()
+
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert (
+        analysis["classification"]
+        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+    )
+    # The AI classified: its score is recorded as before.
+    assert analysis["classificationConfidence"] == 0.95
+    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+
+
+async def test_extract_rejects_an_invalid_classification_value(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    response = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        json={"classification": "coffee_receipt"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_FAILED"
+
+
 async def test_cannot_access_another_users_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,

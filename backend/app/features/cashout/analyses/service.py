@@ -12,6 +12,7 @@ from app.document_ai import DocumentRef
 from app.errors import AppError
 from app.features.cashout.documents.model import CashoutDocument
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
@@ -33,19 +34,26 @@ async def start_extraction(
     *,
     document: CashoutDocument,
     processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
 ) -> CashoutDocumentAnalysis:
     """Reset the document's analysis to EXTRACTING and queue the extraction.
 
     The message is enqueued in the caller's transaction, so it dispatches only
     once that transaction commits; the AI extraction itself runs from the
     outbox (`run_extraction` via the extraction handler). Clients poll the
-    returned analysis.
+    returned analysis. A supplied `classification` (a user correcting the AI)
+    rides the message: the extraction skips AI classification and its
+    confidence is recorded as null.
     """
     analysis = await _reset_analysis(db, document=document, processor=processor)
     await outbox_service.enqueue(
         db,
         type="cashout.run_extraction",
-        payload={"document_id": str(document.id)},
+        payload={
+            "document_id": str(document.id),
+            # The enum's string value; the handler's model parses it back.
+            "classification": None if classification is None else classification.value,
+        },
     )
     return analysis
 
@@ -56,12 +64,15 @@ async def restart_extraction(
     document_id: UUID,
     user: User,
     processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
 ) -> CashoutDocumentAnalysis:
     """Reset a document's analysis and queue a fresh extraction attempt.
 
     As with upload, the extraction message is enqueued in this transaction
     and dispatches once the request commits. Verified analyses cannot be
-    re-run, and an extraction already in flight cannot be restarted.
+    re-run, and an extraction already in flight cannot be restarted. A
+    supplied `classification` skips AI classification and extracts straight
+    into that type's schema, recording a null classification confidence.
     """
     document = await _get_document(db, document_id)
     submission = await _get_submission_for_actor(
@@ -72,7 +83,9 @@ async def restart_extraction(
             "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
         )
 
-    return await start_extraction(db, document=document, processor=processor)
+    return await start_extraction(
+        db, document=document, processor=processor, classification=classification
+    )
 
 
 async def run_extraction(
@@ -80,6 +93,7 @@ async def run_extraction(
     *,
     document_id: UUID,
     processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
 ) -> None:
     """Outbox job: run the AI extraction and persist the outcome.
 
@@ -87,7 +101,9 @@ async def run_extraction(
     committed its EXTRACTING analysis, so it owns its session and
     transaction — the one sanctioned exception to "services never commit".
     All failures are handled here (the analysis is marked FAILED), so the
-    outbox message completes even when the extraction does not.
+    outbox message completes even when the extraction does not. A supplied
+    `classification` skips AI classification (its confidence is recorded as
+    null).
     """
     async with sessionmaker() as db:
         try:
@@ -96,7 +112,12 @@ async def run_extraction(
                 # Deleted between the request committing and this job running;
                 # the cascade removed its analysis too — nothing to update.
                 return
-            await _apply_extraction(db, document=document, processor=processor)
+            await _apply_extraction(
+                db,
+                document=document,
+                processor=processor,
+                classification=classification,
+            )
             await db.commit()
             return
         except Exception:
@@ -245,12 +266,15 @@ async def _apply_extraction(
     *,
     document: CashoutDocument,
     processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
 ) -> None:
     """Run classification + extraction and persist the outcome on the analysis.
 
     Success lands the analysis in NEEDS_VERIFICATION — an UNKNOWN
     classification is not a failure, it simply has no extracted data. A
-    provider failure lands it in FAILED with error_code/error_message.
+    provider failure lands it in FAILED with error_code/error_message. A
+    supplied `classification` is passed to the processor, which skips the AI
+    classify step and reports a null classification confidence.
     """
     analysis = await repository.find_analysis_by_document(db, document_id=document.id)
     if analysis is None:
@@ -262,7 +286,7 @@ async def _apply_extraction(
     )
 
     try:
-        result = await processor.process(ref)
+        result = await processor.process(ref, classification=classification)
     except AIAnalysisError as exc:
         # Persist the code + a safe mapped message; the raw provider text can
         # leak internal detail, so keep it in the logs only.

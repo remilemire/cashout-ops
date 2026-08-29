@@ -211,4 +211,69 @@ describe("DocumentCard", () => {
     await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
     expect(extractDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
   });
+
+  it("corrects the classification and re-runs the extraction", async () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    renderCard(true, {
+      ...cashoutDocument,
+      analysis: needsVerificationAnalysis,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Correct document type" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Correct document type",
+    });
+
+    fireEvent.change(within(dialog).getByLabelText("Document type"), {
+      target: { value: "touchbistro_report" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Re-run extraction" }),
+    );
+
+    await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
+    expect(extractDocumentMock.mock.calls[0]).toEqual([
+      "document-1",
+      { classification: "touchbistro_report" },
+    ]);
+    // The mutation lands the extracting analysis in the cache: the card is
+    // back in the extracting state (and polls from there as usual).
+    expect(await screen.findByText("Reading the document…")).toBeDefined();
+  });
+
+  it("keeps the unchanged classification from re-running", () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    renderCard(true, {
+      ...cashoutDocument,
+      analysis: needsVerificationAnalysis,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Correct document type" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Correct document type",
+    });
+
+    // The select defaults to the current classification; confirming an
+    // identical rerun is disabled rather than firing a pointless extraction.
+    const confirm = within(dialog).getByRole("button", {
+      name: "Re-run extraction",
+    });
+    expect(confirm).toHaveProperty("disabled", true);
+  });
+
+  it("hides the classification correction when not editable", () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    renderCard(false, {
+      ...cashoutDocument,
+      analysis: needsVerificationAnalysis,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Correct document type" }),
+    ).toBeNull();
+  });
 });

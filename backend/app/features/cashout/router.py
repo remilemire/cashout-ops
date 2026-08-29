@@ -28,7 +28,7 @@ from app.lib.documents import DocumentContentType, read_document
 from app.security.dependencies import require_csrf
 
 from .analyses.router import router as analyses_router
-from .analyses.schemas import CashoutDocumentAnalysisOut
+from .analyses.schemas import CashoutDocumentAnalysisOut, CashoutDocumentExtract
 from .data.router import router as data_router
 from .dependencies import rate_limit_extract, rate_limit_upload
 from .documents.router import router as documents_router
@@ -153,18 +153,26 @@ async def extract_document(
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
+    # The body is optional: a bare POST is the plain retry.
+    payload: CashoutDocumentExtract | None = None,
 ) -> CashoutDocumentAnalysisOut:
     """Restart extraction on a document (e.g. after a `FAILED` attempt).
 
     Resets the analysis to `EXTRACTING` and runs the AI in the background —
     poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
     cannot be re-run, nor one whose extraction is still in progress.
+
+    With a `classification` in the body (the user correcting a
+    misclassification), the rerun skips AI classification and extracts
+    straight into that type's schema; the recorded classification confidence
+    is then null. Without one, the full classify + extract pipeline runs.
     """
     analysis = await workflows.restart_extraction(
         db,
         document_id=document_id,
         user=current_user,
         processor=processor,
+        classification=payload.classification if payload is not None else None,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

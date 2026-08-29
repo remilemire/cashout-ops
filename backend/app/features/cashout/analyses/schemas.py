@@ -38,4 +38,15 @@ class CashoutAnalysisVerify(BaseIn):
     verified_data: dict[str, Any] | None = None
 
 
-__all__ = ["CashoutAnalysisVerify", "CashoutDocumentAnalysisOut"]
+class CashoutDocumentExtract(BaseIn):
+    # A corrected classification: the rerun skips AI classification and
+    # extracts as this type. Omit (or null) for an ordinary retry — a full
+    # classify + extract.
+    classification: CashoutDocumentClassification | None = None
+
+
+__all__ = [
+    "CashoutAnalysisVerify",
+    "CashoutDocumentAnalysisOut",
+    "CashoutDocumentExtract",
+]

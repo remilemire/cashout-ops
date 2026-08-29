@@ -110,7 +110,9 @@ async def test_enqueue_validates_and_persists_the_message(
     )
 
     assert message.type == "cashout.run_extraction"
-    assert message.payload == {"document_id": str(document_id)}
+    # Persisted as the validated model, so omitted defaults (here the
+    # optional corrected classification) land explicitly.
+    assert message.payload == {"document_id": str(document_id), "classification": None}
     assert message.attempts == 0
 
 

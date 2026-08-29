@@ -134,6 +134,9 @@ export type CashoutDocumentClassification =
   | "server_summary_report"
   | "unknown";
 
+export const CASHOUT_DOCUMENT_CLASSIFICATIONS: CashoutDocumentClassification[] =
+  ["touchbistro_report", "server_summary_report", "unknown"];
+
 export type DocumentContentType =
   | "image/jpeg"
   | "image/png"
@@ -258,4 +261,13 @@ export interface CompleteSubmissionInput {
 export interface VerifyAnalysisInput {
   /** Corrections to the extracted data; omit to confirm as-is. */
   verifiedData?: Record<string, unknown>;
+}
+
+export interface ExtractDocumentInput {
+  /**
+   * Corrected classification: the rerun skips AI classification and extracts
+   * as this type (its confidence is recorded as null). Omit for a plain
+   * retry — the full classify + extract pipeline.
+   */
+  classification?: CashoutDocumentClassification;
 }

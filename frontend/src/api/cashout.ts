@@ -8,6 +8,7 @@ import type {
   CashoutSubmissionDetail,
   CashoutSubmissionListItem,
   CompleteSubmissionInput,
+  ExtractDocumentInput,
   VerifyAnalysisInput,
 } from "./types";
 
@@ -40,9 +41,12 @@ export const cashoutApi = {
       { method: "POST", body },
     );
   },
-  extractDocument: (documentId: string) =>
+  /** Re-run extraction; a corrected classification skips the AI classify step. */
+  extractDocument: (documentId: string, input?: ExtractDocumentInput) =>
     api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/extract`, {
       method: "POST",
+      // A bare retry sends no body at all.
+      ...(input !== undefined && { json: input }),
     }),
   /** Remove a document (and its analysis) from an incomplete submission. */
   deleteDocument: (documentId: string) =>

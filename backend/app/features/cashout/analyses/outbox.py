@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.core.outbox import OutboxMessageDefinition, OutboxMessageDefinitionList
 from app.features.cashout.extraction import build_cashout_document_processor
+from app.features.cashout.extraction.types import CashoutDocumentClassification
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -31,6 +32,9 @@ type OutboxMessageType = Literal["cashout.run_extraction"]
 
 class RunExtraction(BaseModel):
     document_id: UUID
+    # A user-corrected classification to extract as, skipping AI
+    # classification; None runs the full classify + extract pipeline.
+    classification: CashoutDocumentClassification | None = None
 
 
 _run_extraction_message: OutboxMessageDefinition[OutboxMessageType, RunExtraction] = (
@@ -69,6 +73,7 @@ class RunExtractionOutboxHandler:
             self._sessionmaker,
             document_id=payload.document_id,
             processor=self._processor,
+            classification=payload.classification,
         )
 
     async def on_dead_letter(self, payload: RunExtraction) -> None:

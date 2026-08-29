@@ -47,7 +47,9 @@ Handwritten values may be corrections or final accepted amounts; prefer them ove
 class CashoutDocumentProcessingResult:
     # Never null: an unclassifiable document is UNKNOWN.
     classification: CashoutDocumentClassification
-    classification_confidence: float
+    # None when the caller supplied the classification (an assertion, not a
+    # model score).
+    classification_confidence: float | None
     # data/confidence/issues are None/empty when the classification has no
     # registered schema (UNKNOWN).
     data: CashoutDocumentSchema | None
@@ -73,24 +75,34 @@ class CashoutDocumentProcessor:
     async def process(
         self,
         document: DocumentRef,
+        *,
+        classification: CashoutDocumentClassification | None = None,
     ) -> CashoutDocumentProcessingResult:
-        classification = await self._documents.classify(
-            document,
-            CashoutDocumentClassification,
-            instructions=_CLASSIFY_INSTRUCTIONS,
-            hints=CASHOUT_CLASSIFICATION_HINTS,
-        )
-        # The generic layer expresses "can't classify" as a null value; the
-        # domain folds it into the explicit UNKNOWN member.
-        value = classification.value or CashoutDocumentClassification.UNKNOWN
+        if classification is not None:
+            # A supplied classification (e.g. a user correcting the AI) is an
+            # assertion, not a model score: the classify call is skipped and no
+            # confidence is recorded.
+            value = classification
+            confidence = None
+        else:
+            classified = await self._documents.classify(
+                document,
+                CashoutDocumentClassification,
+                instructions=_CLASSIFY_INSTRUCTIONS,
+                hints=CASHOUT_CLASSIFICATION_HINTS,
+            )
+            # The generic layer expresses "can't classify" as a null value; the
+            # domain folds it into the explicit UNKNOWN member.
+            value = classified.value or CashoutDocumentClassification.UNKNOWN
+            confidence = classified.confidence
 
         # UNKNOWN (and any type without a registered schema) has nothing to
-        # extract.
+        # extract — a supplied UNKNOWN therefore makes no AI call at all.
         schema = CASHOUT_DOCUMENT_SCHEMAS.get(value)
         if schema is None:
             return CashoutDocumentProcessingResult(
                 classification=value,
-                classification_confidence=classification.confidence,
+                classification_confidence=confidence,
                 data=None,
                 confidence=None,
                 issues=[],
@@ -104,7 +116,7 @@ class CashoutDocumentProcessor:
         )
         return CashoutDocumentProcessingResult(
             classification=value,
-            classification_confidence=classification.confidence,
+            classification_confidence=confidence,
             data=analysis.data,
             confidence=analysis.confidence,
             issues=analysis.issues,
