@@ -27,6 +27,12 @@ import { CLASSIFICATION_LABELS } from "./fields";
 import { VerificationForm } from "./VerificationForm";
 import { AnalysisStatusBadge } from "./status";
 
+// "Unknown" is not offered as a correction: it has nothing to extract, and a
+// document that truly is none of these gets removed instead.
+const SELECTABLE_CLASSIFICATIONS = CASHOUT_DOCUMENT_CLASSIFICATIONS.filter(
+  (value) => value !== "unknown",
+);
+
 /**
  * One uploaded document with its analysis lifecycle: polls the analysis while
  * the background extraction runs, then renders the state-appropriate step
@@ -45,7 +51,7 @@ export function DocumentCard({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
   const [classification, setClassification] =
-    useState<CashoutDocumentClassification>("unknown");
+    useState<CashoutDocumentClassification>(SELECTABLE_CLASSIFICATIONS[0]!);
   const initial = document.analysis;
 
   // Poll the analysis while the AI extraction runs in the background.
@@ -172,7 +178,12 @@ export function DocumentCard({
                   className="text-ink-muted hover:text-ink -my-2 px-1.5"
                   loading={reclassify.isPending}
                   onClick={() => {
-                    setClassification(analysis?.classification ?? "unknown");
+                    const current = analysis?.classification;
+                    setClassification(
+                      current && current !== "unknown"
+                        ? current
+                        : SELECTABLE_CLASSIFICATIONS[0]!,
+                    );
                     setClassifyOpen(true);
                   }}
                 >
@@ -345,7 +356,7 @@ export function DocumentCard({
               Document type
             </span>
             <select
-              className="bg-surface border-line focus:ring-accent/50 min-h-11 w-full rounded-lg border px-3 text-sm outline-none focus:ring-2"
+              className="bg-surface border-line focus:ring-accent/50 h-11 w-full rounded-lg border px-3 text-sm outline-none focus:ring-2"
               value={classification}
               onChange={(event) =>
                 setClassification(
@@ -353,7 +364,7 @@ export function DocumentCard({
                 )
               }
             >
-              {CASHOUT_DOCUMENT_CLASSIFICATIONS.map((value) => (
+              {SELECTABLE_CLASSIFICATIONS.map((value) => (
                 <option key={value} value={value}>
                   {CLASSIFICATION_LABELS[value]}
                 </option>

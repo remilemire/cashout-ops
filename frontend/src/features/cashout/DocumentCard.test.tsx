@@ -229,6 +229,10 @@ describe("DocumentCard", () => {
     expect(
       within(dialog).getByRole("option", { name: "TouchBistro report" }),
     ).toBeDefined();
+    // "Unknown" has nothing to extract, so it is not offered as a correction.
+    expect(
+      within(dialog).queryByRole("option", { name: "Unknown" }),
+    ).toBeNull();
 
     fireEvent.change(within(dialog).getByLabelText("Document type"), {
       target: { value: "touchbistro_report" },
