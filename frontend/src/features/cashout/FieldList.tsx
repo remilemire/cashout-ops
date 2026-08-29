@@ -19,11 +19,11 @@ export function FieldList({
   // A single group renders as today's flat list, headings only differentiate.
   const showHeadings = groups.length > 1;
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {groups.map((group) => (
         <div key={group.heading ?? "other"}>
           {showHeadings && group.heading != null && (
-            <p className="text-ink-muted mb-1 text-xs font-medium">
+            <p className="text-ink-muted mb-1.5 text-xs font-semibold tracking-wider uppercase">
               {group.heading}
             </p>
           )}

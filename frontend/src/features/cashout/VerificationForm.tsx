@@ -103,11 +103,11 @@ export function VerificationForm({
 
       {editable ? (
         <>
-          <div className="space-y-3">
+          <div className="space-y-5">
             {groups.map((group) => (
               <div key={group.heading ?? "other"} className="space-y-2.5">
                 {showHeadings && group.heading != null && (
-                  <p className="text-ink-muted text-xs font-medium">
+                  <p className="text-ink-muted text-xs font-semibold tracking-wider uppercase">
                     {group.heading}
                   </p>
                 )}
