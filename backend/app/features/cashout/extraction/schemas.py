@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict
 
-from app.document_ai import FieldHint
+from app.document_ai import FieldHint, Money
 
 
 class CashoutDocumentSchema(BaseModel):
@@ -18,7 +17,7 @@ class CashoutDocumentSchema(BaseModel):
 
 class ServerSummaryReportData(CashoutDocumentSchema):
     grand_total: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             sections=("GRAND TOTALS",),
             anchors=("beside Grand Total", "last row", "last column"),
@@ -37,7 +36,7 @@ class ServerSummaryReportData(CashoutDocumentSchema):
 
 class TouchBistroReportData(CashoutDocumentSchema):
     drinks_net_sales: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Net Sales:",),
             sections=("Sales Totals", "Total Drinks"),
@@ -52,7 +51,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
         ),
     ]
     food_net_sales: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Net Sales:",),
             sections=("Sales Totals", "Total Food"),
@@ -67,7 +66,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
         ),
     ]
     total_net_sales: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Net Sales (incl tax):",),
             sections=("Sales Totals", "Total"),
@@ -93,7 +92,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
     ]
 
     cash_payment_total: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Total:",),
             sections=("Payment and Refund Totals", "Cash"),
@@ -102,7 +101,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
         ),
     ]
     card_payment_total: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Total:",),
             sections=("Payment and Refund Totals", "Card"),
@@ -112,7 +111,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
     ]
 
     card_tip_total: Annotated[
-        Decimal,
+        Money,
         FieldHint(
             labels=("Total:",),
             sections=("Credit Card Tips Report", "Total Credit Card Tips"),

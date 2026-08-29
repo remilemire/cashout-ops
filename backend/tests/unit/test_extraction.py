@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Annotated
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.providers import AIProvider
 from app.document_ai import (
@@ -20,6 +20,7 @@ from app.document_ai import (
     DocumentRef,
     FieldHint,
     FieldIssue,
+    Money,
 )
 from app.document_ai.hints import collect_field_hints
 from app.features.cashout.extraction import CashoutDocumentProcessor
@@ -397,6 +398,75 @@ async def test_field_hint_with_all_groups_empty_renders_nothing() -> None:
 
 
 # ================================
+# ---------- Field types ---------
+# ================================
+
+
+class _Amounts(BaseModel):
+    """Provider output reaches a schema through `model_validate`, never a typed
+    constructor, so the string cases below go in the same way."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: Money
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        ("1234.56", "1234.56"),
+        ("$1,234.56", "1234.56"),
+        (" $ 1,234.56 ", "1234.56"),
+        ("CAD 1,234.56", "1234.56"),
+        ("-$1,234.56", "-1234.56"),
+        # Accounting parentheses and a trailing sign both mean a negative.
+        ("($1,234.56)", "-1234.56"),
+        ("1,234.56-", "-1234.56"),
+        # Scale is preserved: a printed cents column stays two places.
+        ("$0.00", "0.00"),
+    ],
+)
+def test_money_strips_how_an_amount_was_printed(printed: str, expected: str) -> None:
+    assert _Amounts.model_validate({"total": printed}).total == Decimal(expected)
+
+
+@pytest.mark.parametrize(
+    "printed",
+    ["", "n/a", "abc", "12.3.4", "1.2 or 3.4"],
+    ids=["empty", "not-applicable", "words", "two-points", "two-values"],
+)
+def test_money_rejects_what_it_cannot_read_as_an_amount(printed: str) -> None:
+    # Cleaning is deliberately narrow: what it does not recognize must fail
+    # rather than be coerced into a number that was never on the page.
+    with pytest.raises(ValidationError):
+        _Amounts.model_validate({"total": printed})
+
+
+def test_money_leaves_a_decimal_alone() -> None:
+    assert _Amounts(total=Decimal("12.50")).total == Decimal("12.50")
+
+
+def test_money_serializes_back_to_a_plain_decimal_string() -> None:
+    # What lands in extracted_data_json, and what the frontend renders.
+    extracted = _Amounts.model_validate({"total": "$1,234.56"})
+
+    assert extracted.model_dump(mode="json") == {"total": "1234.56"}
+
+
+def test_money_declares_an_unadorned_string_to_providers() -> None:
+    # Decimal's own schema is an anyOf over a number and a regex-patterned
+    # string; `pattern` is a keyword provider structured-output modes have
+    # historically restricted. Money states the schema outright instead.
+    field = _Amounts.model_json_schema()["properties"]["total"]
+
+    assert field["type"] == "string"
+    assert "anyOf" not in field
+    assert "pattern" not in field
+    # The encoding the plain string no longer carries has to be said somewhere.
+    assert "1234.56" in field["description"]
+
+
+# ================================
 # --- Cashout hint declarations --
 # ================================
 
@@ -411,6 +481,15 @@ def test_every_registered_schema_field_declares_a_hint() -> None:
     for schema in CASHOUT_DOCUMENT_SCHEMAS.values():
         hints = collect_field_hints(schema)
         assert set(hints) == set(schema.model_fields), schema.__name__
+
+
+def test_registered_schemas_stay_in_the_portable_json_schema_subset() -> None:
+    # Every monetary field must go through Money: a bare Decimal reintroduces
+    # the anyOf/pattern shape that provider structured-output modes restrict.
+    for schema in CASHOUT_DOCUMENT_SCHEMAS.values():
+        rendered = json.dumps(schema.model_json_schema())
+        assert "anyOf" not in rendered, schema.__name__
+        assert "pattern" not in rendered, schema.__name__
 
 
 def test_field_hints_stay_out_of_the_json_schema() -> None:
