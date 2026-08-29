@@ -7,7 +7,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
-import type { TipoutDepartment } from "@/api/types";
+import type { ManualDocumentInput, TipoutDepartment } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -24,6 +24,7 @@ import { formatDateTime } from "@/lib/format";
 
 import { DataCard } from "./DataCard";
 import { DocumentCard } from "./DocumentCard";
+import { ManualDocumentDialog } from "./ManualDocumentDialog";
 import { UploadZone } from "./UploadZone";
 import { SubmissionStatusBadge } from "./status";
 
@@ -34,6 +35,7 @@ export function SubmissionPage() {
   const navigate = useNavigate();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [unsubmitOpen, setUnsubmitOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: cashoutKeys.submission(submissionId),
@@ -48,6 +50,18 @@ export function SubmissionPage() {
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
       });
+    },
+  });
+
+  const manualUpload = useMutation({
+    mutationFn: ({ file, input }: { file: File; input: ManualDocumentInput }) =>
+      cashoutApi.uploadManualDocument(submissionId, file, input),
+    onSuccess: (analysis) => {
+      queryClient.setQueryData(cashoutKeys.analysis(analysis.id), analysis);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+      setManualOpen(false);
     },
   });
 
@@ -189,6 +203,7 @@ export function SubmissionPage() {
           onFile={(file) => upload.mutate(file)}
           pending={upload.isPending}
           error={upload.error}
+          onManualEntry={() => setManualOpen(true)}
         />
       )}
 
@@ -201,6 +216,17 @@ export function SubmissionPage() {
           onComplete={(departments) => complete.mutate(departments)}
         />
       )}
+
+      <ManualDocumentDialog
+        withFile
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        pending={manualUpload.isPending}
+        error={manualUpload.error}
+        onSubmit={(input, file) => {
+          if (file) manualUpload.mutate({ file, input });
+        }}
+      />
 
       <ConfirmDialog
         open={cancelOpen}

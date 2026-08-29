@@ -182,8 +182,9 @@ export interface FieldIssue {
 export interface CashoutDocumentAnalysis {
   id: string;
   createdAt: string;
-  provider: string;
-  model: string;
+  /** Null when the details were entered manually (no AI ran). */
+  provider: string | null;
+  model: string | null;
   status: DocumentAnalysisStatus;
   classification: CashoutDocumentClassification | null;
   classificationConfidence: number | null;
@@ -284,4 +285,16 @@ export interface ExtractDocumentInput {
    * retry — the full classify + extract pipeline.
    */
   classification?: CashoutDocumentClassification;
+}
+
+/** A classification the user may pick: "unknown" has nothing to enter. */
+export type SelectableClassification = Exclude<
+  CashoutDocumentClassification,
+  "unknown"
+>;
+
+export interface ManualDocumentInput {
+  classification: SelectableClassification;
+  /** snake_case schema keys; raw string values — the backend coerces. */
+  data: Record<string, string>;
 }

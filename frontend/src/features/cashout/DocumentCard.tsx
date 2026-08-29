@@ -14,10 +14,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import {
-  CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
   type CashoutDocument,
   type CashoutDocumentClassification,
+  type ManualDocumentInput,
 } from "@/api/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Dialog } from "@/components/dialog";
@@ -25,15 +25,10 @@ import { Button, Card, ErrorBanner, Spinner } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 
 import { FieldList } from "./FieldList";
-import { CLASSIFICATION_LABELS } from "./fields";
+import { CLASSIFICATION_LABELS, SELECTABLE_CLASSIFICATIONS } from "./fields";
+import { ManualDocumentDialog } from "./ManualDocumentDialog";
 import { VerificationForm } from "./VerificationForm";
 import { AnalysisStatusBadge } from "./status";
-
-// "Unknown" is not offered as a correction: it has nothing to extract, and a
-// document that truly is none of these gets removed instead.
-const SELECTABLE_CLASSIFICATIONS = CASHOUT_DOCUMENT_CLASSIFICATIONS.filter(
-  (value) => value !== "unknown",
-);
 
 /**
  * One uploaded document with its analysis lifecycle: polls the analysis while
@@ -52,6 +47,7 @@ export function DocumentCard({
   const queryClient = useQueryClient();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [classification, setClassification] =
     useState<CashoutDocumentClassification>(SELECTABLE_CLASSIFICATIONS[0]!);
   const initial = document.analysis;
@@ -126,6 +122,20 @@ export function DocumentCard({
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
       });
+    },
+  });
+
+  // The user types the details in instead of the AI: the backend records the
+  // entered values as the verified data (no extraction runs).
+  const manualEntry = useMutation({
+    mutationFn: (input: ManualDocumentInput) =>
+      cashoutApi.enterManualDocument(document.id, input),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(cashoutKeys.analysis(updated.id), updated);
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+      setManualOpen(false);
     },
   });
 
@@ -299,6 +309,10 @@ export function DocumentCard({
                   <Upload className="size-4" />
                   Replace image
                 </Button>
+                <Button variant="outline" onClick={() => setManualOpen(true)}>
+                  <Pencil className="size-4" />
+                  Enter details manually
+                </Button>
                 <input
                   ref={reuploadRef}
                   type="file"
@@ -324,14 +338,27 @@ export function DocumentCard({
               submissionId={submissionId}
               editable={editable}
               secondaryAction={
-                <Button
-                  variant="outline"
-                  onClick={() => retry.mutate()}
-                  loading={retry.isPending}
-                >
-                  <RefreshCw className="size-4" />
-                  Retry extraction
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => retry.mutate()}
+                    loading={retry.isPending}
+                  >
+                    <RefreshCw className="size-4" />
+                    Retry extraction
+                  </Button>
+                  {/* An unknown document has no extraction to verify — offer
+                      typing the details in as the way forward. */}
+                  {analysis.classification === "unknown" && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setManualOpen(true)}
+                    >
+                      <Pencil className="size-4" />
+                      Enter details manually
+                    </Button>
+                  )}
+                </>
               }
             />
             <ErrorBanner error={retry.error} />
@@ -351,7 +378,9 @@ export function DocumentCard({
               schemaName={analysis.schemaName}
             />
             <p className="text-ink-muted text-xs">
-              Verified{" "}
+              {analysis.provider == null
+                ? "Entered manually — verified"
+                : "Verified"}{" "}
               {analysis.verifiedAt ? formatDateTime(analysis.verifiedAt) : ""}
             </p>
             {editable && (
@@ -446,6 +475,16 @@ export function DocumentCard({
           </div>
         </div>
       </Dialog>
+
+      <ManualDocumentDialog
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        withFile={false}
+        initialClassification={analysis?.classification ?? null}
+        pending={manualEntry.isPending}
+        error={manualEntry.error}
+        onSubmit={(input) => manualEntry.mutate(input)}
+      />
     </>
   );
 }

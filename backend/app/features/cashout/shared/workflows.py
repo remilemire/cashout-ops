@@ -1,20 +1,23 @@
 # backend/app/features/cashout/shared/workflows.py
 
-"""Cross-sub-feature workflows: receiving a document and getting it analyzed.
+"""Cross-sub-feature workflows: receiving a document and recording its analysis.
 
-That workflow spans two sub-features — documents stores the file, analyses
-extracts it — so it lives here: neither sub-feature's service depends on the
-other, and the namespace root's router makes a single call. Every route that
-enqueues `cashout.run_extraction` enters through this module. Only the root
-router calls it; sub-feature modules never import it.
+Document intake and entry span two sub-features — documents stores the file,
+analyses records the outcome (an AI extraction, or a manual entry that skips
+AI entirely) — so the workflows live here: neither sub-feature's service
+depends on the other, and the namespace root's router makes a single call.
+Every route that enqueues `cashout.run_extraction` enters through this module,
+as do the manual entry points that enqueue nothing. Only the root router calls
+it; sub-feature modules never import it.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.features.cashout.analyses import service as analyses_service
 from app.features.cashout.documents import service as documents_service
+from app.features.cashout.extraction.registry import parse_manual_document_data
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -57,6 +60,36 @@ async def upload_document(
     )
 
 
+async def upload_manual_document(
+    db: AsyncSession,
+    *,
+    payload: DocumentUpload,
+    submission_id: UUID,
+    classification: CashoutDocumentClassification,
+    data: dict[str, Any],
+    user: User,
+    storage: DocumentStorageClient,
+) -> CashoutDocumentAnalysis:
+    """Store the document and record its manually entered, VERIFIED analysis.
+
+    No AI runs and nothing is enqueued: typing the values is the verification,
+    so the returned analysis is already VERIFIED and there is nothing to poll.
+    The entered data is validated before the upload — validating after it
+    would orphan a stored blob when the transaction rolls back.
+    """
+    parsed = parse_manual_document_data(classification, data)
+    document = await documents_service.upload_document(
+        db,
+        payload=payload,
+        submission_id=submission_id,
+        user=user,
+        storage=storage,
+    )
+    return await analyses_service.record_manual_entry(
+        db, document=document, classification=classification, data=parsed, user=user
+    )
+
+
 async def restart_extraction(
     db: AsyncSession,
     *,
@@ -77,4 +110,30 @@ async def restart_extraction(
     )
 
 
-__all__ = ["upload_document", "restart_extraction"]
+async def enter_manual_document(
+    db: AsyncSession,
+    *,
+    document_id: UUID,
+    classification: CashoutDocumentClassification,
+    data: dict[str, Any],
+    user: User,
+) -> CashoutDocumentAnalysis:
+    # Pure delegation: the behavior lives wholly in the analyses service. The
+    # indirection is kept so every document intake/entry route enters through
+    # this workflow and the root router never reaches into sub-feature
+    # services.
+    return await analyses_service.replace_with_manual_entry(
+        db,
+        document_id=document_id,
+        classification=classification,
+        data=data,
+        user=user,
+    )
+
+
+__all__ = [
+    "upload_document",
+    "upload_manual_document",
+    "restart_extraction",
+    "enter_manual_document",
+]

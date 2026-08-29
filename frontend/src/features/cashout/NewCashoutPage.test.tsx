@@ -1,7 +1,14 @@
 // frontend/src/features/cashout/NewCashoutPage.test.tsx
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,12 +26,32 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       ...actual.cashoutApi,
       createSubmission: vi.fn(),
       uploadDocument: vi.fn(),
+      uploadManualDocument: vi.fn(),
     },
   };
 });
 
+vi.mock("@/components/dialog", () => ({
+  Dialog: ({
+    open,
+    title,
+    children,
+  }: {
+    open: boolean;
+    title: string;
+    children: ReactNode;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label={title}>
+        <h2>{title}</h2>
+        {children}
+      </div>
+    ) : null,
+}));
+
 const createSubmissionMock = vi.mocked(cashoutApi.createSubmission);
 const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
+const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
 
 const submission: CashoutSubmission = {
   id: "submission-1",
@@ -90,8 +117,15 @@ function renderPage() {
 beforeEach(() => {
   createSubmissionMock.mockReset();
   uploadDocumentMock.mockReset();
+  uploadManualDocumentMock.mockReset();
   createSubmissionMock.mockResolvedValue(submission);
   uploadDocumentMock.mockResolvedValue(analysis);
+  uploadManualDocumentMock.mockResolvedValue({
+    ...analysis,
+    status: "verified",
+    provider: null,
+    model: null,
+  });
 });
 
 describe("NewCashoutPage", () => {
@@ -137,5 +171,46 @@ describe("NewCashoutPage", () => {
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
     expect(uploadDocumentMock).toHaveBeenCalledTimes(2);
     expect(uploadDocumentMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
+  });
+
+  it("creates the submission through the manual-entry flow", async () => {
+    const router = renderPage();
+
+    expect(createSubmissionMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Or enter details manually" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Enter document details",
+    });
+
+    fireEvent.change(dialog.querySelector('input[type="file"]')!, {
+      target: { files: [pdf] },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Total net sales"), {
+      target: { value: "1500.00" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Add details" }),
+    );
+
+    await waitFor(() =>
+      expect(uploadManualDocumentMock).toHaveBeenCalledOnce(),
+    );
+    expect(createSubmissionMock).toHaveBeenCalledTimes(1);
+    expect(uploadManualDocumentMock).toHaveBeenCalledWith("submission-1", pdf, {
+      classification: "touchbistro_report",
+      data: {
+        food_net_sales: "",
+        drink_net_sales: "",
+        total_net_sales: "1500.00",
+        cash_payment_total: "",
+        card_payment_total: "",
+        card_transaction_count: "",
+        card_tip_total: "",
+      },
+    });
+    expect(await screen.findByText("Cashout detail")).toBeDefined();
+    expect(router.state.location.pathname).toBe("/cashouts/submission-1");
   });
 });

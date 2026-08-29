@@ -2,7 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fieldLabelFor, groupFields } from "./fields";
+import {
+  CLASSIFICATION_SCHEMA_NAMES,
+  SELECTABLE_CLASSIFICATIONS,
+  fieldGroupsFor,
+  fieldLabelFor,
+  groupFields,
+} from "./fields";
 
 describe("groupFields", () => {
   it("orders TouchBistro fields into curated groups regardless of data order", () => {
@@ -87,6 +93,54 @@ describe("groupFields", () => {
 
   it("returns no groups for empty data", () => {
     expect(groupFields("TouchBistroReportData", {})).toEqual([]);
+  });
+});
+
+describe("fieldGroupsFor", () => {
+  it("returns the full TouchBistro groups regardless of any data", () => {
+    const groups = fieldGroupsFor("TouchBistroReportData");
+
+    expect(groups.map((group) => group.heading)).toEqual([
+      "Sales",
+      "Payments",
+      "Tips",
+    ]);
+    expect(
+      groups.flatMap((group) => group.fields.map((field) => field.key)),
+    ).toEqual([
+      "food_net_sales",
+      "drink_net_sales",
+      "total_net_sales",
+      "cash_payment_total",
+      "card_payment_total",
+      "card_transaction_count",
+      "card_tip_total",
+    ]);
+  });
+
+  it("returns the full server-summary group", () => {
+    expect(fieldGroupsFor("ServerSummaryReportData")).toEqual([
+      {
+        heading: "Totals",
+        fields: [
+          { key: "grand_total", label: "Grand total" },
+          { key: "grand_total_transaction_count", label: "Orders" },
+        ],
+      },
+    ]);
+  });
+
+  it("returns no groups for an unknown schema name", () => {
+    expect(fieldGroupsFor("SomeFutureSchema")).toEqual([]);
+  });
+});
+
+describe("CLASSIFICATION_SCHEMA_NAMES", () => {
+  it("maps every selectable classification to a schema with curated groups", () => {
+    for (const classification of SELECTABLE_CLASSIFICATIONS) {
+      const schemaName = CLASSIFICATION_SCHEMA_NAMES[classification];
+      expect(fieldGroupsFor(schemaName).length).toBeGreaterThan(0);
+    }
   });
 });
 

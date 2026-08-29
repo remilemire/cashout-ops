@@ -9,6 +9,7 @@ steps rather than HTTP plumbing.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -37,6 +38,22 @@ _EXTRACTED = ServerSummaryReportData(
 # The same payload as the API serializes it, for asserting on responses:
 # Decimal lands in JSONB as a string.
 SERVER_SUMMARY_EXTRACTED = _EXTRACTED.model_dump(mode="json")
+
+# Server-summary values as a user would type them: messy strings the schema
+# must coerce (Money strips the comma; the count string parses to an int).
+# Validated, they dump to exactly SERVER_SUMMARY_EXTRACTED.
+MANUAL_ENTRY_DATA = {
+    "grand_total": "1,234.56",
+    "grand_total_transaction_count": "42",
+}
+
+
+def manual_entry_body(
+    classification: str = "server_summary_report",
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The manual-entry payload, for either manual endpoint."""
+    return {"classification": classification, "data": data or dict(MANUAL_ENTRY_DATA)}
 
 
 def configure_server_summary(ai_client: FakeAIClient) -> None:
@@ -89,6 +106,40 @@ async def upload_document(
     )
     assert response.status_code == 201, response.text
     await drain()
+    return response.json()
+
+
+async def upload_manual_document(
+    client: AsyncClient,
+    submission_id: str,
+    *,
+    body: dict[str, Any],
+    file: tuple[str, bytes, str] = SAMPLE_PDF_UPLOAD,
+) -> dict[str, Any]:
+    """Upload a document with manually entered details.
+
+    Returns the created analysis — already VERIFIED: nothing was enqueued, so
+    there is no outbox to drain and nothing to poll.
+    """
+    response = await client.post(
+        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        files={"file": file},
+        data={"payload": json.dumps(body)},
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def enter_manual_document(
+    client: AsyncClient, document_id: str, body: dict[str, Any]
+) -> dict[str, Any]:
+    response = await client.post(
+        f"/api/cashout/documents/{document_id}/manual",
+        json=body,
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
     return response.json()
 
 
@@ -156,14 +207,18 @@ async def unsubmit_submission(
 
 
 __all__ = [
+    "MANUAL_ENTRY_DATA",
     "SERVER_SUMMARY_EXTRACTED",
     "complete_submission",
     "completion_body",
     "configure_server_summary",
     "create_submission",
+    "enter_manual_document",
+    "manual_entry_body",
     "poll_analysis",
     "unsubmit_submission",
     "unverify_analysis",
     "upload_document",
+    "upload_manual_document",
     "verify_analysis",
 ]

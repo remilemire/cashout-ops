@@ -33,4 +33,29 @@ describe("UploadZone", () => {
     }) as HTMLButtonElement;
     expect(takePhoto.disabled).toBe(true);
   });
+
+  it("offers manual entry only when a handler is provided", () => {
+    const { rerender } = render(
+      <UploadZone onFile={vi.fn()} pending={false} error={null} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Or enter details manually" }),
+    ).toBeNull();
+
+    const onManualEntry = vi.fn();
+    rerender(
+      <UploadZone
+        onFile={vi.fn()}
+        pending={false}
+        error={null}
+        onManualEntry={onManualEntry}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Or enter details manually" }),
+    );
+    expect(onManualEntry).toHaveBeenCalledOnce();
+  });
 });

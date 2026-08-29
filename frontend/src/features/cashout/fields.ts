@@ -1,6 +1,10 @@
 // frontend/src/features/cashout/fields.ts
 
-import type { CashoutDocumentClassification } from "@/api/types";
+import {
+  CASHOUT_DOCUMENT_CLASSIFICATIONS,
+  type CashoutDocumentClassification,
+  type SelectableClassification,
+} from "@/api/types";
 import { fieldLabel } from "@/lib/format";
 
 /**
@@ -17,6 +21,23 @@ export const CLASSIFICATION_LABELS: Record<
   touchbistro_report: "TouchBistro report",
   server_summary_report: "Server summary report",
   unknown: "Unknown",
+};
+
+// "Unknown" is not offered as a correction: it has nothing to extract, and a
+// document that truly is none of these gets removed instead.
+export const SELECTABLE_CLASSIFICATIONS: SelectableClassification[] =
+  CASHOUT_DOCUMENT_CLASSIFICATIONS.filter(
+    (value): value is SelectableClassification => value !== "unknown",
+  );
+
+// Mirrors the backend extraction-schema registry: each selectable
+// classification's schema name, for looking up its curated field groups.
+export const CLASSIFICATION_SCHEMA_NAMES: Record<
+  SelectableClassification,
+  string
+> = {
+  touchbistro_report: "TouchBistroReportData",
+  server_summary_report: "ServerSummaryReportData",
 };
 
 export interface FieldGroup {
@@ -61,6 +82,18 @@ const SCHEMA_FIELD_GROUPS: Record<
     },
   ],
 };
+
+/**
+ * The full curated groups for a schema, independent of any data (empty for
+ * unknown names). {@link groupFields} filters by data presence, which is
+ * wrong for a blank form — manual entry renders every field.
+ */
+export function fieldGroupsFor(schemaName: string): FieldGroup[] {
+  return (SCHEMA_FIELD_GROUPS[schemaName] ?? []).map((group) => ({
+    heading: group.heading as string | null,
+    fields: [...group.fields],
+  }));
+}
 
 /**
  * Order the data's keys into the schema's curated groups, keeping only the

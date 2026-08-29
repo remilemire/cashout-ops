@@ -27,6 +27,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       unverifyAnalysis: vi.fn(),
       extractDocument: vi.fn(),
       uploadDocument: vi.fn(),
+      enterManualDocument: vi.fn(),
     },
   };
 });
@@ -54,6 +55,7 @@ const deleteDocumentMock = vi.mocked(cashoutApi.deleteDocument);
 const unverifyAnalysisMock = vi.mocked(cashoutApi.unverifyAnalysis);
 const extractDocumentMock = vi.mocked(cashoutApi.extractDocument);
 const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
+const enterManualDocumentMock = vi.mocked(cashoutApi.enterManualDocument);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
@@ -127,12 +129,18 @@ beforeEach(() => {
   unverifyAnalysisMock.mockReset();
   extractDocumentMock.mockReset();
   uploadDocumentMock.mockReset();
+  enterManualDocumentMock.mockReset();
   getAnalysisMock.mockResolvedValue(analysis);
   deleteDocumentMock.mockResolvedValue(undefined);
   unverifyAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
   extractDocumentMock.mockResolvedValue({
     ...needsVerificationAnalysis,
     status: "extracting",
+  });
+  enterManualDocumentMock.mockResolvedValue({
+    ...analysis,
+    provider: null,
+    model: null,
   });
 });
 
@@ -267,6 +275,108 @@ describe("DocumentCard", () => {
     expect(
       screen.queryByRole("button", { name: "Retry extraction" }),
     ).toBeNull();
+  });
+
+  it("enters details manually after a failed extraction", async () => {
+    const failedAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      status: "failed",
+      classification: null,
+      extractedDataJson: null,
+      verifiedDataJson: null,
+      errorCode: "output_limit_reached",
+    };
+    getAnalysisMock.mockResolvedValue(failedAnalysis);
+    renderCard(true, { ...cashoutDocument, analysis: failedAnalysis });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enter details manually" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Enter document details",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Food net sales"), {
+      target: { value: "1000.00" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Add details" }),
+    );
+
+    await waitFor(() => expect(enterManualDocumentMock).toHaveBeenCalledOnce());
+    expect(enterManualDocumentMock.mock.calls[0]).toEqual([
+      "document-1",
+      {
+        classification: "touchbistro_report",
+        data: {
+          food_net_sales: "1000.00",
+          drink_net_sales: "",
+          total_net_sales: "",
+          cash_payment_total: "",
+          card_payment_total: "",
+          card_transaction_count: "",
+          card_tip_total: "",
+        },
+      },
+    ]);
+    // Success closes the dialog.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Enter document details" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("offers manual entry beside retry when the classification is unknown", () => {
+    const unknownAnalysis: CashoutDocumentAnalysis = {
+      ...needsVerificationAnalysis,
+      classification: "unknown",
+      schemaName: null,
+      extractedDataJson: null,
+    };
+    getAnalysisMock.mockResolvedValue(unknownAnalysis);
+    renderCard(true, { ...cashoutDocument, analysis: unknownAnalysis });
+
+    expect(
+      screen.getByRole("button", { name: "Retry extraction" }),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enter details manually" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Enter document details" }),
+    ).toBeDefined();
+  });
+
+  it("hides manual entry from a classified needs-verification document", () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    renderCard(true, {
+      ...cashoutDocument,
+      analysis: needsVerificationAnalysis,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Enter details manually" }),
+    ).toBeNull();
+  });
+
+  it("labels a manually entered document on the verified summary", () => {
+    const manualAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      provider: null,
+      model: null,
+    };
+    getAnalysisMock.mockResolvedValue(manualAnalysis);
+    renderCard(false, { ...cashoutDocument, analysis: manualAnalysis });
+
+    expect(screen.getByText(/Entered manually — verified/)).toBeDefined();
+  });
+
+  it("keeps the plain verified label on an AI-extracted document", () => {
+    renderCard(false);
+
+    // The meta line (status badge aside) starts with plain "Verified {date}".
+    expect(screen.getByText(/^Verified\s\S/)).toBeDefined();
+    expect(screen.queryByText(/Entered manually/)).toBeNull();
   });
 
   it("corrects the classification and re-runs the extraction", async () => {

@@ -15,8 +15,9 @@ from .types import DocumentAnalysisStatus
 class CashoutDocumentAnalysisOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
-    provider: AIProvider
-    model: str
+    # Null for a manually entered analysis (no AI involved).
+    provider: AIProvider | None = None
+    model: str | None = None
     status: DocumentAnalysisStatus
     classification: CashoutDocumentClassification | None = None
     classification_confidence: float | None = None
@@ -45,8 +46,19 @@ class CashoutDocumentExtract(BaseIn):
     classification: CashoutDocumentClassification | None = None
 
 
+class CashoutDocumentManualEntry(BaseIn):
+    # The document type the user asserts; it must have a registered extraction
+    # schema (`unknown` has none, so it is rejected).
+    classification: CashoutDocumentClassification
+    # The typed-in field values, validated against the classification's schema.
+    # A plain dict, so nested keys pass through un-aliased: the schema's
+    # snake_case field names survive as-is (matching extracted_data_json).
+    data: dict[str, Any]
+
+
 __all__ = [
     "CashoutAnalysisVerify",
     "CashoutDocumentAnalysisOut",
     "CashoutDocumentExtract",
+    "CashoutDocumentManualEntry",
 ]

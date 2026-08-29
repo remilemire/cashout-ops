@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -12,6 +13,8 @@ from app.document_ai import DocumentRef
 from app.errors import AppError
 from app.features.cashout.documents.model import CashoutDocument
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.features.cashout.extraction.registry import parse_manual_document_data
+from app.features.cashout.extraction.schemas import CashoutDocumentSchema
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
@@ -85,6 +88,84 @@ async def restart_extraction(
 
     return await start_extraction(
         db, document=document, processor=processor, classification=classification
+    )
+
+
+async def record_manual_entry(
+    db: AsyncSession,
+    *,
+    document: CashoutDocument,
+    classification: CashoutDocumentClassification,
+    data: CashoutDocumentSchema,
+    user: User,
+) -> CashoutDocumentAnalysis:
+    """Record a manually entered analysis: no AI involved, directly VERIFIED.
+
+    Typing the values is the verification, so the analysis lands VERIFIED with
+    the actor as its verifier. The validated entry is written to both the
+    extracted and verified data, so unverify → edit → re-verify (and a later
+    retry extraction) behave exactly as they do after an AI run. A null
+    provider/model is what marks the analysis as manual.
+    """
+    analysis = await repository.find_analysis_by_document(db, document_id=document.id)
+    _ensure_replaceable(analysis)
+
+    if analysis is None:
+        analysis = CashoutDocumentAnalysis(cashout_document_id=document.id)
+        await repository.add_analysis(db, analysis)
+
+    now = datetime.now(UTC)
+    dumped = data.model_dump(mode="json")
+
+    # The AI-run fields are nulled explicitly: when a FAILED or unverified
+    # analysis is converted, its old provider/confidence/error state must not
+    # survive under the manual entry.
+    analysis.provider = None
+    analysis.model = None
+    analysis.status = DocumentAnalysisStatus.VERIFIED
+    analysis.classification = classification
+    analysis.classification_confidence = None
+    analysis.schema_name = type(data).__name__
+    analysis.extracted_data_json = dumped
+    analysis.extraction_confidence = None
+    analysis.issues = None
+    analysis.error_code = None
+    analysis.error_message = None
+    analysis.completed_at = now
+    analysis.verified_data_json = dumped
+    analysis.verified_by_user_id = user.id
+    analysis.verified_at = now
+    return analysis
+
+
+async def replace_with_manual_entry(
+    db: AsyncSession,
+    *,
+    document_id: UUID,
+    classification: CashoutDocumentClassification,
+    data: dict[str, Any],
+    user: User,
+) -> CashoutDocumentAnalysis:
+    """Replace a document's analysis outcome with a manually entered one.
+
+    The entered data is validated against the classification's registered
+    schema before anything else happens. Allowed from FAILED and
+    NEEDS_VERIFICATION: a verified analysis cannot be replaced, nor one whose
+    extraction is still in flight.
+    """
+    parsed = parse_manual_document_data(classification, data)
+
+    document = await _get_document(db, document_id)
+    submission = await _get_submission_for_actor(
+        db, submission_id=document.cashout_submission_id, actor=user
+    )
+    if submission.status is not CashoutSubmissionStatus.PROCESSING:
+        raise AppError(
+            "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
+        )
+
+    return await record_manual_entry(
+        db, document=document, classification=classification, data=parsed, user=user
     )
 
 
@@ -315,6 +396,17 @@ async def _apply_extraction(
         analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
 
 
+def _ensure_replaceable(analysis: CashoutDocumentAnalysis | None) -> None:
+    """A verified analysis is settled and one mid-extraction is owned by the
+    running job: neither can be reset for a retry or overwritten manually."""
+    if analysis is None:
+        return
+    if analysis.status is DocumentAnalysisStatus.VERIFIED:
+        raise AppError("ANALYSIS_VERIFIED", "This document has already been verified.")
+    if analysis.status is DocumentAnalysisStatus.EXTRACTING:
+        raise AppError("EXTRACTION_IN_PROGRESS")
+
+
 async def _reset_analysis(
     db: AsyncSession,
     *,
@@ -323,14 +415,7 @@ async def _reset_analysis(
 ) -> CashoutDocumentAnalysis:
     """Create the document's analysis row, or reset it in place for a retry."""
     analysis = await repository.find_analysis_by_document(db, document_id=document.id)
-
-    if analysis is not None:
-        if analysis.status is DocumentAnalysisStatus.VERIFIED:
-            raise AppError(
-                "ANALYSIS_VERIFIED", "This document has already been verified."
-            )
-        if analysis.status is DocumentAnalysisStatus.EXTRACTING:
-            raise AppError("EXTRACTION_IN_PROGRESS")
+    _ensure_replaceable(analysis)
 
     if analysis is None:
         analysis = CashoutDocumentAnalysis(
@@ -359,6 +444,8 @@ async def _reset_analysis(
 __all__ = [
     "start_extraction",
     "restart_extraction",
+    "record_manual_entry",
+    "replace_with_manual_entry",
     "run_extraction",
     "get_analysis",
     "verify_analysis",

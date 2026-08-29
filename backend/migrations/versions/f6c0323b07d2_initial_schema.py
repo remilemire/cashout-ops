@@ -345,9 +345,9 @@ def upgrade() -> None:
         sa.Column(
             "provider",
             sa.Enum("anthropic", "openai", "gemini", name="ai_provider"),
-            nullable=False,
+            nullable=True,
         ),
-        sa.Column("model", sa.String(length=100), nullable=False),
+        sa.Column("model", sa.String(length=100), nullable=True),
         sa.Column(
             "status",
             sa.Enum(

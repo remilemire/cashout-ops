@@ -17,10 +17,13 @@ export function UploadZone({
   onFile,
   pending,
   error,
+  onManualEntry,
 }: {
   onFile: (file: File) => void;
   pending: boolean;
   error: unknown;
+  /** When provided, offers typing the details in instead of AI extraction. */
+  onManualEntry?: () => void;
 }) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -99,6 +102,20 @@ export function UploadZone({
           Choose file
         </Button>
       </div>
+
+      {onManualEntry && (
+        <div className="mt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-ink-muted hover:text-ink"
+            disabled={pending}
+            onClick={onManualEntry}
+          >
+            Or enter details manually
+          </Button>
+        </div>
+      )}
 
       {error != null && (
         <div className="mt-3 text-left">

@@ -9,6 +9,7 @@ import type {
   CashoutSubmissionListItem,
   CompleteSubmissionInput,
   ExtractDocumentInput,
+  ManualDocumentInput,
   VerifyAnalysisInput,
 } from "./types";
 
@@ -41,6 +42,26 @@ export const cashoutApi = {
       { method: "POST", body },
     );
   },
+  /** Upload a document with manually entered details; no AI extraction runs. */
+  uploadManualDocument: (
+    submissionId: string,
+    file: File,
+    input: ManualDocumentInput,
+  ) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("payload", JSON.stringify(input));
+    return api<CashoutDocumentAnalysis>(
+      `/cashout/submissions/${submissionId}/documents/manual`,
+      { method: "POST", body },
+    );
+  },
+  /** Replace a failed or unverified analysis with manually entered details. */
+  enterManualDocument: (documentId: string, input: ManualDocumentInput) =>
+    api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/manual`, {
+      method: "POST",
+      json: input,
+    }),
   /** Re-run extraction; a corrected classification skips the AI classify step. */
   extractDocument: (documentId: string, input?: ExtractDocumentInput) =>
     api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/extract`, {

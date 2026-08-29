@@ -28,6 +28,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       getSubmission: vi.fn(),
       unsubmitSubmission: vi.fn(),
       completeSubmission: vi.fn(),
+      uploadManualDocument: vi.fn(),
     },
   };
 });
@@ -55,6 +56,7 @@ vi.mock("@/components/dialog", () => ({
 const getSubmissionMock = vi.mocked(cashoutApi.getSubmission);
 const unsubmitSubmissionMock = vi.mocked(cashoutApi.unsubmitSubmission);
 const completeSubmissionMock = vi.mocked(cashoutApi.completeSubmission);
+const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
 const useAuthMock = vi.mocked(useAuth);
 
 const employee: User = {
@@ -180,6 +182,7 @@ beforeEach(() => {
   getSubmissionMock.mockReset();
   unsubmitSubmissionMock.mockReset();
   completeSubmissionMock.mockReset();
+  uploadManualDocumentMock.mockReset();
   useAuthMock.mockReset();
   getSubmissionMock.mockResolvedValue(completedSubmission);
   unsubmitSubmissionMock.mockResolvedValue({
@@ -292,6 +295,71 @@ describe("SubmissionPage", () => {
     expect(completeSubmissionMock.mock.calls[0]?.[1]).toEqual({
       tipoutDepartments: [],
     });
+  });
+
+  it("uploads a manually entered document while editable", async () => {
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    uploadManualDocumentMock.mockResolvedValue({
+      ...verifiedSubmission.documents[0]!.analysis!,
+      id: "analysis-2",
+      provider: null,
+      model: null,
+      cashoutDocumentId: "document-2",
+    });
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Or enter details manually" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Enter document details",
+    });
+
+    const file = new File(["img"], "report.jpg", { type: "image/jpeg" });
+    fireEvent.change(dialog.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Total net sales"), {
+      target: { value: "1500.00" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Add details" }),
+    );
+
+    await waitFor(() =>
+      expect(uploadManualDocumentMock).toHaveBeenCalledOnce(),
+    );
+    expect(uploadManualDocumentMock).toHaveBeenCalledWith(
+      "completed-submission",
+      file,
+      {
+        classification: "touchbistro_report",
+        data: {
+          food_net_sales: "",
+          drink_net_sales: "",
+          total_net_sales: "1500.00",
+          cash_payment_total: "",
+          card_payment_total: "",
+          card_transaction_count: "",
+          card_tip_total: "",
+        },
+      },
+    );
+    // Success closes the dialog.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Enter document details" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("hides manual entry on a completed cashout", async () => {
+    renderPage(); // completed submission: no upload zone at all
+
+    expect(await screen.findByText("Cashout completed")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Or enter details manually" }),
+    ).toBeNull();
   });
 
   it("shows the error banner when unsubmitting fails", async () => {

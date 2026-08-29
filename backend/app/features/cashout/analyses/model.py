@@ -22,7 +22,8 @@ if TYPE_CHECKING:
 
 
 class CashoutDocumentAnalysis(Base):
-    """One AI classification + extraction pass over a cashout document."""
+    """One classification + extraction pass over a cashout document — an AI
+    run, or its manually entered equivalent (null provider)."""
 
     __tablename__ = "cashout_document_analyses"
 
@@ -42,10 +43,12 @@ class CashoutDocumentAnalysis(Base):
         index=True,
     )
 
-    provider: Mapped[AIProvider] = mapped_column(
-        enum_column(AIProvider, "ai_provider"), nullable=False
+    # Null provider (and model) ⇔ a manually entered analysis: the user typed
+    # the data in and no AI was involved.
+    provider: Mapped[AIProvider | None] = mapped_column(
+        enum_column(AIProvider, "ai_provider"), nullable=True
     )
-    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     status: Mapped[DocumentAnalysisStatus] = mapped_column(
         enum_column(DocumentAnalysisStatus, "document_analysis_status"),
@@ -79,6 +82,8 @@ class CashoutDocumentAnalysis(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # When the analysis reached an outcome: the extraction completed (or
+    # failed), or the manual entry was recorded.
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
