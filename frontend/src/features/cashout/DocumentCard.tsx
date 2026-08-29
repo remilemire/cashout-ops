@@ -20,9 +20,10 @@ import {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Dialog } from "@/components/dialog";
 import { Button, Card, ErrorBanner, Spinner } from "@/components/ui";
-import { enumLabel, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 import { FieldList } from "./FieldList";
+import { CLASSIFICATION_LABELS } from "./fields";
 import { VerificationForm } from "./VerificationForm";
 import { AnalysisStatusBadge } from "./status";
 
@@ -159,7 +160,7 @@ export function DocumentCard({
             <div className="flex items-center">
               <p className="text-ink-muted text-xs">
                 {analysis?.classification
-                  ? enumLabel(analysis.classification)
+                  ? CLASSIFICATION_LABELS[analysis.classification]
                   : "Not classified yet"}
               </p>
               {canCorrectClassification && (
@@ -354,7 +355,7 @@ export function DocumentCard({
             >
               {CASHOUT_DOCUMENT_CLASSIFICATIONS.map((value) => (
                 <option key={value} value={value}>
-                  {enumLabel(value)}
+                  {CLASSIFICATION_LABELS[value]}
                 </option>
               ))}
             </select>

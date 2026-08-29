@@ -225,6 +225,10 @@ describe("DocumentCard", () => {
     const dialog = screen.getByRole("dialog", {
       name: "Correct document type",
     });
+    // Brand casing comes from the curated labels, not enumLabel.
+    expect(
+      within(dialog).getByRole("option", { name: "TouchBistro report" }),
+    ).toBeDefined();
 
     fireEvent.change(within(dialog).getByLabelText("Document type"), {
       target: { value: "touchbistro_report" },

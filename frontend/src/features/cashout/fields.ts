@@ -1,5 +1,6 @@
 // frontend/src/features/cashout/fields.ts
 
+import type { CashoutDocumentClassification } from "@/api/types";
 import { fieldLabel } from "@/lib/format";
 
 /**
@@ -7,6 +8,16 @@ import { fieldLabel } from "@/lib/format";
  * and human labels per schema name. Labels are presentation only — the
  * extracted JSON keys never change.
  */
+
+// Curated over enumLabel(): brand casing ("TouchBistro") survives.
+export const CLASSIFICATION_LABELS: Record<
+  CashoutDocumentClassification,
+  string
+> = {
+  touchbistro_report: "TouchBistro report",
+  server_summary_report: "Server summary report",
+  unknown: "Unknown",
+};
 
 export interface FieldGroup {
   /** Null on the catch-all group when it is the only group. */
