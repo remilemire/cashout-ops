@@ -33,7 +33,7 @@ Distinguish carefully:
 """
 
 _EXTRACT_INSTRUCTIONS = """
-The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale end-of-day report or a payment-terminal server summary. Similar values may repeat across sections.
+The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale end-of-day report or a payment-terminal server summary. Similar values may repeat across sections. Read the area relevant to each requested field rather than the document in full.
 
 Interpret fields by their accounting meaning and keep distinct concepts distinct — gross vs. net vs. total sales, individual tenders, collected vs. declared tips, tip-outs, refunds/voids/discounts, expected vs. submitted vs. owed vs. due cash, shortages vs. overages, transaction vs. settlement totals, and subtotal vs. tax vs. tip vs. final charged amount. Do not combine values from different documents or sections, and do not assume two similarly named totals represent the same accounting value.
 

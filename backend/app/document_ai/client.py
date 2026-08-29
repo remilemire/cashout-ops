@@ -27,7 +27,7 @@ Classify the supplied document using only the document types allowed by the resp
 * Reduce confidence when the document is partial, blurry, cropped, mixed with another document, or missing identifying headings.
 """
 
-_EXTRACT_INSTRUCTIONS = """Extract the requested structured data from the supplied document. Inspect the full document first: tables, headers, footers, handwritten notes, and repeated summary sections may all contain relevant values.
+_EXTRACT_INSTRUCTIONS = """Extract the requested structured data from the supplied document.
 
 * Base each value on visible evidence, preserving its sign, decimal value, date, identifier, and unit. Do not calculate, reconcile, normalize, or reinterpret values unless explicitly requested.
 * Prefer a clearly labelled value over an inferred one. When multiple plausible values exist, use the one most directly associated with the requested field and report the ambiguity through the schema’s warning or confidence fields; never choose silently.
