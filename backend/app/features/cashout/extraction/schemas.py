@@ -35,7 +35,7 @@ class ServerSummaryReportData(CashoutDocumentSchema):
 
 
 class TouchBistroReportData(CashoutDocumentSchema):
-    drinks_net_sales: Annotated[
+    drink_net_sales: Annotated[
         Money,
         FieldHint(
             labels=("Net Sales:",),

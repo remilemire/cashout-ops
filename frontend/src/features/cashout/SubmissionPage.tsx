@@ -308,8 +308,8 @@ function CompletePrompt({
                   "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
                   "transition-colors",
                   checked
-                    ? "border-accent bg-accent/10 font-medium"
-                    : "border-edge bg-surface-2",
+                    ? "border-accent/40 bg-accent/10 font-medium"
+                    : "border-line bg-surface-2",
                 )}
               >
                 <input
