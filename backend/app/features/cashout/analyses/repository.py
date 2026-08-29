@@ -9,8 +9,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.cashout.documents.model import CashoutDocument
-from app.features.cashout.submissions.model import CashoutSubmission
+# Sibling read reuse: the walk-up reads (the document, then its live submission)
+# come from the owning repositories instead of restating their queries. The
+# service still runs them as separate calls so each NOT_FOUND error surfaces at
+# the same step as before; writes stay in the owning repository.
+from app.features.cashout.documents.repository import get_document
+from app.features.cashout.submissions.repository import (
+    get_submission as get_live_submission,
+)
 
 from .model import CashoutDocumentAnalysis
 
@@ -33,29 +39,6 @@ async def find_analysis_by_document(
 async def add_analysis(db: AsyncSession, analysis: CashoutDocumentAnalysis) -> None:
     db.add(analysis)
     await db.flush()
-
-
-# Walk-up reads over sibling models (the document, then its live submission).
-# These stay separate queries so each NOT_FOUND error surfaces at the same
-# step as before; do not merge them into one joined query.
-
-
-async def get_document(
-    db: AsyncSession, *, document_id: UUID
-) -> CashoutDocument | None:
-    # Same read as documents/repository.py's get_document.
-    return await db.get(CashoutDocument, document_id)
-
-
-async def get_live_submission(
-    db: AsyncSession, *, submission_id: UUID
-) -> CashoutSubmission | None:
-    # Walk-up read; the soft-delete contract lives in submissions/repository.py.
-    stmt = select(CashoutSubmission).where(
-        CashoutSubmission.id == submission_id,
-        CashoutSubmission.deleted_at.is_(None),
-    )
-    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 __all__ = [

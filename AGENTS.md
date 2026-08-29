@@ -129,7 +129,7 @@ Each feature's data access lives in a dedicated module beside its service:
 
 * `repository.py` owns all database access for the feature: query construction and every `AsyncSession` call (`select`/`execute`/`get`/`add`/`delete`/`flush`).
 * The Redis-backed auth sub-features (`sessions/`, `email_challenges/`, `oauth/`) use a `store.py` instead: it owns all Redis commands, key building, TTL enforcement, and value encoding/decoding.
-* Repositories and stores are feature-private: only the owning feature's service imports them. Cross-feature access goes service to service.
+* Repositories and stores are feature-private: only the owning feature's service imports them. Cross-feature access goes service to service. Within a feature namespace, a sub-feature repository may import a sibling sub-feature repository's read functions rather than duplicating the query; writes stay in the owning sub-feature's repository.
 * Services never build queries, call `db.*`, or issue Redis commands directly. Background jobs may own their transaction boundary (`async with sessionmaker() as db`, commit/rollback) but perform all reads and writes through the repository.
 * Flush placement is behavior (it controls when integrity errors surface for translation); preserve it when moving code.
 * Crypto stays out of stores: services hash tokens and codes; stores receive hashes.

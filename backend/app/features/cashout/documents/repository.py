@@ -6,10 +6,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.cashout.submissions.model import CashoutSubmission
+# Sibling read reuse: the live-submission walk-up read comes from the owning
+# repository (which states the soft-delete contract) instead of restating the
+# query; writes stay in the owning repository.
+from app.features.cashout.submissions.repository import (
+    get_submission as get_live_submission,
+)
 
 from .model import CashoutDocument
 
@@ -31,17 +35,6 @@ async def delete_document(db: AsyncSession, document: CashoutDocument) -> None:
     await db.delete(document)
     # Flush so a database failure surfaces before the stored bytes are gone.
     await db.flush()
-
-
-async def get_live_submission(
-    db: AsyncSession, *, submission_id: UUID
-) -> CashoutSubmission | None:
-    # Walk-up read; the soft-delete contract lives in submissions/repository.py.
-    stmt = select(CashoutSubmission).where(
-        CashoutSubmission.id == submission_id,
-        CashoutSubmission.deleted_at.is_(None),
-    )
-    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 __all__ = [

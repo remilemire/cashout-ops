@@ -18,8 +18,9 @@ from .model import CashoutSubmission
 # Soft-deleted submissions (deleted_at set) behave as gone: every submission
 # lookup excludes them, which also strands their documents and analyses —
 # each service path resolves the submission first and now finds nothing.
-# This is the canonical statement of the contract; the sibling repositories'
-# get_live_submission helpers point back here.
+# This is the canonical statement of the contract; the sibling repositories
+# re-export get_submission (as get_live_submission) rather than restating the
+# predicate.
 
 
 async def add_submission(db: AsyncSession, submission: CashoutSubmission) -> None:
