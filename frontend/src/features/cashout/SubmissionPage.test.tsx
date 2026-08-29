@@ -81,6 +81,7 @@ const completedSubmission: CashoutSubmissionDetail = {
   submittedAt: "2026-07-16T01:00:00Z",
   completedByUserId: employee.id,
   firstCompletedAt: "2026-07-16T02:00:00Z",
+  tipoutDepartments: ["kitchen"],
   updatedAt: "2026-07-16T02:00:00Z",
   employee,
   documents: [],
@@ -114,6 +115,7 @@ const verifiedSubmission: CashoutSubmissionDetail = {
   status: "processing",
   completedByUserId: null,
   firstCompletedAt: null,
+  tipoutDepartments: null,
   data: null,
   documents: [
     {
@@ -234,6 +236,47 @@ describe("SubmissionPage", () => {
       "completed-submission",
       { tipoutDepartments: ["bar", "expo"] },
     ]);
+  });
+
+  it("seeds the tipout checkboxes from the last-completion snapshot", async () => {
+    // After an unsubmit the data row is gone, but the submission keeps the
+    // snapshot — the form starts from the previous choice.
+    getSubmissionMock.mockResolvedValue({
+      ...verifiedSubmission,
+      tipoutDepartments: ["bar", "kitchen"],
+    });
+    renderPage();
+
+    expect(
+      await screen.findByLabelText<HTMLInputElement>("Bar"),
+    ).toHaveProperty("checked", true);
+    expect(screen.getByLabelText<HTMLInputElement>("Kitchen")).toHaveProperty(
+      "checked",
+      true,
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Expo")).toHaveProperty(
+      "checked",
+      false,
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Host")).toHaveProperty(
+      "checked",
+      false,
+    );
+  });
+
+  it("starts with no tipout checkboxes checked when never completed", async () => {
+    getSubmissionMock.mockResolvedValue(verifiedSubmission); // snapshot: null
+    renderPage();
+
+    expect(
+      await screen.findByLabelText<HTMLInputElement>("Bar"),
+    ).toHaveProperty("checked", false);
+    for (const label of ["Kitchen", "Expo", "Host"]) {
+      expect(screen.getByLabelText<HTMLInputElement>(label)).toHaveProperty(
+        "checked",
+        false,
+      );
+    }
   });
 
   it("completes with no departments when none is selected", async () => {

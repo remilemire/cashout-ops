@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
+from app.features.cashout.data.types import TipoutDepartment
 from app.features.cashout.models import CashoutDocument, CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
@@ -216,6 +217,53 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     ).json()
     assert detail["data"] is not None
     assert detail["data"]["id"] != first_data_id
+
+
+async def test_tipout_snapshot_survives_unsubmit(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+
+    # Never completed: no snapshot yet.
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["tipoutDepartments"] is None
+
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, created["id"])
+    completed = await complete_submission(
+        cashier_client,
+        submission_id,
+        tipout_departments=(TipoutDepartment.KITCHEN, TipoutDepartment.BAR),
+    )
+    # The snapshot is stored sorted, independent of the order submitted.
+    assert completed["tipoutDepartments"] == ["bar", "kitchen"]
+
+    # Unsubmit drops the data row but keeps the snapshot, so the completion
+    # form can start from the previous choice.
+    reopened = await unsubmit_submission(admin_client, submission_id)
+    assert reopened["status"] == CashoutSubmissionStatus.PROCESSING.value
+    assert reopened["tipoutDepartments"] == ["bar", "kitchen"]
+
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
+    assert detail["data"] is None
+    assert detail["tipoutDepartments"] == ["bar", "kitchen"]
+
+    # Re-completing with a different set overwrites the snapshot.
+    recompleted = await complete_submission(
+        cashier_client,
+        submission_id,
+        tipout_departments=(TipoutDepartment.HOST, TipoutDepartment.EXPO),
+    )
+    assert recompleted["tipoutDepartments"] == ["expo", "host"]
 
 
 async def test_unsubmit_is_admin_only(

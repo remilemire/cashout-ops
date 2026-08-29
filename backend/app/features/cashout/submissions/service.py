@@ -135,6 +135,10 @@ async def complete_submission(
         tipout_departments=payload.tipout_departments,
     )
     submission.status = CashoutSubmissionStatus.COMPLETED
+    # Snapshot the chosen departments on the submission itself so unsubmit
+    # (which drops the data row) does not lose the choice. Sorted so the
+    # stored order does not depend on set iteration order.
+    submission.tipout_departments = sorted(payload.tipout_departments)
     # Record the actual actor (the admin when an admin completes); the first
     # completion time is bookkeeping — set once, never overwritten.
     submission.completed_by_user_id = user.id
@@ -160,7 +164,9 @@ async def unsubmit_submission(
 
     submission.status = CashoutSubmissionStatus.PROCESSING
     # completed_by reflects the *current* completion, so it clears with it;
-    # first_completed_at is permanent bookkeeping and survives.
+    # first_completed_at is permanent bookkeeping and survives, and so does
+    # the tipout_departments snapshot — re-completion starts from the
+    # previous choice.
     submission.completed_by_user_id = None
 
     return submission

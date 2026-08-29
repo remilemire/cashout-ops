@@ -6,9 +6,10 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Uuid, func
+from sqlalchemy import ARRAY, DateTime, ForeignKey, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.features.cashout.data.types import TipoutDepartment
 from app.infrastructure.db.models import Base, enum_column
 
 from .types import CashoutSubmissionStatus
@@ -61,6 +62,14 @@ class CashoutSubmission(Base):
     # marker that blocks hard deletion.
     first_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # The departments chosen at the most recent completion — written on
+    # complete and deliberately kept through unsubmit, so re-completion starts
+    # from the previous choice. NULL means never completed. The authoritative
+    # copy for a completed cashout stays on its CashoutData row.
+    tipout_departments: Mapped[list[TipoutDepartment] | None] = mapped_column(
+        ARRAY(enum_column(TipoutDepartment, "tipout_department")), nullable=True
     )
 
     # Soft-delete marker: a submission with traces (documents, data, or a

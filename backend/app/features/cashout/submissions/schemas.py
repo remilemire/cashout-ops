@@ -21,6 +21,8 @@ class CashoutSubmissionOut(BaseOut):
     submitted_at: UtcDateTime
     completed_by_user_id: uuid.UUID | None = None
     first_completed_at: UtcDateTime | None = None
+    # Last-completion snapshot; survives unsubmit. None means never completed.
+    tipout_departments: list[TipoutDepartment] | None = None
     updated_at: UtcDateTime
 
 

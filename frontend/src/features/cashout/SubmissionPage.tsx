@@ -195,6 +195,7 @@ export function SubmissionPage() {
       {editable && documents.length > 0 && (
         <CompletePrompt
           allVerified={allVerified}
+          initialSelected={submission.tipoutDepartments ?? []}
           pending={complete.isPending}
           error={complete.error}
           onComplete={(departments) => complete.mutate(departments)}
@@ -250,16 +251,21 @@ const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
  */
 function CompletePrompt({
   allVerified,
+  initialSelected,
   pending,
   error,
   onComplete,
 }: {
   allVerified: boolean;
+  /** Seed for the checkboxes: the previous completion's departments, if any. */
+  initialSelected: TipoutDepartment[];
   pending: boolean;
   error: unknown;
   onComplete: (tipoutDepartments: TipoutDepartment[]) => void;
 }) {
-  const [selected, setSelected] = useState<TipoutDepartment[]>([]);
+  // The prompt only mounts once the detail payload is loaded, so the
+  // initializer sees the fetched snapshot (kept through unsubmit).
+  const [selected, setSelected] = useState<TipoutDepartment[]>(initialSelected);
 
   if (!allVerified) {
     return (

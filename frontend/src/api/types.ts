@@ -153,6 +153,13 @@ export interface CashoutSubmission {
   completedByUserId: string | null;
   /** When it was completed first; set once and never overwritten. */
   firstCompletedAt: string | null;
+  /**
+   * The departments chosen at the most recent completion — kept through
+   * unsubmit so re-completion starts from the previous choice (unlike
+   * CashoutData.tipoutDepartments, which the unsubmit drops with its row).
+   * Null means never completed.
+   */
+  tipoutDepartments: TipoutDepartment[] | null;
   updatedAt: string;
 }
 

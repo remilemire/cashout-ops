@@ -34,6 +34,7 @@ const submission: CashoutSubmission = {
   submittedAt: "2026-07-17T00:00:00Z",
   completedByUserId: null,
   firstCompletedAt: null,
+  tipoutDepartments: null,
   updatedAt: "2026-07-17T00:00:00Z",
 };
 
