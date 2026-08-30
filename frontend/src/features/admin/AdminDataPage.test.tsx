@@ -135,7 +135,7 @@ describe("AdminDataPage", () => {
     renderPage();
     await screen.findAllByRole("cell", { name: "Ada Lovelace" });
 
-    fireEvent.change(screen.getByLabelText("Business date"), {
+    fireEvent.change(screen.getByLabelText("Date"), {
       target: { value: "2026-08-10" },
     });
 
@@ -175,7 +175,7 @@ describe("AdminDataPage", () => {
     renderPage();
     await screen.findAllByRole("cell", { name: "Ada Lovelace" });
 
-    fireEvent.change(screen.getByLabelText("Business date"), {
+    fireEvent.change(screen.getByLabelText("Date"), {
       target: { value: "2026-01-01" },
     });
 
@@ -199,6 +199,6 @@ describe("AdminDataPage", () => {
 
     expect(await screen.findByText("No cashout data yet")).toBeDefined();
     // No filter bar when there is nothing to filter.
-    expect(screen.queryByLabelText("Business date")).toBeNull();
+    expect(screen.queryByLabelText("Date")).toBeNull();
   });
 });

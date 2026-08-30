@@ -16,7 +16,7 @@ import {
   PageHeader,
   SkeletonList,
 } from "@/components/ui";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 function money(value: string | null): string {
   return value != null ? `$${value}` : "—";
@@ -98,9 +98,7 @@ export function AdminDataPage() {
         <>
           <div className="flex flex-wrap items-end gap-3">
             <label className="block w-44">
-              <span className="mb-1 block text-sm font-medium">
-                Business date
-              </span>
+              <span className="mb-1 block text-sm font-medium">Date</span>
               <Input
                 type="date"
                 value={dateFilter}
@@ -137,12 +135,11 @@ export function AdminDataPage() {
             />
           ) : (
             <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-220 text-sm">
+              <table className="w-full min-w-180 text-sm">
                 <thead>
                   <tr className="border-line text-ink-muted border-b text-left text-xs">
                     <th className="px-4 py-2.5 font-medium">Employee</th>
-                    <th className="px-4 py-2.5 font-medium">Business date</th>
-                    <th className="px-4 py-2.5 font-medium">Created</th>
+                    <th className="px-4 py-2.5 font-medium">Date</th>
                     <th className="px-4 py-2.5 font-medium">Submission</th>
                     <th className="px-4 py-2.5 text-right font-medium">
                       Net sales
@@ -169,9 +166,6 @@ export function AdminDataPage() {
                       </td>
                       <td className="px-4 py-3">
                         {formatDate(row.submission.businessDate)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {formatDateTime(row.createdAt)}
                       </td>
                       <td className="px-4 py-3">
                         <Link
