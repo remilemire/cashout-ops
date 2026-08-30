@@ -9,6 +9,12 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+# Read-only sibling import: the list eager-loads each row's submission (and
+# its employee) for serialization. Reads may cross sub-features; writes stay
+# in the owning repository.
+from app.features.cashout.submissions.model import CashoutSubmission
 
 from .model import CashoutData
 
@@ -32,7 +38,15 @@ async def delete_data(db: AsyncSession, data: CashoutData) -> None:
 
 
 async def list_data(db: AsyncSession) -> Sequence[CashoutData]:
-    stmt = select(CashoutData).order_by(CashoutData.created_at.desc())
+    # Eagerly loaded: the rows are serialized with their submission identity,
+    # and a lazy load at that point would raise under asyncio.
+    stmt = (
+        select(CashoutData)
+        .options(
+            joinedload(CashoutData.submission).joinedload(CashoutSubmission.employee)
+        )
+        .order_by(CashoutData.created_at.desc())
+    )
     return (await db.execute(stmt)).scalars().all()
 
 

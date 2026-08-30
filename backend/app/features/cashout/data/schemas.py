@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 
 from app.core.schemas import BaseOut, UtcDateTime
+from app.features.users.schemas import UserOut
 
 from .types import TipoutDepartment
 
@@ -46,4 +48,24 @@ class CashoutDataOut(BaseOut):
     submission_id: uuid.UUID
 
 
-__all__ = ["CashoutDataOut"]
+class CashoutDataSubmissionOut(BaseOut):
+    """The identity half of a data row — who the cashout was for and its day."""
+
+    id: uuid.UUID
+    business_date: date
+    employee: UserOut
+
+
+class CashoutDataListOut(CashoutDataOut):
+    """The list endpoint's shape. Not part of CashoutDataOut itself: that is
+    embedded inside the submission detail, where nesting the submission back
+    in would be circular."""
+
+    submission: CashoutDataSubmissionOut
+
+
+__all__ = [
+    "CashoutDataListOut",
+    "CashoutDataOut",
+    "CashoutDataSubmissionOut",
+]

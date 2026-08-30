@@ -275,6 +275,20 @@ export interface CashoutData {
   submissionId: string;
 }
 
+/**
+ * The list endpoint's shape: a data row with its submission's identity — who
+ * the cashout was for and its day. The copy embedded in a submission detail
+ * has no nested submission (it already sits inside one).
+ */
+export interface CashoutDataRow extends CashoutData {
+  submission: {
+    id: string;
+    /** The day the cashout is for (YYYY-MM-DD). */
+    businessDate: string;
+    employee: User;
+  };
+}
+
 export interface CashoutSubmissionDetail extends CashoutSubmission {
   employee: User;
   documents: CashoutDocument[];

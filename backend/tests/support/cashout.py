@@ -276,10 +276,14 @@ async def upload_reconcilable_documents(
 
 
 async def prepare_completable_submission(
-    client: AsyncClient, *, ai_client: FakeAIClient, drain: OutboxDrain
+    client: AsyncClient,
+    *,
+    ai_client: FakeAIClient,
+    drain: OutboxDrain,
+    business_date: str | None = None,
 ) -> str:
     """A fresh submission holding a verified, reconcilable pair of documents."""
-    submission_id = await create_submission(client)
+    submission_id = await create_submission(client, business_date=business_date)
     touchbistro, summary = await upload_reconcilable_documents(
         client, submission_id, ai_client=ai_client, drain=drain
     )

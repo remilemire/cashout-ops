@@ -122,6 +122,35 @@ async def test_completion_snapshots_the_configured_rates(
     assert unchanged["kitchenTipoutRate"] == "0.0350"
 
 
+async def test_data_rows_carry_their_submission_identity(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The bare figures don't say whose cashout this was: each listed row
+    # carries its submission's identity — the employee and the business day.
+    submission_id = await prepare_completable_submission(
+        cashier_client,
+        ai_client=ai_client,
+        drain=drain_outbox,
+        business_date="2026-08-15",
+    )
+    await complete_submission(cashier_client, submission_id)
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    submission = row["submission"]
+    assert submission["id"] == submission_id
+    assert submission["businessDate"] == "2026-08-15"
+
+    detail = await admin_client.get(f"/api/cashout/submissions/{submission_id}")
+    employee = submission["employee"]
+    assert employee["id"] == detail.json()["employeeUserId"]
+    assert employee["fullName"] == "Test User"
+    assert employee["email"] == "cashier@test.com"
+
+
 # ================================
 # -------- Reconciliation --------
 # ================================

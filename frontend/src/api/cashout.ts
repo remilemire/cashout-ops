@@ -2,7 +2,7 @@
 
 import { api } from "./client";
 import type {
-  CashoutData,
+  CashoutDataRow,
   CashoutDocumentAnalysis,
   CashoutSubmission,
   CashoutSubmissionDetail,
@@ -94,7 +94,7 @@ export const cashoutApi = {
       method: "POST",
     }),
 
-  listData: () => api<CashoutData[]>("/cashout/data"),
+  listData: () => api<CashoutDataRow[]>("/cashout/data"),
 };
 
 /** Central react-query keys so invalidation stays consistent. */
