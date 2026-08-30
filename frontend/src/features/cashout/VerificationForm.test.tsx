@@ -110,6 +110,35 @@ describe("VerificationForm", () => {
     );
   });
 
+  it("re-seeds preserved corrections after unverify", async () => {
+    // Regression: unverify keeps verifiedDataJson server-side; a form mounted
+    // on that state must start from the correction, not the raw extraction.
+    renderForm(true, {
+      ...analysis,
+      verifiedDataJson: {
+        grand_total: "1234.56",
+        grand_total_transaction_count: 41,
+      },
+    });
+
+    expect(screen.getByLabelText<HTMLInputElement>("Orders").value).toBe("41");
+    expect(screen.getByText("edited")).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /verify with 1 correction/i }),
+    );
+
+    // The corrected count is re-sent, and coerceLike keeps it a number.
+    await waitFor(() =>
+      expect(verifyMock).toHaveBeenCalledWith("analysis-1", {
+        verifiedData: {
+          grand_total: "1234.56",
+          grand_total_transaction_count: 41,
+        },
+      }),
+    );
+  });
+
   it("renders read-only for non-owners", () => {
     renderForm(false);
 

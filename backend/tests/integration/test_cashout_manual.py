@@ -336,7 +336,11 @@ async def test_unverify_manual_analysis_reopens_for_editing(
     assert reopened["provider"] is None
     assert reopened["schemaName"] == "ServerSummaryReportData"
     assert reopened["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
-    assert reopened["verifiedDataJson"] is None
+    # Unverify preserves the verified data as the seed for the re-edit; for a
+    # manual entry it equals what was typed in.
+    assert reopened["verifiedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert reopened["verifiedByUserId"] is None
+    assert reopened["verifiedAt"] is None
 
     reverified = await verify_analysis(
         cashier_client,

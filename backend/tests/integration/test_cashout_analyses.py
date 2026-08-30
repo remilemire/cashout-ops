@@ -55,11 +55,12 @@ async def test_unverify_reopens_verification_for_editing(
     await verify_analysis(cashier_client, touchbistro["id"])
     await verify_analysis(cashier_client, summary["id"])
 
-    # Unverify clears the verification outcome but keeps the extraction, so
-    # the verification form has fields to re-render.
+    # Unverify clears the verifier and timestamp but keeps the extraction and
+    # the verified data, so the verification form has fields to re-render and
+    # any prior corrections to seed them from.
     reopened = await unverify_analysis(cashier_client, touchbistro["id"])
     assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert reopened["verifiedDataJson"] is None
+    assert reopened["verifiedDataJson"] == TOUCHBISTRO_EXTRACTED
     assert reopened["verifiedByUserId"] is None
     assert reopened["verifiedAt"] is None
     assert reopened["extractedDataJson"] == TOUCHBISTRO_EXTRACTED
@@ -79,6 +80,69 @@ async def test_unverify_reopens_verification_for_editing(
 
     completed = await complete_submission(cashier_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
+
+
+async def test_unverify_preserves_corrections_for_reediting(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Regression: verify with a correction, then unverify to re-edit — the
+    # correction must survive as the seed for the re-edit, not silently
+    # revert to the extracted value.
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await poll_analysis(cashier_client, created["id"])
+
+    corrected = {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1300.00"}
+    await verify_analysis(cashier_client, analysis["id"], {"verifiedData": corrected})
+
+    reopened = await unverify_analysis(cashier_client, analysis["id"])
+    assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert reopened["verifiedDataJson"] == corrected
+    assert reopened["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert reopened["verifiedByUserId"] is None
+    assert reopened["verifiedAt"] is None
+
+    # A fresh read agrees: the preserved correction is persisted, not just
+    # echoed back by the unverify response.
+    fetched = await poll_analysis(cashier_client, analysis["id"])
+    assert fetched["verifiedDataJson"] == corrected
+    assert fetched["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert fetched["verifiedByUserId"] is None
+    assert fetched["verifiedAt"] is None
+
+
+async def test_retry_extraction_clears_stale_correction(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # A correction preserved through unverify was made against the previous
+    # extraction; a re-run must not carry it into the fresh one.
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await poll_analysis(cashier_client, created["id"])
+
+    corrected = {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1300.00"}
+    await verify_analysis(cashier_client, analysis["id"], {"verifiedData": corrected})
+    await unverify_analysis(cashier_client, analysis["id"])
+
+    retry = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        headers=csrf_headers(cashier_client),
+    )
+    assert retry.status_code == 200, retry.text
+    await drain_outbox()
+
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
+    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert analysis["verifiedDataJson"] is None
+    assert analysis["verifiedByUserId"] is None
+    assert analysis["verifiedAt"] is None
 
 
 async def test_unverify_non_verified_analysis_conflicts(

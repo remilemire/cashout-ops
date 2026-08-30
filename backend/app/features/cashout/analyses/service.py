@@ -281,11 +281,13 @@ async def unverify_analysis(
 ) -> CashoutDocumentAnalysis:
     """Send a verified extraction back through verification (employee or admin).
 
-    Editing a verified extraction means re-verifying it: the verification
-    outcome (verified data, verifier, timestamp) is cleared and the analysis
-    returns to NEEDS_VERIFICATION, while the extraction fields stay untouched
-    so the verification form re-renders from them. Combined with unsubmit,
-    this is how an admin corrects an already-completed cashout.
+    Editing a verified extraction means re-verifying it: the verifier and
+    timestamp are cleared and the analysis returns to NEEDS_VERIFICATION,
+    while the extraction fields stay untouched so the verification form
+    re-renders from them. The verified data is preserved so corrections made
+    on the first pass seed the re-edit instead of being dropped. Combined
+    with unsubmit, this is how an admin corrects an already-completed
+    cashout.
     """
     analysis = await _get_analysis(db, analysis_id)
 
@@ -300,7 +302,6 @@ async def unverify_analysis(
         raise AppError("ANALYSIS_NOT_VERIFIED")
 
     analysis.status = DocumentAnalysisStatus.NEEDS_VERIFICATION
-    analysis.verified_data_json = None
     analysis.verified_by_user_id = None
     analysis.verified_at = None
 
@@ -442,6 +443,12 @@ async def _reset_analysis(
     analysis.error_code = None
     analysis.error_message = None
     analysis.completed_at = None
+    # Unverify preserves verified_data_json as the seed for a re-edit, so an
+    # unverified analysis can carry corrections here. They were made against
+    # the previous extraction: a fresh one must not be seeded from them.
+    analysis.verified_data_json = None
+    analysis.verified_by_user_id = None
+    analysis.verified_at = None
     return analysis
 
 

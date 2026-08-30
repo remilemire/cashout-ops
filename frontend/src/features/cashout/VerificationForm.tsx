@@ -13,6 +13,21 @@ import { buildVerifiedData, displayValue } from "@/lib/format";
 import { FieldList } from "./FieldList";
 import { fieldLabelFor, groupFields } from "./fields";
 
+/** Unverify preserves the corrections server-side; re-seed the edit state
+ * from them so a re-edit starts from the corrected values, not the raw
+ * extraction. */
+function seedEdits(analysis: CashoutDocumentAnalysis): Record<string, string> {
+  const verified = analysis.verifiedDataJson;
+  if (verified == null) return {};
+  const extracted = analysis.extractedDataJson ?? {};
+  const edits: Record<string, string> = {};
+  for (const key of Object.keys(extracted)) {
+    const corrected = displayValue(verified[key]);
+    if (corrected !== displayValue(extracted[key])) edits[key] = corrected;
+  }
+  return edits;
+}
+
 /**
  * The cashier's review step: extracted fields (editable), the issues the AI
  * flagged inline on the fields they concern, and both confidences. Verify
@@ -31,7 +46,9 @@ export function VerificationForm({
   secondaryAction?: ReactNode;
 }) {
   const queryClient = useQueryClient();
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, string>>(() =>
+    seedEdits(analysis),
+  );
   const extracted = analysis.extractedDataJson ?? {};
   const issues = analysis.issues ?? [];
 
