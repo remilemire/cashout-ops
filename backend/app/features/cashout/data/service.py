@@ -12,6 +12,7 @@ from app.features.cashout.analyses.model import CashoutDocumentAnalysis
 
 from . import repository
 from .model import CashoutData
+from .reconciliation import reconcile_figures
 from .types import TipoutDepartment
 
 
@@ -24,18 +25,25 @@ async def reconcile(
 ) -> CashoutData:
     """Build the submission's data row from its verified analyses and add it.
 
+    The source figures come from `reconciliation`, which cross-checks the
+    documents against each other first — a cashout that does not add up
+    raises there and never reaches a row.
+
     The rates are copied onto the row rather than read back later: a cashout
     closes against the rates in force at that moment, and editing them
     afterwards must not restate it.
     """
-    # TODO(document-ai): reconcile the verified analyses into the source
-    # figures (food/drink/total net sales, card/cash payment totals, card tip
-    # total). Until then they stay null and every generated tipout with them.
-    _ = analyses
+    figures = reconcile_figures(analyses)
 
     rates = settings.tipout
     data = CashoutData(
         submission_id=submission_id,
+        food_net_sales=figures.food_net_sales,
+        drink_net_sales=figures.drink_net_sales,
+        total_net_sales=figures.total_net_sales,
+        card_payment_total=figures.card_payment_total,
+        cash_payment_total=figures.cash_payment_total,
+        card_tip_total=figures.card_tip_total,
         # Sorted so the stored order does not depend on set iteration order.
         tipout_departments=sorted(tipout_departments),
         bar_tipout_rate=rates.BAR_RATE,

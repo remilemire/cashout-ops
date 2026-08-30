@@ -15,7 +15,7 @@ const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
 
 /** The reconciled result of a completed cashout. */
 export function DataCard({ data }: { data: CashoutData }) {
-  const stats: { label: string; value: string | null; icon: ReactNode }[] = [
+  const stats: { label: string; value: string; icon: ReactNode }[] = [
     {
       label: "Net sales",
       value: data.totalNetSales,
@@ -66,7 +66,7 @@ export function DataCard({ data }: { data: CashoutData }) {
               {stat.label}
             </p>
             <p className="mt-1 text-lg font-semibold tabular-nums">
-              {stat.value != null ? `$${stat.value}` : "—"}
+              ${stat.value}
             </p>
           </div>
         ))}
@@ -101,12 +101,6 @@ export function DataCard({ data }: { data: CashoutData }) {
           <span className="text-ink-muted">{balance.label}</span>
           <span className="font-semibold tabular-nums">${balance.value}</span>
         </div>
-      )}
-
-      {data.totalNetSales == null && (
-        <p className="text-ink-muted text-xs">
-          Amounts populate once reconciliation is implemented.
-        </p>
       )}
     </Card>
   );

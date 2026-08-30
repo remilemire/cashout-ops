@@ -6,8 +6,13 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import { ApiError } from "@/api/client";
 import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
-import type { ManualDocumentInput, TipoutDepartment } from "@/api/types";
+import type {
+  ErrorCode,
+  ManualDocumentInput,
+  TipoutDepartment,
+} from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -271,6 +276,29 @@ const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
 };
 
 /**
+ * What to go and look at when reconciliation refuses the cashout. The banner
+ * carries the backend's message, which cannot name the documents; these point
+ * at the ones on this page, by the field labels their verification forms
+ * render.
+ */
+const RECONCILE_HINTS: Partial<Record<ErrorCode, string>> = {
+  RECONCILE_TOUCHBISTRO_MISSING:
+    "Upload the TouchBistro end-of-day report, or add it with manual entry.",
+  RECONCILE_TOUCHBISTRO_DUPLICATE:
+    "Remove the extra TouchBistro report — a cashout reconciles against one.",
+  RECONCILE_CARD_PAYMENT_MISMATCH:
+    "Compare Card payments on the TouchBistro report against the Grand total on each server summary; they have to add up.",
+  RECONCILE_CARD_TRANSACTION_MISMATCH:
+    "Compare Card orders on the TouchBistro report against Orders on each server summary; they have to add up.",
+  RECONCILE_DOCUMENT_DATA_INVALID:
+    "Re-verify the document you last corrected: one of its values can no longer be read as a number.",
+};
+
+function reconcileHint(error: unknown): string | undefined {
+  return error instanceof ApiError ? RECONCILE_HINTS[error.code] : undefined;
+}
+
+/**
  * The post-verification prompt: once every document is verified the cashier
  * picks who this shift tips out to and closes the cashout, or keeps uploading
  * through the zone above it.
@@ -292,6 +320,7 @@ function CompletePrompt({
   // The prompt only mounts once the detail payload is loaded, so the
   // initializer sees the fetched snapshot (kept through unsubmit).
   const [selected, setSelected] = useState<TipoutDepartment[]>(initialSelected);
+  const hint = reconcileHint(error);
 
   if (!allVerified) {
     return (
@@ -365,6 +394,7 @@ function CompletePrompt({
         Complete cashout
       </Button>
       <ErrorBanner error={error} />
+      {hint != null && <p className="text-ink-muted text-xs">{hint}</p>}
     </Card>
   );
 }

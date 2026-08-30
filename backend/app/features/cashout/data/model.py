@@ -47,31 +47,16 @@ class CashoutData(Base):
         index=True,
     )
 
-    # Extracted / source values.
-    #
-    # TODO(document-ai): nullable only until service.reconcile populates them
-    # off the verified analyses — make them NOT NULL in the same change. A row
-    # with these null is an unreconciled cashout, and every tipout generated
-    # below it is null too.
-    food_net_sales: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
-    drink_net_sales: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
-    total_net_sales: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
+    # Extracted / source values, reconciled off the verified analyses (see
+    # data/reconciliation.py). NOT NULL: a cashout that cannot be reconciled
+    # fails to complete, so a row exists only once all six are known.
+    food_net_sales: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    drink_net_sales: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    total_net_sales: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
-    card_payment_total: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
-    cash_payment_total: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
-    card_tip_total: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
+    card_payment_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    cash_payment_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    card_tip_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     # User-selected business inputs: which departments this cashout tips
     # out to. A department left out keeps its tipout column null, so this

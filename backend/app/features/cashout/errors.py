@@ -8,6 +8,8 @@ from .analyses.errors import ErrorCode as AnalysisErrorCode
 from .analyses.errors import (
     error_definition_list as analysis_error_definition_list,
 )
+from .data.errors import ErrorCode as DataErrorCode
+from .data.errors import error_definition_list as data_error_definition_list
 from .documents.errors import ErrorCode as DocumentErrorCode
 from .documents.errors import (
     error_definition_list as document_error_definition_list,
@@ -20,12 +22,15 @@ from .submissions.errors import (
 # Cashout owns no codes directly at the root: every code lives in its
 # subfeature and is folded in below, so cashout exposes a single error
 # surface for the whole feature.
-type ErrorCode = SubmissionErrorCode | DocumentErrorCode | AnalysisErrorCode
+type ErrorCode = (
+    SubmissionErrorCode | DocumentErrorCode | AnalysisErrorCode | DataErrorCode
+)
 
 error_definition_list: ErrorDefinitionList[ErrorCode] = [
     *submission_error_definition_list,
     *document_error_definition_list,
     *analysis_error_definition_list,
+    *data_error_definition_list,
 ]
 
 # cashout_data.submission_id is ON DELETE RESTRICT: reconciled data blocks

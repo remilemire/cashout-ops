@@ -11,12 +11,14 @@ from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     SERVER_SUMMARY_EXTRACTED,
+    TOUCHBISTRO_EXTRACTED,
     complete_submission,
     configure_server_summary,
     create_submission,
     poll_analysis,
     unverify_analysis,
     upload_document,
+    upload_reconcilable_documents,
     verify_analysis,
 )
 from tests.support.fakes import FakeAIClient
@@ -46,29 +48,33 @@ async def test_unverify_reopens_verification_for_editing(
 ) -> None:
     # The full edit loop: verify, unverify, re-verify with a correction,
     # complete.
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
 
     # Unverify clears the verification outcome but keeps the extraction, so
     # the verification form has fields to re-render.
-    reopened = await unverify_analysis(cashier_client, created["id"])
+    reopened = await unverify_analysis(cashier_client, touchbistro["id"])
     assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert reopened["verifiedDataJson"] is None
     assert reopened["verifiedByUserId"] is None
     assert reopened["verifiedAt"] is None
-    assert reopened["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert reopened["extractedDataJson"] == TOUCHBISTRO_EXTRACTED
 
+    # Corrected on a figure the cross-check does not read, so the cashout
+    # still reconciles and can be completed.
     reverified = await verify_analysis(
         cashier_client,
-        created["id"],
-        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1200.00"}},
+        touchbistro["id"],
+        {"verifiedData": {**TOUCHBISTRO_EXTRACTED, "card_tip_total": "200.00"}},
     )
     assert reverified["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert reverified["verifiedDataJson"] == {
-        **SERVER_SUMMARY_EXTRACTED,
-        "grand_total": "1200.00",
+        **TOUCHBISTRO_EXTRACTED,
+        "card_tip_total": "200.00",
     }
 
     completed = await complete_submission(cashier_client, submission_id)
@@ -99,21 +105,23 @@ async def test_unverify_after_completion_conflicts(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     await complete_submission(cashier_client, submission_id)
 
     # A completed cashout is frozen; it must be unsubmitted first.
     response = await cashier_client.post(
-        f"/api/cashout/analyses/{created['id']}/unverify",
+        f"/api/cashout/analyses/{touchbistro['id']}/unverify",
         headers=csrf_headers(cashier_client),
     )
 
     assert response.status_code == 409
     assert response.json()["code"] == "SUBMISSION_COMPLETED"
-    analysis = await poll_analysis(cashier_client, created["id"])
+    analysis = await poll_analysis(cashier_client, touchbistro["id"])
     assert analysis["status"] == DocumentAnalysisStatus.VERIFIED.value
 
 

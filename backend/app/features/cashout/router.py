@@ -9,7 +9,8 @@ optionally submitting corrections. Alternatively, a document can be added
 with manually entered details (or a failed/unverified analysis replaced by
 them), skipping AI entirely and landing directly in VERIFIED. Once every
 document is verified, completing the submission reconciles the analyses into
-a CashoutData row and closes the cashout (COMPLETED).
+a CashoutData row and closes the cashout (COMPLETED) — or refuses, when the
+documents do not cross-check (see data/reconciliation.py).
 """
 
 from __future__ import annotations

@@ -115,6 +115,11 @@ async def get_submission(
         "SUBMISSION_COMPLETED",
         "SUBMISSION_EMPTY",
         "SUBMISSION_UNVERIFIED",
+        "RECONCILE_TOUCHBISTRO_MISSING",
+        "RECONCILE_TOUCHBISTRO_DUPLICATE",
+        "RECONCILE_CARD_PAYMENT_MISMATCH",
+        "RECONCILE_CARD_TRANSACTION_MISMATCH",
+        "RECONCILE_DOCUMENT_DATA_INVALID",
         "VALIDATION_FAILED",
     ),
 )
@@ -129,6 +134,11 @@ async def complete_submission(
     Reconciles the verified analyses into the submission's cashout data and
     moves the submission to `COMPLETED`. The submission's employee or an
     admin may complete it; the completing user is recorded.
+
+    Reconciliation is also where the cashout's documents are cross-checked:
+    it takes exactly one TouchBistro report, and the server summaries filed
+    with it must add up to that report's card payments and card orders. A
+    cashout that does not add up stays open with a `RECONCILE_*` conflict.
     """
     submission = await submissions_service.complete_submission(
         db, payload=payload, submission_id=submission_id, user=current_user

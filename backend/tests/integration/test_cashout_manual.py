@@ -26,6 +26,7 @@ from tests.support.cashout import (
     enter_manual_document,
     manual_entry_body,
     poll_analysis,
+    touchbistro_manual_entry_body,
     unverify_analysis,
     upload_document,
     upload_manual_document,
@@ -38,6 +39,7 @@ from tests.support.fixtures.outbox import OutboxDrain
 
 # A second document with different bytes, for tests that need a non-duplicate.
 OTHER_PDF_UPLOAD = ("other.pdf", b"%PDF-1.4 other fake bytes", "application/pdf")
+THIRD_PDF_UPLOAD = ("third.pdf", b"%PDF-1.4 third fake bytes", "application/pdf")
 
 
 async def test_manual_upload_lands_verified_without_ai(
@@ -80,7 +82,14 @@ async def test_manual_upload_lands_verified_without_ai(
     assert ai_client.calls == []
     assert await drain_outbox() == 0
 
-    # A fully manual cashout completes like any other.
+    # A fully manual cashout completes like any other — once the TouchBistro
+    # report the figures are reconciled from is on it too.
+    await upload_manual_document(
+        cashier_client,
+        submission_id,
+        body=touchbistro_manual_entry_body(),
+        file=OTHER_PDF_UPLOAD,
+    )
     completed = await complete_submission(cashier_client, submission_id)
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
 
@@ -179,11 +188,17 @@ async def test_manual_upload_after_completion_conflicts(
     await upload_manual_document(
         cashier_client, submission_id, body=manual_entry_body()
     )
+    await upload_manual_document(
+        cashier_client,
+        submission_id,
+        body=touchbistro_manual_entry_body(),
+        file=OTHER_PDF_UPLOAD,
+    )
     await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/documents/manual",
-        files={"file": OTHER_PDF_UPLOAD},
+        files={"file": THIRD_PDF_UPLOAD},
         data={"payload": json.dumps(manual_entry_body())},
         headers=csrf_headers(cashier_client),
     )

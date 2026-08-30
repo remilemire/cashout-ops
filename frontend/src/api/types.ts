@@ -53,7 +53,13 @@ export type ErrorCode =
   | "EXTRACTION_FAILED"
   | "DOCUMENT_TOO_LARGE"
   | "DOCUMENT_DUPLICATE"
-  | "UNSUPPORTED_DOCUMENT_TYPE";
+  | "UNSUPPORTED_DOCUMENT_TYPE"
+  // cashout — reconciliation, raised while completing
+  | "RECONCILE_TOUCHBISTRO_MISSING"
+  | "RECONCILE_TOUCHBISTRO_DUPLICATE"
+  | "RECONCILE_CARD_PAYMENT_MISMATCH"
+  | "RECONCILE_CARD_TRANSACTION_MISMATCH"
+  | "RECONCILE_DOCUMENT_DATA_INVALID";
 
 export interface ValidationIssue {
   code: string;
@@ -229,15 +235,16 @@ export interface CashoutData {
   createdAt: string;
 
   /**
-   * Reconciled off the verified analyses — null on a cashout completed before
-   * reconciliation was implemented, which leaves the tipouts below null too.
+   * Reconciled off the verified analyses — taken from the cashout's one
+   * TouchBistro report. Always present: a cashout that cannot be reconciled
+   * never completes, so no row exists without them.
    */
-  foodNetSales: string | null;
-  drinkNetSales: string | null;
-  totalNetSales: string | null;
-  cardPaymentTotal: string | null;
-  cashPaymentTotal: string | null;
-  cardTipTotal: string | null;
+  foodNetSales: string;
+  drinkNetSales: string;
+  totalNetSales: string;
+  cardPaymentTotal: string;
+  cashPaymentTotal: string;
+  cardTipTotal: string;
 
   /**
    * Which departments this cashout tipped out to, and the rates it closed
@@ -256,7 +263,10 @@ export interface CashoutData {
   expoTipout: string | null;
   hostTipout: string | null;
 
-  /** At most one side is set: whichever way the cash/card-tip balance fell. */
+  /**
+   * At most one side is set: whichever way the cash/card-tip balance fell
+   * (neither, on the exact tie).
+   */
   cashOwedToHouse: string | null;
   cashOwedToEmployee: string | null;
 

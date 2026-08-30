@@ -82,6 +82,15 @@ def _analysis_nullability(url: str) -> dict[str, bool]:
         engine.dispose()
 
 
+def _data_nullability(url: str) -> dict[str, bool]:
+    engine = create_engine(url)
+    try:
+        columns = inspect(engine).get_columns("cashout_data")
+        return {c["name"]: bool(c["nullable"]) for c in columns}
+    finally:
+        engine.dispose()
+
+
 def test_upgrade_head_allows_manual_analyses(migrated_url: str) -> None:
     """A database on the original schema is healed by `alembic upgrade head`.
 
@@ -162,5 +171,71 @@ def test_upgrade_head_fails_unknown_classifications(migrated_url: str) -> None:
         assert classification is None
         assert error_code == "unclassifiable_document"
         assert error_message
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_reopens_unreconciled_cashouts(migrated_url: str) -> None:
+    """The source figures become NOT NULL, and figure-less rows go with it.
+
+    A cashout completed before reconciliation carries no figures, and there
+    is nothing in SQL to fill them from — so `upgrade head` reopens it the
+    way unsubmit does: the row is dropped, the submission returns to
+    PROCESSING with its analyses still verified, and completing it once more
+    reconciles it properly.
+    """
+    _upgrade(migrated_url, "4c8f21d0a7b3")
+    assert _data_nullability(migrated_url)["food_net_sales"] is True
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, status,
+                         completed_by_user_id, first_completed_at,
+                         tipout_departments)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            'completed',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            ARRAY['kitchen']::tipout_department[]);
+                    INSERT INTO cashout_data
+                        (id, submission_id, tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate, host_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            ARRAY['kitchen']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        assert _data_nullability(migrated_url)["food_net_sales"] is False
+        with engine.connect() as conn:
+            assert (
+                conn.execute(text("SELECT count(*) FROM cashout_data")).scalar_one()
+                == 0
+            )
+            status, completed_by, first_completed_at, departments = conn.execute(
+                text(
+                    "SELECT status, completed_by_user_id, first_completed_at,"
+                    " array_to_string(tipout_departments, ',')"
+                    " FROM cashout_submissions"
+                )
+            ).one()
+        # Reopened, not erased: the completion on record and the tipout choice
+        # survive, exactly as they do through an unsubmit.
+        assert status == "processing"
+        assert completed_by is None
+        assert first_completed_at is not None
+        assert departments == "kitchen"
     finally:
         engine.dispose()

@@ -90,23 +90,23 @@ const completedSubmission: CashoutSubmissionDetail = {
   data: {
     id: "data-1",
     createdAt: "2026-07-16T02:00:00Z",
-    foodNetSales: null,
-    drinkNetSales: null,
-    totalNetSales: null,
-    cardPaymentTotal: null,
-    cashPaymentTotal: null,
-    cardTipTotal: null,
+    foodNetSales: "800.00",
+    drinkNetSales: "400.00",
+    totalNetSales: "1200.00",
+    cardPaymentTotal: "1234.56",
+    cashPaymentTotal: "150.00",
+    cardTipTotal: "180.00",
     tipoutDepartments: ["kitchen"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",
     expoTipoutRate: "0.0100",
     hostTipoutRate: "0.0100",
     barTipout: null,
-    kitchenTipout: null,
+    kitchenTipout: "24.00",
     expoTipout: null,
     hostTipout: null,
     cashOwedToHouse: null,
-    cashOwedToEmployee: null,
+    cashOwedToEmployee: "30.00",
     submissionId: "completed-submission",
   },
 };
@@ -360,6 +360,32 @@ describe("SubmissionPage", () => {
     expect(
       screen.queryByRole("button", { name: "Or enter details manually" }),
     ).toBeNull();
+  });
+
+  it("explains a reconciliation conflict when completing fails", async () => {
+    // The backend message says what does not add up; the page adds where to
+    // go and look for it.
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    completeSubmissionMock.mockRejectedValue(
+      new ApiError(409, {
+        kind: "CONFLICT",
+        code: "RECONCILE_CARD_PAYMENT_MISMATCH",
+        message:
+          "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.",
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete cashout" }),
+    );
+
+    expect(
+      await screen.findByText(/do not match the server summary grand totals/),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Compare Card payments on the TouchBistro report/),
+    ).toBeDefined();
   });
 
   it("shows the error banner when unsubmitting fails", async () => {

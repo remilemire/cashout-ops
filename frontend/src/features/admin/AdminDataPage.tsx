@@ -20,9 +20,9 @@ function money(value: string | null): string {
 }
 
 /**
- * The row's tipouts added up. Null when none was calculated — an unreconciled
- * cashout, or one that tipped out to nobody — so the cell reads "—" rather
- * than a misleading $0.00.
+ * The row's tipouts added up. Null when none was calculated — a cashout that
+ * tipped out to nobody — so the cell reads "—" rather than a misleading
+ * $0.00.
  */
 function totalTipout(row: CashoutData): string | null {
   const amounts = [
@@ -91,7 +91,7 @@ export function AdminDataPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(row.totalNetSales)}
+                    ${row.totalNetSales}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {money(totalTipout(row))}
@@ -108,11 +108,6 @@ export function AdminDataPage() {
           </table>
         </Card>
       )}
-
-      <p className="text-ink-muted text-xs">
-        Figures populate once reconciliation is implemented; cashouts completed
-        before then show no amounts.
-      </p>
     </div>
   );
 }

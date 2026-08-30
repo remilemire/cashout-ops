@@ -12,6 +12,7 @@ from tests.support.cashout import (
     configure_server_summary,
     create_submission,
     upload_document,
+    upload_reconcilable_documents,
     verify_analysis,
 )
 from tests.support.documents import SAMPLE_PDF_BYTES
@@ -75,14 +76,16 @@ async def test_delete_document_after_completion_conflicts(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, analysis["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.delete(
-        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        f"/api/cashout/documents/{touchbistro['cashoutDocumentId']}",
         headers=csrf_headers(cashier_client),
     )
 
@@ -91,7 +94,7 @@ async def test_delete_document_after_completion_conflicts(
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert len(detail["documents"]) == 1
+    assert len(detail["documents"]) == 2
     assert storage.objects
 
 

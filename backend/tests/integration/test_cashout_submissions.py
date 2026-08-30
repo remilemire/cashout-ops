@@ -14,15 +14,18 @@ from app.features.cashout.models import CashoutDocument, CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
+    TOUCHBISTRO_EXTRACTED,
     complete_submission,
     completion_body,
     configure_server_summary,
     create_submission,
+    prepare_completable_submission,
     unsubmit_submission,
+    unverify_analysis,
     upload_document,
+    upload_reconcilable_documents,
     verify_analysis,
 )
-from tests.support.documents import SAMPLE_PNG_UPLOAD
 from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
@@ -111,10 +114,9 @@ async def test_delete_completed_submission_is_restricted(
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
-    submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, analysis["id"])
+    submission_id = await prepare_completable_submission(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
+    )
     await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.delete(
@@ -171,11 +173,13 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
     cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     completed = await complete_submission(cashier_client, submission_id)
     first_completed_at = completed["firstCompletedAt"]
     assert first_completed_at is not None
@@ -202,10 +206,12 @@ async def test_admin_unsubmit_reopens_completed_cashout(
 
     # The employee can edit again without any admin help: editability keys on
     # PROCESSING, which the unsubmit restored.
-    second = await upload_document(
-        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    await unverify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(
+        cashier_client,
+        touchbistro["id"],
+        {"verifiedData": {**TOUCHBISTRO_EXTRACTED, "card_tip_total": "200.00"}},
     )
-    await verify_analysis(cashier_client, second["id"])
 
     # Re-completing reconciles a fresh data row and re-stamps the completer.
     recompleted = await complete_submission(cashier_client, submission_id)
@@ -217,6 +223,8 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     ).json()
     assert detail["data"] is not None
     assert detail["data"]["id"] != first_data_id
+    # Reconciled afresh, so the edit is in the new row.
+    assert detail["data"]["cardTipTotal"] == "200.00"
 
 
 async def test_tipout_snapshot_survives_unsubmit(
@@ -225,7 +233,6 @@ async def test_tipout_snapshot_survives_unsubmit(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
 
     # Never completed: no snapshot yet.
@@ -234,8 +241,11 @@ async def test_tipout_snapshot_survives_unsubmit(
     ).json()
     assert detail["tipoutDepartments"] is None
 
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     completed = await complete_submission(
         cashier_client,
         submission_id,
@@ -271,10 +281,9 @@ async def test_unsubmit_is_admin_only(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
-    submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    submission_id = await prepare_completable_submission(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
+    )
     await complete_submission(cashier_client, submission_id)
 
     # The employee (plain staff) cannot reopen their own completed cashout —
@@ -316,18 +325,21 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
 ) -> None:
     # Complete once, unsubmit, then strip the cashout down to nothing: the
     # completion on record (first_completed_at) still blocks a hard delete.
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     await complete_submission(cashier_client, submission_id)
     await unsubmit_submission(admin_client, submission_id)
 
-    removed = await cashier_client.delete(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}",
-        headers=csrf_headers(cashier_client),
-    )
-    assert removed.status_code == 204, removed.text
+    for analysis in (touchbistro, summary):
+        removed = await cashier_client.delete(
+            f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+            headers=csrf_headers(cashier_client),
+        )
+        assert removed.status_code == 204, removed.text
 
     response = await cashier_client.delete(
         f"/api/cashout/submissions/{submission_id}",

@@ -14,16 +14,20 @@ from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
     SERVER_SUMMARY_EXTRACTED,
+    TOUCHBISTRO_EXTRACTED,
     complete_submission,
     completion_body,
     configure_server_summary,
+    configure_touchbistro,
     create_submission,
     poll_analysis,
     unsubmit_submission,
     unverify_analysis,
     upload_document,
+    upload_reconcilable_documents,
     verify_analysis,
 )
+from tests.support.documents import SAMPLE_PNG_UPLOAD
 from tests.support.fakes import FakeAIClient
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
@@ -34,7 +38,7 @@ async def test_full_cashout_flow(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    configure_server_summary(ai_client)
+    configure_touchbistro(ai_client)
 
     submission_id = await create_submission(cashier_client)
 
@@ -48,12 +52,21 @@ async def test_full_cashout_flow(
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert (
         analysis["classification"]
-        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+        == CashoutDocumentClassification.TOUCHBISTRO_REPORT.value
     )
     assert analysis["classificationConfidence"] == 0.95
-    assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert analysis["extractedDataJson"] == TOUCHBISTRO_EXTRACTED
     assert analysis["extractionConfidence"] == 0.9
-    assert analysis["issues"] == [
+
+    # The cashout also needs the terminal summary its card payments are
+    # cross-checked against.
+    configure_server_summary(ai_client)
+    created_summary = await upload_document(
+        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    )
+    summary = await poll_analysis(cashier_client, created_summary["id"])
+    assert summary["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
+    assert summary["issues"] == [
         {"path": "grand_total", "message": "partially legible"}
     ]
 
@@ -62,23 +75,33 @@ async def test_full_cashout_flow(
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
-    document = detail["documents"][0]
-    assert document["analysis"]["id"] == analysis["id"]
+    assert {document["analysis"]["id"] for document in detail["documents"]} == {
+        analysis["id"],
+        summary["id"],
+    }
+    document = next(
+        entry
+        for entry in detail["documents"]
+        if entry["analysis"]["id"] == analysis["id"]
+    )
     assert (
         document["analysis"]["classification"]
-        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+        == CashoutDocumentClassification.TOUCHBISTRO_REPORT.value
     )
 
-    # The cashier verifies with a correction.
+    # The cashier verifies the summary as extracted, and the TouchBistro
+    # report with a correction — to a figure the cross-check does not read,
+    # so the pair still reconciles.
+    await verify_analysis(cashier_client, summary["id"])
     verified = await verify_analysis(
         cashier_client,
         analysis["id"],
-        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1234.00"}},
+        {"verifiedData": {**TOUCHBISTRO_EXTRACTED, "card_tip_total": "200.00"}},
     )
     assert verified["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert verified["verifiedDataJson"] == {
-        **SERVER_SUMMARY_EXTRACTED,
-        "grand_total": "1234.00",
+        **TOUCHBISTRO_EXTRACTED,
+        "card_tip_total": "200.00",
     }
     assert verified["verifiedByUserId"] is not None
     assert verified["verifiedAt"] is not None
@@ -96,6 +119,11 @@ async def test_full_cashout_flow(
     ).json()
     assert detail["data"] is not None
     assert detail["data"]["submissionId"] == submission_id
+    # The source figures are the TouchBistro report as verified — the
+    # correction included.
+    assert detail["data"]["totalNetSales"] == "1200.00"
+    assert detail["data"]["cardPaymentTotal"] == "1234.56"
+    assert detail["data"]["cardTipTotal"] == "200.00"
 
 
 async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
@@ -106,24 +134,26 @@ async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
 ) -> None:
     # The admin correction flow: unsubmit reopens the cashout, unverify
     # reopens one analysis, and re-completing reconciles fresh data.
-    configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await verify_analysis(cashier_client, created["id"])
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+    await verify_analysis(cashier_client, touchbistro["id"])
+    await verify_analysis(cashier_client, summary["id"])
     await complete_submission(cashier_client, submission_id)
 
     await unsubmit_submission(admin_client, submission_id)
-    reopened = await unverify_analysis(admin_client, created["id"])
+    reopened = await unverify_analysis(admin_client, touchbistro["id"])
     assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
 
     reverified = await verify_analysis(
         admin_client,
-        created["id"],
-        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "999.00"}},
+        touchbistro["id"],
+        {"verifiedData": {**TOUCHBISTRO_EXTRACTED, "card_tip_total": "210.00"}},
     )
     assert reverified["verifiedDataJson"] == {
-        **SERVER_SUMMARY_EXTRACTED,
-        "grand_total": "999.00",
+        **TOUCHBISTRO_EXTRACTED,
+        "card_tip_total": "210.00",
     }
 
     recompleted = await complete_submission(admin_client, submission_id)
@@ -133,6 +163,8 @@ async def test_admin_corrects_completed_cashout_via_unsubmit_and_unverify(
     ).json()
     assert detail["data"] is not None
     assert detail["data"]["submissionId"] == submission_id
+    # The correction reached the data: re-completion reconciles afresh.
+    assert detail["data"]["cardTipTotal"] == "210.00"
 
 
 async def test_admin_can_manage_another_users_submission(
@@ -144,7 +176,7 @@ async def test_admin_can_manage_another_users_submission(
     # Admins have full control over every cashout: everything the employee
     # can do on their own submission, an admin can do on anyone's — with the
     # admin recorded as the acting user.
-    configure_server_summary(ai_client)
+    configure_touchbistro(ai_client)
     cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
     admin_id = (await admin_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
@@ -163,6 +195,13 @@ async def test_admin_can_manage_another_users_submission(
     # Verify: the admin is recorded as the verifying user.
     verified = await verify_analysis(admin_client, analysis["id"])
     assert verified["verifiedByUserId"] == admin_id
+
+    # The terminal summary the TouchBistro card payments reconcile against.
+    configure_server_summary(ai_client)
+    summary = await upload_document(
+        admin_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    )
+    await verify_analysis(admin_client, summary["id"])
 
     # The document records the admin as its uploader; the submission keeps
     # the cashier as its employee.

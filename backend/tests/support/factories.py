@@ -40,11 +40,18 @@ def build_cashout_data(
 ) -> CashoutData:
     """A CashoutData with the columns completion always fills.
 
-    The rates are what reconcile snapshots off settings; the source figures are
-    left unset, as they are on a row reconcile writes today.
+    The rates are what reconcile snapshots off settings; the source figures
+    are the TouchBistro report a reconciled row is built from, and are NOT
+    NULL, so a row cannot be built without them.
     """
     return CashoutData(
         submission_id=submission_id,
+        food_net_sales=Decimal("800.00"),
+        drink_net_sales=Decimal("400.00"),
+        total_net_sales=Decimal("1200.00"),
+        card_payment_total=Decimal("1234.56"),
+        cash_payment_total=Decimal("150.00"),
+        card_tip_total=Decimal("180.00"),
         tipout_departments=tipout_departments or [TipoutDepartment.KITCHEN],
         bar_tipout_rate=Decimal("0.0500"),
         kitchen_tipout_rate=Decimal("0.0300"),

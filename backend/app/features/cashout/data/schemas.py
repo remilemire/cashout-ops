@@ -14,14 +14,14 @@ class CashoutDataOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
 
-    # Reconciled off the verified analyses. Null on a cashout completed before
-    # reconciliation was implemented — see service.reconcile.
-    food_net_sales: Decimal | None = None
-    drink_net_sales: Decimal | None = None
-    total_net_sales: Decimal | None = None
-    card_payment_total: Decimal | None = None
-    cash_payment_total: Decimal | None = None
-    card_tip_total: Decimal | None = None
+    # Reconciled off the verified analyses; always present, since a cashout
+    # that cannot be reconciled never completes — see service.reconcile.
+    food_net_sales: Decimal
+    drink_net_sales: Decimal
+    total_net_sales: Decimal
+    card_payment_total: Decimal
+    cash_payment_total: Decimal
+    card_tip_total: Decimal
 
     # Which departments this cashout tipped out to, and the rates it closed
     # against — kept so the figures below can be explained after the fact,
@@ -32,14 +32,14 @@ class CashoutDataOut(BaseOut):
     expo_tipout_rate: Decimal
     host_tipout_rate: Decimal
 
-    # Database-generated. Null for a department that was not tipped out, and
-    # for every department while the source figures above are null.
+    # Database-generated. Null for a department that was not tipped out.
     bar_tipout: Decimal | None = None
     kitchen_tipout: Decimal | None = None
     expo_tipout: Decimal | None = None
     host_tipout: Decimal | None = None
 
-    # Exactly one side is set: whichever way the cash/card-tip balance fell.
+    # At most one side is set: whichever way the cash/card-tip balance fell
+    # (neither, on the exact tie).
     cash_owed_to_house: Decimal | None = None
     cash_owed_to_employee: Decimal | None = None
 
