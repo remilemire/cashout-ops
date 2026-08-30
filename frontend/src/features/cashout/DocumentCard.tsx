@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import {
+  CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
   type CashoutDocument,
   type CashoutDocumentClassification,
@@ -25,7 +26,7 @@ import { Button, Card, ErrorBanner, Spinner } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 
 import { FieldList } from "./FieldList";
-import { CLASSIFICATION_LABELS, SELECTABLE_CLASSIFICATIONS } from "./fields";
+import { CLASSIFICATION_LABELS } from "./fields";
 import { ManualDocumentDialog } from "./ManualDocumentDialog";
 import { VerificationForm } from "./VerificationForm";
 import { AnalysisStatusBadge } from "./status";
@@ -49,7 +50,9 @@ export function DocumentCard({
   const [classifyOpen, setClassifyOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [classification, setClassification] =
-    useState<CashoutDocumentClassification>(SELECTABLE_CLASSIFICATIONS[0]!);
+    useState<CashoutDocumentClassification>(
+      CASHOUT_DOCUMENT_CLASSIFICATIONS[0]!,
+    );
   const initial = document.analysis;
 
   // Poll the analysis while the AI extraction runs in the background.
@@ -216,11 +219,9 @@ export function DocumentCard({
                   className="text-ink-muted hover:text-ink -my-2 px-1.5"
                   loading={reclassify.isPending}
                   onClick={() => {
-                    const current = analysis?.classification;
                     setClassification(
-                      current && current !== "unknown"
-                        ? current
-                        : SELECTABLE_CLASSIFICATIONS[0]!,
+                      analysis?.classification ??
+                        CASHOUT_DOCUMENT_CLASSIFICATIONS[0]!,
                     );
                     setClassifyOpen(true);
                   }}
@@ -338,27 +339,14 @@ export function DocumentCard({
               submissionId={submissionId}
               editable={editable}
               secondaryAction={
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => retry.mutate()}
-                    loading={retry.isPending}
-                  >
-                    <RefreshCw className="size-4" />
-                    Retry extraction
-                  </Button>
-                  {/* An unknown document has no extraction to verify — offer
-                      typing the details in as the way forward. */}
-                  {analysis.classification === "unknown" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setManualOpen(true)}
-                    >
-                      <Pencil className="size-4" />
-                      Enter details manually
-                    </Button>
-                  )}
-                </>
+                <Button
+                  variant="outline"
+                  onClick={() => retry.mutate()}
+                  loading={retry.isPending}
+                >
+                  <RefreshCw className="size-4" />
+                  Retry extraction
+                </Button>
               }
             />
             <ErrorBanner error={retry.error} />
@@ -444,7 +432,7 @@ export function DocumentCard({
                 )
               }
             >
-              {SELECTABLE_CLASSIFICATIONS.map((value) => (
+              {CASHOUT_DOCUMENT_CLASSIFICATIONS.map((value) => (
                 <option key={value} value={value}>
                   {CLASSIFICATION_LABELS[value]}
                 </option>

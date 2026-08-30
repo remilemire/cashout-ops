@@ -2,9 +2,10 @@
 
 import { describe, expect, it } from "vitest";
 
+import { CASHOUT_DOCUMENT_CLASSIFICATIONS } from "@/api/types";
+
 import {
   CLASSIFICATION_SCHEMA_NAMES,
-  SELECTABLE_CLASSIFICATIONS,
   fieldGroupsFor,
   fieldLabelFor,
   groupFields,
@@ -136,8 +137,8 @@ describe("fieldGroupsFor", () => {
 });
 
 describe("CLASSIFICATION_SCHEMA_NAMES", () => {
-  it("maps every selectable classification to a schema with curated groups", () => {
-    for (const classification of SELECTABLE_CLASSIFICATIONS) {
+  it("maps every classification to a schema with curated groups", () => {
+    for (const classification of CASHOUT_DOCUMENT_CLASSIFICATIONS) {
       const schemaName = CLASSIFICATION_SCHEMA_NAMES[classification];
       expect(fieldGroupsFor(schemaName).length).toBeGreaterThan(0);
     }

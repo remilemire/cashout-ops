@@ -19,12 +19,12 @@ from .schemas import CashoutDocumentSchema
 from .types import CashoutDocumentClassification
 
 # Per-type signals live in CASHOUT_CLASSIFICATION_HINTS; this keeps only the
-# framing, the cross-type distinctions, and the unknown guidance (markers can't
-# describe "none of the above").
+# framing, the cross-type distinctions, and the "none of the above" guidance
+# (markers can't describe the absence of a type).
 _CLASSIFY_INSTRUCTIONS = """
 The document is one end-of-shift record from a restaurant cashout.
 
-Use unknown for anything else, including unrelated photos and documents too degraded to identify.
+Leave the classification unset for anything else, including unrelated photos and documents too degraded to identify.
 
 Distinguish carefully:
 
@@ -45,17 +45,21 @@ Handwritten values may be corrections or final accepted amounts; prefer them ove
 
 @dataclass(frozen=True)
 class CashoutDocumentProcessingResult:
-    # Never null: an unclassifiable document is UNKNOWN.
+    """A placed document and what was extracted from it.
+
+    Only produced for a document that was classified: an unclassifiable one
+    raises DocumentUnclassifiableError instead (from the document_ai layer),
+    so every classification here has a schema and extracted data behind it.
+    """
+
     classification: CashoutDocumentClassification
     # None when the caller supplied the classification (an assertion, not a
     # model score).
     classification_confidence: float | None
-    # data/confidence/issues are None/empty when the classification has no
-    # registered schema (UNKNOWN).
-    data: CashoutDocumentSchema | None
-    confidence: float | None
+    data: CashoutDocumentSchema
+    confidence: float
     issues: list[FieldIssue]
-    schema_name: str | None
+    schema_name: str
 
 
 class CashoutDocumentProcessor:
@@ -78,6 +82,12 @@ class CashoutDocumentProcessor:
         *,
         classification: CashoutDocumentClassification | None = None,
     ) -> CashoutDocumentProcessingResult:
+        """Classify the document and extract its type's schema from it.
+
+        Raises DocumentAIError — DocumentUnclassifiableError when the model
+        places the document as none of the known types, or a re-raised AI
+        failure; the caller persists either as a failed analysis.
+        """
         if classification is not None:
             # A supplied classification (e.g. a user correcting the AI) is an
             # assertion, not a model score: the classify call is skipped and no
@@ -85,29 +95,20 @@ class CashoutDocumentProcessor:
             value = classification
             confidence = None
         else:
+            # An unclassifiable document raises out of classify — a failed
+            # extraction, never a classification of its own.
             classified = await self._documents.classify(
                 document,
                 CashoutDocumentClassification,
                 instructions=_CLASSIFY_INSTRUCTIONS,
                 hints=CASHOUT_CLASSIFICATION_HINTS,
             )
-            # The generic layer expresses "can't classify" as a null value; the
-            # domain folds it into the explicit UNKNOWN member.
-            value = classified.value or CashoutDocumentClassification.UNKNOWN
+            value = classified.value
             confidence = classified.confidence
 
-        # UNKNOWN (and any type without a registered schema) has nothing to
-        # extract — a supplied UNKNOWN therefore makes no AI call at all.
-        schema = CASHOUT_DOCUMENT_SCHEMAS.get(value)
-        if schema is None:
-            return CashoutDocumentProcessingResult(
-                classification=value,
-                classification_confidence=confidence,
-                data=None,
-                confidence=None,
-                issues=[],
-                schema_name=None,
-            )
+        # Total by construction: every classification has a registered schema
+        # (registry-level unit test).
+        schema = CASHOUT_DOCUMENT_SCHEMAS[value]
 
         # TODO(document-ai): Add deterministic validation over the extracted
         # data (totals reconcile, amounts non-negative, ...).

@@ -89,7 +89,7 @@ async def test_anthropic_raises_on_refusal() -> None:
             _Extracted,
             max_tokens=512,
         )
-    assert exc_info.value.code is AIErrorCode.DOCUMENT_REJECTED
+    assert exc_info.value.code is AIErrorCode.CONTENT_REFUSED
 
 
 async def test_anthropic_raises_on_truncated_output() -> None:
@@ -105,7 +105,7 @@ async def test_anthropic_raises_when_no_parsed_output() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("some text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.UNREADABLE_DOCUMENT
+    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
 async def test_anthropic_wraps_provider_errors() -> None:
@@ -179,7 +179,7 @@ async def test_openai_raises_on_refusal() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.DOCUMENT_REJECTED
+    assert exc_info.value.code is AIErrorCode.CONTENT_REFUSED
 
 
 async def test_openai_raises_when_no_parsed_output() -> None:
@@ -187,7 +187,7 @@ async def test_openai_raises_when_no_parsed_output() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.UNREADABLE_DOCUMENT
+    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
 async def test_openai_raises_on_truncated_output() -> None:
@@ -277,7 +277,7 @@ async def test_gemini_raises_when_parsed_dict_fails_validation() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.UNREADABLE_DOCUMENT
+    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
 async def test_gemini_raises_on_safety_finish_reason() -> None:
@@ -289,7 +289,7 @@ async def test_gemini_raises_on_safety_finish_reason() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.DOCUMENT_REJECTED
+    assert exc_info.value.code is AIErrorCode.CONTENT_REFUSED
 
 
 async def test_gemini_raises_on_truncated_output() -> None:
@@ -312,7 +312,7 @@ async def test_gemini_raises_on_blocked_prompt() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.DOCUMENT_REJECTED
+    assert exc_info.value.code is AIErrorCode.CONTENT_REFUSED
 
 
 async def test_gemini_raises_when_no_parsed_output() -> None:
@@ -320,7 +320,7 @@ async def test_gemini_raises_when_no_parsed_output() -> None:
 
     with pytest.raises(AIAnalysisError) as exc_info:
         await client.analyze("text", _Extracted, max_tokens=512)
-    assert exc_info.value.code is AIErrorCode.UNREADABLE_DOCUMENT
+    assert exc_info.value.code is AIErrorCode.INVALID_RESPONSE
 
 
 async def test_gemini_wraps_provider_errors() -> None:

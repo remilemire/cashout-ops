@@ -2,31 +2,38 @@
 
 """User-facing messages for FAILED document analyses.
 
-Keyed by the persisted `error_code` (the AIErrorCode raised by the AI layer).
-Raw provider messages are never surfaced on the analysis — they can leak
-internal/provider detail — so every failure maps its code to one of these.
-Log the raw text instead.
+Keyed by the persisted `error_code` — the DocumentAIErrorCode raised by the
+document-AI layer (its own unclassifiable-document failure, or an AI-layer
+failure re-raised under document vocabulary). Raw provider messages are never
+surfaced on the analysis — they can leak internal/provider detail — so every
+failure maps its code to one of these. Log the raw text instead.
 """
 
 from __future__ import annotations
 
-from app.integrations.ai import AIErrorCode
+from app.document_ai import DocumentAIErrorCode
 
 _ANALYSIS_ERROR_MESSAGES: dict[str, str] = {
-    AIErrorCode.SERVICE_UNAVAILABLE.value: (
+    DocumentAIErrorCode.UNCLASSIFIABLE_DOCUMENT.value: (
+        "This doesn't look like a cashout report. Retry, replace it with a "
+        "clearer copy, or enter the details manually."
+    ),
+    DocumentAIErrorCode.SERVICE_UNAVAILABLE.value: (
         "The document service is temporarily unavailable. Please try again."
     ),
-    AIErrorCode.DOCUMENT_REJECTED.value: (
+    DocumentAIErrorCode.DOCUMENT_REJECTED.value: (
         "This document could not be processed. Please check it and try again."
     ),
-    AIErrorCode.UNREADABLE_DOCUMENT.value: (
+    DocumentAIErrorCode.UNREADABLE_DOCUMENT.value: (
         "The document could not be read. Please retry or re-upload a clearer copy."
     ),
-    AIErrorCode.OUTPUT_LIMIT_REACHED.value: (
+    DocumentAIErrorCode.OUTPUT_LIMIT_REACHED.value: (
         "This document was too large for the AI to read in full. Try cropping "
         "the image to just the report."
     ),
-    AIErrorCode.UNSUPPORTED_FILE_TYPE.value: ("This file type isn't supported."),
+    DocumentAIErrorCode.UNSUPPORTED_FILE_TYPE.value: (
+        "This file type isn't supported."
+    ),
 }
 
 _DEFAULT_ANALYSIS_ERROR_MESSAGE = "Analysis failed unexpectedly. Please try again."
@@ -35,8 +42,8 @@ _DEFAULT_ANALYSIS_ERROR_MESSAGE = "Analysis failed unexpectedly. Please try agai
 def analysis_error_message(code: str | None = None) -> str:
     """User-facing message for a persisted analysis error_code.
 
-    `None` (an unexpected job crash — no AI error code) and unmapped codes get
-    the generic default.
+    `None` (an unexpected job crash — no document-AI error code) and unmapped
+    codes get the generic default.
     """
     return _ANALYSIS_ERROR_MESSAGES.get(code or "", _DEFAULT_ANALYSIS_ERROR_MESSAGE)
 

@@ -7,7 +7,7 @@ from typing import cast
 from pydantic import BaseModel
 
 from app.core.providers import AIProvider
-from app.document_ai import DocumentClassification
+from app.document_ai import DocumentClassificationResponse
 from app.integrations.ai import (
     AIAnalysisError,
     AIClient,
@@ -18,7 +18,7 @@ from app.integrations.ai import (
 
 def _is_classification(response_model: type[BaseModel]) -> bool:
     try:
-        return issubclass(response_model, DocumentClassification)
+        return issubclass(response_model, DocumentClassificationResponse)
     except TypeError:
         return False
 

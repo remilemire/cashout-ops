@@ -55,7 +55,7 @@ function renderDialog(
 }
 
 describe("ManualDocumentDialog", () => {
-  it("offers only the selectable classifications", () => {
+  it("offers every document type", () => {
     renderDialog();
 
     expect(
@@ -64,8 +64,7 @@ describe("ManualDocumentDialog", () => {
     expect(
       screen.getByRole("option", { name: "Server summary report" }),
     ).toBeDefined();
-    // "Unknown" has nothing to enter, so it is never offered.
-    expect(screen.queryByRole("option", { name: "Unknown" })).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(2);
   });
 
   it("swaps the field set when the classification changes", () => {

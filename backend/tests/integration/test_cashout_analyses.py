@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
-from app.document_ai import DocumentClassification
+from app.document_ai import DocumentClassificationResponse
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
@@ -143,25 +143,57 @@ async def test_unverify_requires_employee_or_admin(
     assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
 
 
-async def test_unknown_document_completes_without_data(
+async def test_unclassifiable_document_fails_for_retry(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
-        value=None, confidence=0.3
-    )
+    from app.document_ai import DocumentAIErrorCode
+    from app.features.cashout.analyses.messages import analysis_error_message
+
+    ai_client.classification = DocumentClassificationResponse[
+        CashoutDocumentClassification
+    ](value=None, confidence=0.3)
 
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
-    # A document the AI can't place is not a failure: the analysis completes
-    # as UNKNOWN with nothing to extract, awaiting the cashier.
+    # A document the AI can't place has nothing to verify: the analysis fails
+    # like any other extraction failure, so the cashier has to act on it.
+    analysis = await poll_analysis(cashier_client, created["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
+    unclassifiable = DocumentAIErrorCode.UNCLASSIFIABLE_DOCUMENT.value
+    assert analysis["errorCode"] == unclassifiable
+    assert analysis["errorMessage"] == analysis_error_message(unclassifiable)
+    assert analysis["classification"] is None
+    assert analysis["classificationConfidence"] is None
+    assert analysis["extractedDataJson"] is None
+    assert analysis["completedAt"] is not None
+
+    # Verifying it is refused; a retry is the way forward.
+    refused = await cashier_client.post(
+        f"/api/cashout/analyses/{created['id']}/verify",
+        json={},
+        headers=csrf_headers(cashier_client),
+    )
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "EXTRACTION_FAILED"
+
+    configure_server_summary(ai_client)
+    retried = await cashier_client.post(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        headers=csrf_headers(cashier_client),
+    )
+    assert retried.status_code == 200, retried.text
+    await drain_outbox()
+
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert analysis["classification"] == CashoutDocumentClassification.UNKNOWN.value
-    assert analysis["classificationConfidence"] == 0.3
-    assert analysis["extractedDataJson"] is None
+    assert (
+        analysis["classification"]
+        == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
+    )
+    # The failed attempt's outcome does not survive the retry.
     assert analysis["errorCode"] is None
     assert analysis["errorMessage"] is None
 
@@ -171,23 +203,25 @@ async def test_failed_extraction_and_retry(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
+    from app.document_ai import DocumentAIErrorCode
     from app.features.cashout.analyses.messages import analysis_error_message
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
     ai_client.error = AIAnalysisError(
-        AIErrorCode.DOCUMENT_REJECTED, "declined: raw provider text"
+        AIErrorCode.CONTENT_REFUSED, "declined: raw provider text"
     )
 
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
-    # The provider failure is recorded on the analysis as FAILED.
+    # The provider failure is recorded on the analysis as FAILED, under the
+    # document-AI code the general AI refusal maps to.
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
-    assert analysis["errorCode"] == AIErrorCode.DOCUMENT_REJECTED.value
+    assert analysis["errorCode"] == DocumentAIErrorCode.DOCUMENT_REJECTED.value
     # The raw provider text must not leak; a safe mapped message is surfaced.
     assert analysis["errorMessage"] == analysis_error_message(
-        AIErrorCode.DOCUMENT_REJECTED.value
+        DocumentAIErrorCode.DOCUMENT_REJECTED.value
     )
     assert "raw provider text" not in analysis["errorMessage"]
 

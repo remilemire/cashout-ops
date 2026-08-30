@@ -2,8 +2,9 @@
 
 """The flow, per document: the cashier uploads it and immediately gets back an
 EXTRACTING analysis; the AI extraction runs in a background task and the
-client polls the analysis until it reaches NEEDS_VERIFICATION (or FAILED,
-retryable via the extract endpoint). The cashier verifies each analysis —
+client polls the analysis until it reaches NEEDS_VERIFICATION (or FAILED —
+a provider failure, or a document the AI could not place as a cashout
+report — retryable via the extract endpoint). The cashier verifies each analysis —
 optionally submitting corrections. Alternatively, a document can be added
 with manually entered details (or a failed/unverified analysis replaced by
 them), skipping AI entirely and landing directly in VERIFIED. Once every
@@ -166,9 +167,9 @@ async def upload_manual_document(
     """Upload a document with manually entered details, skipping AI entirely.
 
     The multipart `payload` field carries `{classification, data}`: the data
-    is validated against the classification's registered schema (`unknown`
-    has none, so it is rejected). Typing the values is the verification, so
-    the analysis lands directly in `VERIFIED` — there is nothing to poll.
+    is validated against the classification's registered schema. Typing the
+    values is the verification, so the analysis lands directly in `VERIFIED`
+    — there is nothing to poll.
 
     As on the extracting upload, the content type is checked before the body
     is read, and the body itself is read only up to the limit (plus the byte

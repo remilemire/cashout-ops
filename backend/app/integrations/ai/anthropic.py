@@ -60,11 +60,11 @@ class AnthropicAIClient:
         except APIError as exc:
             raise AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, str(exc)) from exc
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
         if response.stop_reason == "refusal":
             raise AIAnalysisError(
-                AIErrorCode.DOCUMENT_REJECTED,
+                AIErrorCode.CONTENT_REFUSED,
                 "The provider declined to analyze this content.",
             )
         # Checked before parsed_output: truncated output also fails to parse,
@@ -78,7 +78,7 @@ class AnthropicAIClient:
         parsed = response.parsed_output
         if parsed is None:
             raise AIAnalysisError(
-                AIErrorCode.UNREADABLE_DOCUMENT,
+                AIErrorCode.INVALID_RESPONSE,
                 "The response did not contain valid structured output.",
             )
         return parsed
@@ -108,7 +108,7 @@ def _to_document_block(
     media_type = _IMAGE_MEDIA_TYPES.get(content.content_type)
     if media_type is None:
         raise AIAnalysisError(
-            AIErrorCode.UNSUPPORTED_FILE_TYPE,
+            AIErrorCode.UNSUPPORTED_CONTENT_TYPE,
             f"Content type {content.content_type.value} is not supported for AI analysis.",
         )
     return ImageBlockParam(

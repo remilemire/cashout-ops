@@ -326,28 +326,38 @@ describe("DocumentCard", () => {
     );
   });
 
-  it("offers manual entry beside retry when the classification is unknown", () => {
-    const unknownAnalysis: CashoutDocumentAnalysis = {
-      ...needsVerificationAnalysis,
-      classification: "unknown",
+  it("offers every way forward after an unclassifiable document", () => {
+    // A document the AI can't place fails like any other extraction: there is
+    // nothing to verify, so the card offers retry, replace, and manual entry.
+    const unclassifiableAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      status: "failed",
+      classification: null,
       schemaName: null,
       extractedDataJson: null,
+      verifiedDataJson: null,
+      errorCode: "unclassifiable_document",
+      errorMessage: "This doesn't look like a cashout report.",
     };
-    getAnalysisMock.mockResolvedValue(unknownAnalysis);
-    renderCard(true, { ...cashoutDocument, analysis: unknownAnalysis });
+    getAnalysisMock.mockResolvedValue(unclassifiableAnalysis);
+    renderCard(true, { ...cashoutDocument, analysis: unclassifiableAnalysis });
 
+    expect(
+      screen.getByText("Extraction failed (unclassifiable_document)"),
+    ).toBeDefined();
+    expect(
+      screen.getByText("This doesn't look like a cashout report."),
+    ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Retry extraction" }),
     ).toBeDefined();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Enter details manually" }),
-    );
+    expect(screen.getByRole("button", { name: "Replace image" })).toBeDefined();
     expect(
-      screen.getByRole("dialog", { name: "Enter document details" }),
+      screen.getByRole("button", { name: "Enter details manually" }),
     ).toBeDefined();
   });
 
-  it("hides manual entry from a classified needs-verification document", () => {
+  it("hides manual entry from a needs-verification document", () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {
       ...cashoutDocument,
@@ -396,10 +406,6 @@ describe("DocumentCard", () => {
     expect(
       within(dialog).getByRole("option", { name: "TouchBistro report" }),
     ).toBeDefined();
-    // "Unknown" has nothing to extract, so it is not offered as a correction.
-    expect(
-      within(dialog).queryByRole("option", { name: "Unknown" }),
-    ).toBeNull();
 
     fireEvent.change(within(dialog).getByLabelText("Document type"), {
       target: { value: "touchbistro_report" },

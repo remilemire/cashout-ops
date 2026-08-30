@@ -4,17 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from app.integrations.ai import AIClient, ResponseModelT, compose_instructions
+from app.integrations.ai import (
+    AIAnalysisError,
+    AIClient,
+    AIContent,
+    ResponseModelT,
+    compose_instructions,
+)
 from app.integrations.storage import DocumentStorageClient
 from app.lib.documents import DocumentContent
 
+from .errors import DocumentAIError, DocumentUnclassifiableError
 from .hints import (
     ClassificationHint,
     collect_field_hints,
     render_classification_hints,
     render_field_hints,
 )
-from .schemas import ClassificationT, DocumentAnalysis, DocumentClassification
+from .schemas import (
+    ClassificationT,
+    DocumentAnalysis,
+    DocumentClassification,
+    DocumentClassificationResponse,
+)
 from .types import DocumentRef
 
 # Base instructions are always present; a caller's `instructions` are appended
@@ -23,7 +35,7 @@ _CLASSIFY_INSTRUCTIONS = """
 Classify the supplied document using only the document types allowed by the response schema.
 
 * Base the classification on the whole document — title, issuer, layout, field labels, table structure, apparent purpose — not on a single keyword, the filename, or a caller-provided label.
-* If the document does not clearly match an allowed type, return the appropriate unknown or unsupported classification rather than forcing the most likely option.
+* If the document does not clearly match an allowed type, leave the classification null rather than forcing the most likely option.
 * Reduce confidence when the document is partial, blurry, cropped, mixed with another document, or missing identifying headings.
 """
 
@@ -52,6 +64,10 @@ class DocumentAIClient:
 
     Each operation has its own output-token budget: a classification is a tiny
     fixed-shape object, while an extraction scales with the schema.
+
+    Both operations raise DocumentAIError: AI-layer failures are re-raised
+    under this layer's document vocabulary, and a classification the model
+    resolves to none of the allowed types raises DocumentUnclassifiableError.
     """
 
     def __init__(
@@ -81,11 +97,18 @@ class DocumentAIClient:
             instructions,
             render_classification_hints(hints) if hints is not None else None,
         )
-        return await self.ai.analyze(
+        response = await self._analyze(
             await self._read(document),
-            DocumentClassification[classification_type],
+            DocumentClassificationResponse[classification_type],
             instructions=compose_instructions(_CLASSIFY_INSTRUCTIONS, extra),
             max_tokens=self._classification_max_tokens,
+        )
+        if response.value is None:
+            raise DocumentUnclassifiableError(
+                "The document matches none of the allowed document types."
+            )
+        return DocumentClassification[classification_type](
+            value=response.value, confidence=response.confidence
         )
 
     async def process(
@@ -101,12 +124,32 @@ class DocumentAIClient:
         extra = _join_sections(
             instructions, render_field_hints(collect_field_hints(response_model))
         )
-        return await self.ai.analyze(
+        return await self._analyze(
             await self._read(document),
             DocumentAnalysis[response_model],
             instructions=compose_instructions(_EXTRACT_INSTRUCTIONS, extra),
             max_tokens=self._extraction_max_tokens,
         )
+
+    async def _analyze(
+        self,
+        content: AIContent,
+        response_model: type[ResponseModelT],
+        *,
+        instructions: str | None,
+        max_tokens: int,
+    ) -> ResponseModelT:
+        try:
+            return await self.ai.analyze(
+                content,
+                response_model,
+                instructions=instructions,
+                max_tokens=max_tokens,
+            )
+        except AIAnalysisError as exc:
+            # Chained for the traceback only: the raised error carries the
+            # mapped code and message itself.
+            raise DocumentAIError.from_ai_error(exc) from exc
 
     async def _read(self, document: DocumentRef) -> DocumentContent:
         data = await self._storage.read(document.storage_key)

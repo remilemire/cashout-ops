@@ -1,10 +1,6 @@
 // frontend/src/features/cashout/fields.ts
 
-import {
-  CASHOUT_DOCUMENT_CLASSIFICATIONS,
-  type CashoutDocumentClassification,
-  type SelectableClassification,
-} from "@/api/types";
+import { type CashoutDocumentClassification } from "@/api/types";
 import { fieldLabel } from "@/lib/format";
 
 /**
@@ -20,20 +16,12 @@ export const CLASSIFICATION_LABELS: Record<
 > = {
   touchbistro_report: "TouchBistro report",
   server_summary_report: "Server summary report",
-  unknown: "Unknown",
 };
 
-// "Unknown" is not offered as a correction: it has nothing to extract, and a
-// document that truly is none of these gets removed instead.
-export const SELECTABLE_CLASSIFICATIONS: SelectableClassification[] =
-  CASHOUT_DOCUMENT_CLASSIFICATIONS.filter(
-    (value): value is SelectableClassification => value !== "unknown",
-  );
-
-// Mirrors the backend extraction-schema registry: each selectable
-// classification's schema name, for looking up its curated field groups.
+// Mirrors the backend extraction-schema registry: each classification's schema
+// name, for looking up its curated field groups.
 export const CLASSIFICATION_SCHEMA_NAMES: Record<
-  SelectableClassification,
+  CashoutDocumentClassification,
   string
 > = {
   touchbistro_report: "TouchBistroReportData",

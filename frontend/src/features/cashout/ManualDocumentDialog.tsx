@@ -5,10 +5,10 @@ import { useRef, useState } from "react";
 
 import { ApiError } from "@/api/client";
 import {
+  CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
   type CashoutDocumentClassification,
   type ManualDocumentInput,
-  type SelectableClassification,
 } from "@/api/types";
 import { Dialog } from "@/components/dialog";
 import { Button, ErrorBanner, TextField } from "@/components/ui";
@@ -16,7 +16,6 @@ import { Button, ErrorBanner, TextField } from "@/components/ui";
 import {
   CLASSIFICATION_LABELS,
   CLASSIFICATION_SCHEMA_NAMES,
-  SELECTABLE_CLASSIFICATIONS,
   fieldGroupsFor,
 } from "./fields";
 
@@ -25,10 +24,10 @@ function toCamel(key: string): string {
   return key.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
-function selectableOrDefault(
+function classificationOrDefault(
   value: CashoutDocumentClassification | null | undefined,
-): SelectableClassification {
-  return value && value !== "unknown" ? value : SELECTABLE_CLASSIFICATIONS[0]!;
+): CashoutDocumentClassification {
+  return value ?? CASHOUT_DOCUMENT_CLASSIFICATIONS[0]!;
 }
 
 /**
@@ -55,8 +54,8 @@ export function ManualDocumentDialog({
   onSubmit: (input: ManualDocumentInput, file: File | null) => void;
 }) {
   const [classification, setClassification] =
-    useState<SelectableClassification>(() =>
-      selectableOrDefault(initialClassification),
+    useState<CashoutDocumentClassification>(() =>
+      classificationOrDefault(initialClassification),
     );
   const [values, setValues] = useState<Record<string, string>>({});
   const [file, setFile] = useState<File | null>(null);
@@ -68,7 +67,7 @@ export function ManualDocumentDialog({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setClassification(selectableOrDefault(initialClassification));
+      setClassification(classificationOrDefault(initialClassification));
       setValues({});
       setFile(null);
     }
@@ -119,12 +118,14 @@ export function ManualDocumentDialog({
             className="bg-surface border-line focus:ring-accent/50 h-11 w-full rounded-lg border px-3 text-sm outline-none focus:ring-2"
             value={classification}
             onChange={(event) => {
-              setClassification(event.target.value as SelectableClassification);
+              setClassification(
+                event.target.value as CashoutDocumentClassification,
+              );
               // A different type is a different schema — start its form blank.
               setValues({});
             }}
           >
-            {SELECTABLE_CLASSIFICATIONS.map((value) => (
+            {CASHOUT_DOCUMENT_CLASSIFICATIONS.map((value) => (
               <option key={value} value={value}>
                 {CLASSIFICATION_LABELS[value]}
               </option>

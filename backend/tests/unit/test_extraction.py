@@ -15,13 +15,17 @@ from app.core.providers import AIProvider
 from app.document_ai import (
     ClassificationHint,
     DocumentAIClient,
+    DocumentAIError,
+    DocumentAIErrorCode,
     DocumentAnalysis,
-    DocumentClassification,
+    DocumentClassificationResponse,
     DocumentRef,
+    DocumentUnclassifiableError,
     FieldHint,
     FieldIssue,
     Money,
 )
+from app.document_ai.errors import AI_ERROR_CODES
 from app.document_ai.hints import collect_field_hints
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.extraction.registry import (
@@ -48,8 +52,8 @@ from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 
 def _classification(
     value: CashoutDocumentClassification | None, confidence: float = 0.9
-) -> DocumentClassification[CashoutDocumentClassification]:
-    return DocumentClassification[CashoutDocumentClassification](
+) -> DocumentClassificationResponse[CashoutDocumentClassification]:
+    return DocumentClassificationResponse[CashoutDocumentClassification](
         value=value, confidence=confidence
     )
 
@@ -98,26 +102,17 @@ async def test_processor_classifies_and_extracts() -> None:
     assert result.schema_name == "ServerSummaryReportData"
 
 
-@pytest.mark.parametrize(
-    "value",
-    [None, CashoutDocumentClassification.UNKNOWN],
-    ids=["null-folded-to-unknown", "unknown-picked-directly"],
-)
-async def test_processor_unknown_returns_no_data(
-    value: CashoutDocumentClassification | None,
-) -> None:
+async def test_processor_raises_when_the_document_cannot_be_placed() -> None:
+    # Nothing configured for the extraction: an unclassifiable document must
+    # fail at classification rather than going on to extract anything. The
+    # raise comes straight out of the document_ai classify.
     processor, ref = await _build_processor(
-        classification=_classification(value, confidence=0.2),
+        classification=_classification(None, confidence=0.2),
     )
 
-    result = await processor.process(ref)
-
-    assert result.classification is CashoutDocumentClassification.UNKNOWN
-    assert result.classification_confidence == 0.2
-    assert result.data is None
-    assert result.confidence is None
-    assert result.issues == []
-    assert result.schema_name is None
+    with pytest.raises(DocumentUnclassifiableError) as exc_info:
+        await processor.process(ref)
+    assert exc_info.value.code is DocumentAIErrorCode.UNCLASSIFIABLE_DOCUMENT
 
 
 async def test_processor_supplied_classification_skips_classify() -> None:
@@ -155,39 +150,17 @@ async def test_processor_supplied_classification_skips_classify() -> None:
     assert result.schema_name == "ServerSummaryReportData"
 
 
-async def test_processor_supplied_unknown_makes_no_ai_calls() -> None:
-    storage = FakeDocumentStorage()
-    await storage.write("doc-key", b"file-bytes")
-    # Nothing configured: any AI call would fail the fake.
-    ai = FakeAIClient()
-    processor = CashoutDocumentProcessor(
-        DocumentAIClient(
-            ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
-        )
-    )
-    ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
-
-    result = await processor.process(
-        ref, classification=CashoutDocumentClassification.UNKNOWN
-    )
-
-    assert ai.calls == []
-    assert result.classification is CashoutDocumentClassification.UNKNOWN
-    assert result.classification_confidence is None
-    assert result.data is None
-    assert result.confidence is None
-    assert result.issues == []
-    assert result.schema_name is None
-
-
-async def test_processor_propagates_ai_error() -> None:
+async def test_processor_propagates_document_ai_error() -> None:
+    # The AI-layer failure reaches the processor's caller already re-raised
+    # under the document vocabulary.
     processor, ref = await _build_processor(
         error=AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, "provider down"),
     )
 
-    with pytest.raises(AIAnalysisError) as exc_info:
+    with pytest.raises(DocumentAIError) as exc_info:
         await processor.process(ref)
-    assert exc_info.value.code is AIErrorCode.SERVICE_UNAVAILABLE
+    assert exc_info.value.code is DocumentAIErrorCode.SERVICE_UNAVAILABLE
+    assert exc_info.value.message == "provider down"
 
 
 async def test_processor_layers_domain_instructions_on_both_calls() -> None:
@@ -321,8 +294,8 @@ def _only_instructions(ai: FakeAIClient) -> str:
     return instructions
 
 
-def _shelter_classification() -> DocumentClassification[_ShelterDocument]:
-    return DocumentClassification[_ShelterDocument](
+def _shelter_classification() -> DocumentClassificationResponse[_ShelterDocument]:
+    return DocumentClassificationResponse[_ShelterDocument](
         value=_ShelterDocument.ADOPTION_FORM, confidence=0.9
     )
 
@@ -458,6 +431,53 @@ async def test_field_hint_with_all_groups_empty_renders_nothing() -> None:
 
 
 # ================================
+# ------------ Errors ------------
+# ================================
+
+
+async def test_classify_resolves_a_value_or_raises() -> None:
+    client, _, ref = await _build_document_client(
+        classification=_shelter_classification()
+    )
+
+    resolved = await client.classify(ref, _ShelterDocument)
+
+    assert resolved.value is _ShelterDocument.ADOPTION_FORM
+    assert resolved.confidence == 0.9
+
+
+async def test_classify_raises_when_no_allowed_value_applies() -> None:
+    client, _, ref = await _build_document_client(
+        classification=DocumentClassificationResponse[_ShelterDocument](
+            value=None, confidence=0.2
+        )
+    )
+
+    with pytest.raises(DocumentUnclassifiableError) as exc_info:
+        await client.classify(ref, _ShelterDocument)
+    assert exc_info.value.code is DocumentAIErrorCode.UNCLASSIFIABLE_DOCUMENT
+
+
+async def test_client_re_raises_ai_errors_under_document_codes() -> None:
+    # The catcher gets code + message on the DocumentAIError itself — it never
+    # needs to inspect the chained AI-layer cause.
+    client, ai, ref = await _build_document_client()
+    ai.error = AIAnalysisError(AIErrorCode.CONTENT_REFUSED, "declined")
+
+    with pytest.raises(DocumentAIError) as exc_info:
+        await client.process(ref, _BareRecord)
+
+    assert exc_info.value.code is DocumentAIErrorCode.DOCUMENT_REJECTED
+    assert exc_info.value.message == "declined"
+
+
+def test_every_ai_error_code_maps_to_a_document_code() -> None:
+    # The re-raise map must be exhaustive: an unmapped AI code would crash the
+    # wrapper instead of failing the analysis cleanly.
+    assert set(AI_ERROR_CODES) == set(AIErrorCode)
+
+
+# ================================
 # ---------- Field types ---------
 # ================================
 
@@ -531,9 +551,11 @@ def test_money_declares_an_unadorned_string_to_providers() -> None:
 # ================================
 
 
-def test_classification_hints_cover_exactly_the_registered_schemas() -> None:
-    # UNKNOWN has neither a schema nor a hint; the two registries must not
-    # drift apart.
+def test_every_classification_has_a_schema_and_a_hint() -> None:
+    # Every classification is extractable: the processor indexes the schema
+    # registry directly (an unplaceable document raises instead), so a member
+    # missing from either registry must fail here rather than at runtime.
+    assert set(CASHOUT_DOCUMENT_SCHEMAS) == set(CashoutDocumentClassification)
     assert set(CASHOUT_CLASSIFICATION_HINTS) == set(CASHOUT_DOCUMENT_SCHEMAS)
 
 

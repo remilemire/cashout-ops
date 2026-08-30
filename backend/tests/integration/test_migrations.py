@@ -56,6 +56,23 @@ def _upgrade(url: str, revision: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def _enum_values(url: str, name: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT e.enumlabel FROM pg_enum e"
+                    " JOIN pg_type t ON t.oid = e.enumtypid"
+                    " WHERE t.typname = :name"
+                ),
+                {"name": name},
+            )
+            return {row[0] for row in rows}
+    finally:
+        engine.dispose()
+
+
 def _analysis_nullability(url: str) -> dict[str, bool]:
     engine = create_engine(url)
     try:
@@ -84,3 +101,66 @@ def test_upgrade_head_allows_manual_analyses(migrated_url: str) -> None:
     after = _analysis_nullability(migrated_url)
     assert after["provider"] is True
     assert after["model"] is True
+
+
+def test_upgrade_head_fails_unknown_classifications(migrated_url: str) -> None:
+    """`unknown` leaves the enum, and the analyses holding it become failures.
+
+    An unplaceable document is a failed extraction now, not a classification:
+    a database carrying the old value must come out of `upgrade head` with
+    those analyses in the state a fresh extraction would produce.
+    """
+    _upgrade(migrated_url, "f6c0323b07d2")
+    assert "unknown" in _enum_values(migrated_url, "cashout_document_classification")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'application/pdf', 'key', 'doc.pdf', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status,
+                         classification, classification_confidence, completed_at)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'needs_verification', 'unknown', 0.3,
+                            now());
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        assert _enum_values(migrated_url, "cashout_document_classification") == {
+            "touchbistro_report",
+            "server_summary_report",
+        }
+        with engine.connect() as conn:
+            status, classification, error_code, error_message = conn.execute(
+                text(
+                    "SELECT status, classification, error_code, error_message"
+                    " FROM cashout_document_analyses"
+                )
+            ).one()
+        assert status == "failed"
+        assert classification is None
+        assert error_code == "unclassifiable_document"
+        assert error_message
+    finally:
+        engine.dispose()

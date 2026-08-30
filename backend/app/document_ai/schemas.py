@@ -12,11 +12,27 @@ from app.integrations.ai import ResponseModelT
 ClassificationT = TypeVar("ClassificationT", bound=StrEnum)
 
 
-class DocumentClassification(BaseModel, Generic[ClassificationT]):
+class DocumentClassificationResponse(BaseModel, Generic[ClassificationT]):
+    """The provider-facing classify schema: what the AI fills in.
+
+    `value` is nullable so the model can express "none of the allowed values
+    apply"; the client resolves that into DocumentUnclassifiableError rather
+    than handing the null to callers.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
-    # Null when none of the allowed values apply (the document is unclassifiable).
     value: ClassificationT | None = None
+    confidence: float = Field(ge=0, le=1)
+
+
+class DocumentClassification(BaseModel, Generic[ClassificationT]):
+    """A resolved classification: an unclassifiable document raised instead,
+    so `value` always holds one of the allowed types."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: ClassificationT
     confidence: float = Field(ge=0, le=1)
 
 
@@ -44,5 +60,6 @@ __all__ = [
     "ClassificationT",
     "DocumentAnalysis",
     "DocumentClassification",
+    "DocumentClassificationResponse",
     "FieldIssue",
 ]

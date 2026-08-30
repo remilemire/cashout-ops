@@ -5,14 +5,13 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-# The document types the AI can classify a cashout document as. UNKNOWN is the
-# explicit "none of the above": the model may pick it directly, and the
-# processor folds a null classification into it — so a completed analysis
-# always has a classification.
+# The document types the AI can classify a cashout document as. There is no
+# "none of the above" member: a document the model cannot place is a failed
+# extraction (DocumentUnclassifiedError), not a classification — so every
+# classification here has a registered extraction schema.
 class CashoutDocumentClassification(StrEnum):
     TOUCHBISTRO_REPORT = "touchbistro_report"
     SERVER_SUMMARY_REPORT = "server_summary_report"
-    UNKNOWN = "unknown"
 
 
 __all__ = ["CashoutDocumentClassification"]

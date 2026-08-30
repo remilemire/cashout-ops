@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.document_ai import DocumentRef
+from app.document_ai import DocumentAIError, DocumentAIErrorCode, DocumentRef
 from app.errors import AppError
 from app.features.cashout.documents.model import CashoutDocument
 from app.features.cashout.extraction import CashoutDocumentProcessor
@@ -21,7 +21,6 @@ from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.model import User
 from app.infrastructure.outbox import service as outbox_service
-from app.integrations.ai import AIAnalysisError
 
 from . import repository
 from .messages import analysis_error_message
@@ -351,11 +350,12 @@ async def _apply_extraction(
 ) -> None:
     """Run classification + extraction and persist the outcome on the analysis.
 
-    Success lands the analysis in NEEDS_VERIFICATION — an UNKNOWN
-    classification is not a failure, it simply has no extracted data. A
-    provider failure lands it in FAILED with error_code/error_message. A
-    supplied `classification` is passed to the processor, which skips the AI
-    classify step and reports a null classification confidence.
+    Success lands the analysis in NEEDS_VERIFICATION with its extracted data.
+    A document the AI cannot place, like a provider failure, lands it in
+    FAILED with error_code/error_message — there is nothing to verify either
+    way, so the cashier retries, replaces the document, or enters its details
+    manually. A supplied `classification` is passed to the processor, which
+    skips the AI classify step and reports a null classification confidence.
     """
     analysis = await repository.find_analysis_by_document(db, document_id=document.id)
     if analysis is None:
@@ -368,10 +368,17 @@ async def _apply_extraction(
 
     try:
         result = await processor.process(ref, classification=classification)
-    except AIAnalysisError as exc:
+    except DocumentAIError as exc:
         # Persist the code + a safe mapped message; the raw provider text can
-        # leak internal detail, so keep it in the logs only.
-        logger.warning(
+        # leak internal detail, so keep it in the logs only. An unclassifiable
+        # document is an expected outcome of the flow, not an operational
+        # fault — logged as info, where provider failures warrant a warning.
+        log = (
+            logger.info
+            if exc.code is DocumentAIErrorCode.UNCLASSIFIABLE_DOCUMENT
+            else logger.warning
+        )
+        log(
             "Extraction failed for document %s (%s): %s",
             document.id,
             exc.code.value,
@@ -387,13 +394,10 @@ async def _apply_extraction(
     analysis.classification = result.classification
     analysis.classification_confidence = result.classification_confidence
     analysis.completed_at = datetime.now(UTC)
-
-    # An UNKNOWN classification has no schema: the extraction fields stay null.
-    if result.data is not None:
-        analysis.schema_name = result.schema_name
-        analysis.extracted_data_json = result.data.model_dump(mode="json")
-        analysis.extraction_confidence = result.confidence
-        analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
+    analysis.schema_name = result.schema_name
+    analysis.extracted_data_json = result.data.model_dump(mode="json")
+    analysis.extraction_confidence = result.confidence
+    analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
 
 
 def _ensure_replaceable(analysis: CashoutDocumentAnalysis | None) -> None:

@@ -14,7 +14,7 @@ from typing import cast
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from app.document_ai import DocumentClassification
+from app.document_ai import DocumentClassificationResponse
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.integrations.ai.anthropic import AnthropicAIClient
 from app.integrations.ai.gemini import GeminiAIClient
@@ -28,7 +28,7 @@ from tests.support.fakes.sdk import (
     FakeParsedMessage,
 )
 
-Classification = DocumentClassification[CashoutDocumentClassification]
+Classification = DocumentClassificationResponse[CashoutDocumentClassification]
 
 
 class _Extracted(BaseModel):

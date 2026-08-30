@@ -63,15 +63,15 @@ class OpenAIAIClient:
         except OpenAIError as exc:
             raise AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, str(exc)) from exc
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
         message = completion.choices[0].message
         if message.refusal:
-            raise AIAnalysisError(AIErrorCode.DOCUMENT_REJECTED, message.refusal)
+            raise AIAnalysisError(AIErrorCode.CONTENT_REFUSED, message.refusal)
 
         if message.parsed is None:
             raise AIAnalysisError(
-                AIErrorCode.UNREADABLE_DOCUMENT,
+                AIErrorCode.INVALID_RESPONSE,
                 "The response did not contain valid structured output.",
             )
         return message.parsed

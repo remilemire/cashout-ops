@@ -47,8 +47,8 @@ class CashoutDocumentExtract(BaseIn):
 
 
 class CashoutDocumentManualEntry(BaseIn):
-    # The document type the user asserts; it must have a registered extraction
-    # schema (`unknown` has none, so it is rejected).
+    # The document type the user asserts; its registered extraction schema is
+    # what the data below is validated against.
     classification: CashoutDocumentClassification
     # The typed-in field values, validated against the classification's schema.
     # A plain dict, so nested keys pass through un-aliased: the schema's

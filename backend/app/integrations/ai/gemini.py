@@ -78,13 +78,13 @@ class GeminiAIClient:
         parsed = response.parsed
         if not isinstance(parsed, dict):
             raise AIAnalysisError(
-                AIErrorCode.UNREADABLE_DOCUMENT,
+                AIErrorCode.INVALID_RESPONSE,
                 "The response did not contain valid structured output.",
             )
         try:
             return response_model.model_validate(parsed)
         except ValidationError as exc:
-            raise AIAnalysisError(AIErrorCode.UNREADABLE_DOCUMENT, str(exc)) from exc
+            raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
 
 def _to_contents(content: AIContent) -> list[str | types.Part]:
@@ -104,7 +104,7 @@ def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
     feedback = response.prompt_feedback
     if feedback is not None and feedback.block_reason is not None:
         raise AIAnalysisError(
-            AIErrorCode.DOCUMENT_REJECTED,
+            AIErrorCode.CONTENT_REFUSED,
             f"Prompt blocked: {feedback.block_reason.name}",
         )
 
@@ -119,7 +119,7 @@ def _raise_if_unusable(response: types.GenerateContentResponse) -> None:
             )
         if finish_reason in _REFUSAL_FINISH_REASONS:
             raise AIAnalysisError(
-                AIErrorCode.DOCUMENT_REJECTED,
+                AIErrorCode.CONTENT_REFUSED,
                 f"The provider declined to analyze this content "
                 f"({finish_reason.name}).",
             )

@@ -129,13 +129,14 @@ export type DocumentAnalysisStatus =
   | "verified"
   | "failed";
 
+/** Every classification is extractable: a document the AI cannot place is a
+ * failed analysis (errorCode "unclassifiable_document"), not a classification. */
 export type CashoutDocumentClassification =
   | "touchbistro_report"
-  | "server_summary_report"
-  | "unknown";
+  | "server_summary_report";
 
 export const CASHOUT_DOCUMENT_CLASSIFICATIONS: CashoutDocumentClassification[] =
-  ["touchbistro_report", "server_summary_report", "unknown"];
+  ["touchbistro_report", "server_summary_report"];
 
 export type DocumentContentType =
   | "image/jpeg"
@@ -287,14 +288,8 @@ export interface ExtractDocumentInput {
   classification?: CashoutDocumentClassification;
 }
 
-/** A classification the user may pick: "unknown" has nothing to enter. */
-export type SelectableClassification = Exclude<
-  CashoutDocumentClassification,
-  "unknown"
->;
-
 export interface ManualDocumentInput {
-  classification: SelectableClassification;
+  classification: CashoutDocumentClassification;
   /** snake_case schema keys; raw string values — the backend coerces. */
   data: Record<string, string>;
 }

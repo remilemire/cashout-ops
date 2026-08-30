@@ -13,7 +13,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.document_ai import DocumentClassification
+from app.document_ai import DocumentClassificationResponse
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
@@ -85,13 +85,14 @@ async def test_manual_upload_lands_verified_without_ai(
     assert completed["status"] == CashoutSubmissionStatus.COMPLETED.value
 
 
-async def test_manual_upload_rejects_unknown_classification(
+async def test_manual_upload_rejects_an_unrecognized_classification(
     cashier_client: AsyncClient,
 ) -> None:
     submission_id = await create_submission(cashier_client)
 
-    # UNKNOWN has no registered schema: there is nothing to validate the
-    # entered data against, so it is not a manual-entry option.
+    # A manual entry asserts a document type the extraction schemas know; a
+    # value outside the enum (`unknown` is no longer one of them) is refused
+    # as an invalid option.
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/documents/manual",
         files={"file": SAMPLE_PDF_UPLOAD},
@@ -199,7 +200,7 @@ async def test_convert_failed_analysis_to_manual(
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
     ai_client.error = AIAnalysisError(
-        AIErrorCode.DOCUMENT_REJECTED, "declined: raw provider text"
+        AIErrorCode.CONTENT_REFUSED, "declined: raw provider text"
     )
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
@@ -226,21 +227,20 @@ async def test_convert_failed_analysis_to_manual(
     assert entered["verifiedDataJson"] == SERVER_SUMMARY_EXTRACTED
 
 
-async def test_convert_unknown_classification_to_manual(
+async def test_convert_unclassified_analysis_to_manual(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # The AI can't place the document (UNKNOWN, no extracted data): the
-    # cashier resolves it by entering the details manually.
-    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
-        value=None, confidence=0.3
-    )
+    # The AI can't place the document, so the extraction fails; entering the
+    # details manually is one of the ways out (the other being a retry).
+    ai_client.classification = DocumentClassificationResponse[
+        CashoutDocumentClassification
+    ](value=None, confidence=0.3)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
-    assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
-    assert analysis["classification"] == CashoutDocumentClassification.UNKNOWN.value
+    assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
 
     entered = await enter_manual_document(
         cashier_client, created["cashoutDocumentId"], manual_entry_body()
@@ -248,6 +248,8 @@ async def test_convert_unknown_classification_to_manual(
 
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert entered["provider"] is None
+    assert entered["errorCode"] is None
+    assert entered["errorMessage"] is None
     assert (
         entered["classification"]
         == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
@@ -390,7 +392,7 @@ async def test_commit_failure_surfaces_as_error_not_phantom_success(
     """
     from app.integrations.ai import AIAnalysisError, AIErrorCode
 
-    ai_client.error = AIAnalysisError(AIErrorCode.DOCUMENT_REJECTED, "boom")
+    ai_client.error = AIAnalysisError(AIErrorCode.CONTENT_REFUSED, "boom")
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 

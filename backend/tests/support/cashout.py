@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient
 
-from app.document_ai import DocumentAnalysis, DocumentClassification, FieldIssue
+from app.document_ai import (
+    DocumentAnalysis,
+    DocumentClassificationResponse,
+    FieldIssue,
+)
 from app.features.cashout.data.types import TipoutDepartment
 from app.features.cashout.extraction.schemas import ServerSummaryReportData
 from app.features.cashout.extraction.types import CashoutDocumentClassification
@@ -58,9 +62,9 @@ def manual_entry_body(
 
 def configure_server_summary(ai_client: FakeAIClient) -> None:
     """Point the fake AI at a SERVER_SUMMARY_REPORT classification + extraction."""
-    ai_client.classification = DocumentClassification[CashoutDocumentClassification](
-        value=CashoutDocumentClassification.SERVER_SUMMARY_REPORT, confidence=0.95
-    )
+    ai_client.classification = DocumentClassificationResponse[
+        CashoutDocumentClassification
+    ](value=CashoutDocumentClassification.SERVER_SUMMARY_REPORT, confidence=0.95)
     ai_client.extraction = DocumentAnalysis[ServerSummaryReportData](
         data=_EXTRACTED,
         confidence=0.9,
