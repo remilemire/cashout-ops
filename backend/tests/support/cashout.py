@@ -126,9 +126,17 @@ def completion_body(
     }
 
 
-async def create_submission(client: AsyncClient) -> str:
+async def create_submission(
+    client: AsyncClient, *, business_date: str | None = None
+) -> str:
+    """Open a cashout; `business_date` (YYYY-MM-DD) omitted sends no body,
+    which the API defaults to today."""
     response = await client.post(
-        "/api/cashout/submissions", headers=csrf_headers(client)
+        "/api/cashout/submissions",
+        # httpx sends no body for json=None, matching the bare POST clients
+        # make when the cashout is simply for today.
+        json=None if business_date is None else {"businessDate": business_date},
+        headers=csrf_headers(client),
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]

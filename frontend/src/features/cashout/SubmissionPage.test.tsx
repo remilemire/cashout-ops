@@ -84,6 +84,7 @@ const completedSubmission: CashoutSubmissionDetail = {
   status: "completed",
   employeeUserId: employee.id,
   submittedAt: "2026-07-16T01:00:00Z",
+  businessDate: "2026-07-15",
   completedByUserId: employee.id,
   firstCompletedAt: "2026-07-16T02:00:00Z",
   tipoutDepartments: ["kitchen"],

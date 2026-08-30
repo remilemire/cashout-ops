@@ -8,11 +8,20 @@ import { Link, useNavigate } from "react-router-dom";
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import type { ManualDocumentInput } from "@/api/types";
 import { PageHeader } from "@/components/ui";
-import { formatDateTime } from "@/lib/format";
+import { cx } from "@/lib/cx";
+import { formatDateTime, localISODate } from "@/lib/format";
 
 import { ManualDocumentDialog } from "./ManualDocumentDialog";
 import { UploadZone } from "./UploadZone";
 import { SubmissionStatusBadge } from "./status";
+
+/** Local YYYY-MM-DD for the day before `isoDate` (DST-safe via setDate). */
+function dayBefore(isoDate: string): string {
+  const [year = 0, month = 1, day = 1] = isoDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() - 1);
+  return localISODate(date);
+}
 
 export function NewCashoutPage() {
   const navigate = useNavigate();
@@ -20,12 +29,16 @@ export function NewCashoutPage() {
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [startedAt] = useState(() => new Date().toISOString());
   const [manualOpen, setManualOpen] = useState(false);
+  // The day the cashout is for, as a local YYYY-MM-DD string. Yesterday
+  // covers the after-midnight close-out and the missed-day catch-up.
+  const [today] = useState(() => localISODate());
+  const [businessDate, setBusinessDate] = useState(today);
 
   // The submission is created lazily with the first document, so an abandoned
   // page leaves nothing behind; a failed first upload reuses the created id.
   const ensureSubmissionId = async (): Promise<string> => {
     if (submissionId !== null) return submissionId;
-    const submission = await cashoutApi.createSubmission();
+    const submission = await cashoutApi.createSubmission({ businessDate });
     setSubmissionId(submission.id);
     void queryClient.invalidateQueries({
       queryKey: cashoutKeys.submissions,
@@ -88,6 +101,33 @@ export function NewCashoutPage() {
           </div>
         }
       />
+
+      {/* The chosen day is fixed at creation, which the first upload
+          triggers — once the submission exists the control locks. */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-ink-muted">Cashout for</span>
+        {[
+          { label: "Today", value: today },
+          { label: "Yesterday", value: dayBefore(today) },
+        ].map(({ label, value }) => (
+          <button
+            key={label}
+            type="button"
+            disabled={submissionId !== null}
+            onClick={() => setBusinessDate(value)}
+            aria-pressed={businessDate === value}
+            className={cx(
+              "cursor-pointer rounded-lg border px-3 py-1.5 transition-colors",
+              businessDate === value
+                ? "border-accent/40 bg-accent/10 font-medium"
+                : "border-line bg-surface-2",
+              submissionId !== null && "cursor-not-allowed opacity-60",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <UploadZone
         onFile={(file) => initialUpload.mutate(file)}

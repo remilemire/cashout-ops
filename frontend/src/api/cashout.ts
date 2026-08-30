@@ -8,6 +8,7 @@ import type {
   CashoutSubmissionDetail,
   CashoutSubmissionListItem,
   CompleteSubmissionInput,
+  CreateSubmissionInput,
   ExtractDocumentInput,
   ManualDocumentInput,
   VerifyAnalysisInput,
@@ -16,8 +17,12 @@ import type {
 export const cashoutApi = {
   listSubmissions: () =>
     api<CashoutSubmissionListItem[]>("/cashout/submissions"),
-  createSubmission: () =>
-    api<CashoutSubmission>("/cashout/submissions", { method: "POST" }),
+  createSubmission: (input?: CreateSubmissionInput) =>
+    api<CashoutSubmission>("/cashout/submissions", {
+      method: "POST",
+      // A plain "for today" cashout sends no body at all.
+      ...(input !== undefined && { json: input }),
+    }),
   getSubmission: (id: string) =>
     api<CashoutSubmissionDetail>(`/cashout/submissions/${id}`),
   completeSubmission: (id: string, input: CompleteSubmissionInput) =>

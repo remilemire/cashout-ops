@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import delete
@@ -22,6 +22,7 @@ async def test_translate_real_postgres_restrict_violation_maps_constraint(
     submission = CashoutSubmission(
         employee_user_id=user.id,
         submitted_at=datetime.now(UTC),
+        business_date=date.today(),
     )
     db_session.add(submission)
     await db_session.flush()

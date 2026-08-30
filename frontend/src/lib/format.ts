@@ -9,6 +9,31 @@ export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
 }
 
+const dateOnly = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+/**
+ * The given date (default: now) as YYYY-MM-DD in LOCAL time. Not
+ * toISOString(): that renders the UTC day, which during the evening in a
+ * negative-offset timezone is already tomorrow — the wrong day.
+ */
+export function localISODate(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Medium date display for a date-ONLY "YYYY-MM-DD" string. Not fed straight
+ * to `new Date(...)`: that parses as UTC midnight, which Intl then renders in
+ * the local zone — the previous day anywhere west of UTC — so the parts are
+ * rebuilt into a local date first.
+ */
+export function formatDate(isoDate: string): string {
+  const [year = 0, month = 1, day = 1] = isoDate.split("-").map(Number);
+  return dateOnly.format(new Date(year, month - 1, day));
+}
+
 /** 0.95 → "95%" */
 export function formatConfidence(value: number | null): string {
   return value == null ? "—" : `${Math.round(value * 100)}%`;

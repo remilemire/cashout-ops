@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ARRAY, DateTime, ForeignKey, Uuid, func
+from sqlalchemy import ARRAY, Date, DateTime, ForeignKey, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.features.cashout.data.types import TipoutDepartment
@@ -49,6 +49,11 @@ class CashoutSubmission(Base):
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+    # The day the cashout is for — distinct from submitted_at (when it was
+    # opened): a cashier closing out after midnight or catching up a missed
+    # day picks yesterday. Indexed: reporting filters on it.
+    business_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Who performed the most recent completion (an admin can complete another
     # user's cashout). Bookkeeping only: no relationship until a consumer

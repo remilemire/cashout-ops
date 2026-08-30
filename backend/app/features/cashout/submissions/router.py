@@ -17,6 +17,7 @@ from app.integrations.storage.dependencies import get_document_storage
 from . import service as submissions_service
 from .schemas import (
     CashoutSubmissionComplete,
+    CashoutSubmissionCreate,
     CashoutSubmissionDetailOut,
     CashoutSubmissionListOut,
     CashoutSubmissionOut,
@@ -36,13 +37,19 @@ SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
 async def create_submission(
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
+    # The body is optional: a bare POST opens a cashout for today.
+    payload: CashoutSubmissionCreate | None = None,
 ) -> CashoutSubmissionOut:
     """Open a new cashout submission (status `PROCESSING`).
 
-    Cashouts are not shift-locked; a cashier may open one at any time.
+    Cashouts are not shift-locked; a cashier may open one at any time. The
+    optional `businessDate` is the day the cashout is for — yesterday, for a
+    close-out after midnight or a missed day — and defaults to today.
     """
     submission = await submissions_service.create_submission(
-        db, user_id=current_user.id
+        db,
+        user_id=current_user.id,
+        business_date=payload.business_date if payload is not None else None,
     )
     return CashoutSubmissionOut.model_validate(submission)
 

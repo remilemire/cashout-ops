@@ -25,7 +25,7 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { cx } from "@/lib/cx";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 import { DataCard } from "./DataCard";
 import { DocumentCard } from "./DocumentCard";
@@ -163,8 +163,8 @@ export function SubmissionPage() {
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
         subtitle={
           isAdminView
-            ? `Submitted by ${submission.employee.fullName} (${submission.employee.email})`
-            : undefined
+            ? `For ${formatDate(submission.businessDate)} · Submitted by ${submission.employee.fullName} (${submission.employee.email})`
+            : `For ${formatDate(submission.businessDate)}`
         }
         action={
           <div className="flex items-center gap-2">

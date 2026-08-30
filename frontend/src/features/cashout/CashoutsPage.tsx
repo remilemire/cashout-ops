@@ -17,7 +17,7 @@ import {
   PageHeader,
   SkeletonList,
 } from "@/components/ui";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 import { SubmissionStatusBadge } from "./status";
 
@@ -95,7 +95,8 @@ export function CashoutsPage() {
                       {formatDateTime(submission.submittedAt)}
                     </p>
                     <p className="text-ink-muted text-xs">
-                      #{submission.id.slice(0, 8)}
+                      For {formatDate(submission.businessDate)} · #
+                      {submission.id.slice(0, 8)}
                     </p>
                   </div>
                   <SubmissionStatusBadge status={submission.status} />

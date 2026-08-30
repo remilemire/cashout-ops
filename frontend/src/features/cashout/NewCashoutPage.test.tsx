@@ -59,11 +59,25 @@ const submission: CashoutSubmission = {
   status: "processing",
   employeeUserId: "user-1",
   submittedAt: "2026-07-17T00:00:00Z",
+  businessDate: "2026-07-17",
   completedByUserId: null,
   firstCompletedAt: null,
   tipoutDepartments: null,
   updatedAt: "2026-07-17T00:00:00Z",
 };
+
+/**
+ * Expected dates via the same LOCAL-date logic the page uses — not
+ * toISOString(), which renders the UTC day and diverges in the evening in
+ * negative-offset timezones.
+ */
+function localDay(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
@@ -146,6 +160,33 @@ describe("NewCashoutPage", () => {
     expect(await screen.findByText("Cashout detail")).toBeDefined();
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
     expect(router.state.location.pathname).toBe("/cashouts/submission-1");
+  });
+
+  it("creates the submission for today's local date by default", async () => {
+    renderPage();
+
+    fireEvent.drop(screen.getByLabelText("Upload a document"), {
+      dataTransfer: { files: [pdf] },
+    });
+
+    await waitFor(() => expect(createSubmissionMock).toHaveBeenCalledOnce());
+    expect(createSubmissionMock).toHaveBeenCalledWith({
+      businessDate: localDay(),
+    });
+  });
+
+  it("creates the submission for yesterday when the cashier picks it", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    fireEvent.drop(screen.getByLabelText("Upload a document"), {
+      dataTransfer: { files: [pdf] },
+    });
+
+    await waitFor(() => expect(createSubmissionMock).toHaveBeenCalledOnce());
+    expect(createSubmissionMock).toHaveBeenCalledWith({
+      businessDate: localDay(-1),
+    });
   });
 
   it("reuses the created submission when the first upload is retried", async () => {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from httpx import AsyncClient
@@ -363,6 +364,37 @@ async def test_create_submission_anytime(cashier_client: AsyncClient) -> None:
     second = await create_submission(cashier_client)
 
     assert first != second
+
+
+async def test_create_submission_with_business_date(
+    cashier_client: AsyncClient,
+) -> None:
+    # A cashier catching up a missed day opens the cashout for that day.
+    response = await cashier_client.post(
+        "/api/cashout/submissions",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["businessDate"] == "2026-08-28"
+
+    # Stored, not merely echoed: the detail read returns the same day.
+    detail = await cashier_client.get(f"/api/cashout/submissions/{created['id']}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["businessDate"] == "2026-08-28"
+
+
+async def test_create_submission_without_body_defaults_business_date(
+    cashier_client: AsyncClient,
+) -> None:
+    # A bare POST (no body at all) still works and lands on today.
+    submission_id = await create_submission(cashier_client)
+
+    detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["businessDate"] == date.today().isoformat()
 
 
 async def test_complete_requires_every_analysis_verified(

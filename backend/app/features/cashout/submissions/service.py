@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,12 +22,19 @@ from .schemas import CashoutSubmissionComplete
 from .types import CashoutSubmissionStatus
 
 
-async def create_submission(db: AsyncSession, *, user_id: UUID) -> CashoutSubmission:
+async def create_submission(
+    db: AsyncSession, *, user_id: UUID, business_date: date | None = None
+) -> CashoutSubmission:
     # Cashouts are not shift-locked; a user may open one at any time. The
     # creator is the cashout's employee.
+    #
+    # The client normally supplies business_date: the cashier's local date is
+    # the restaurant's day, and the server's timezone need not match it. The
+    # server-side today is only a fallback for bodyless API calls.
     submission = CashoutSubmission(
         employee_user_id=user_id,
         submitted_at=datetime.now(UTC),
+        business_date=business_date if business_date is not None else date.today(),
     )
     await repository.add_submission(db, submission)
 

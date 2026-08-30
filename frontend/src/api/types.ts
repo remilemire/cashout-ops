@@ -163,6 +163,8 @@ export interface CashoutSubmission {
   status: CashoutSubmissionStatus;
   employeeUserId: string;
   submittedAt: string;
+  /** The day the cashout is for (YYYY-MM-DD); submittedAt is when it was opened. */
+  businessDate: string;
   /** Who performed the most recent completion (an admin may act for the employee). */
   completedByUserId: string | null;
   /** When it was completed first; set once and never overwritten. */
@@ -277,6 +279,11 @@ export interface CashoutSubmissionDetail extends CashoutSubmission {
   employee: User;
   documents: CashoutDocument[];
   data: CashoutData | null;
+}
+
+export interface CreateSubmissionInput {
+  /** The day the cashout is for (YYYY-MM-DD); omit for today. */
+  businessDate?: string;
 }
 
 export interface CompleteSubmissionInput {

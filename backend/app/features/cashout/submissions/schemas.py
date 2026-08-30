@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.cashout.data.schemas import CashoutDataOut
@@ -19,6 +20,8 @@ class CashoutSubmissionOut(BaseOut):
     status: CashoutSubmissionStatus
     employee_user_id: uuid.UUID
     submitted_at: UtcDateTime
+    # The day the cashout is for; submitted_at is when it was opened.
+    business_date: date
     completed_by_user_id: uuid.UUID | None = None
     first_completed_at: UtcDateTime | None = None
     # Last-completion snapshot; survives unsubmit. None means never completed.
@@ -36,11 +39,17 @@ class CashoutSubmissionDetailOut(CashoutSubmissionOut):
     data: CashoutDataOut | None = None
 
 
+class CashoutSubmissionCreate(BaseIn):
+    # Omitted (or null) means today — see service.create_submission.
+    business_date: date | None = None
+
+
 class CashoutSubmissionComplete(BaseIn):
     tipout_departments: set[TipoutDepartment]
 
 
 __all__ = [
+    "CashoutSubmissionCreate",
     "CashoutSubmissionDetailOut",
     "CashoutSubmissionListOut",
     "CashoutSubmissionOut",

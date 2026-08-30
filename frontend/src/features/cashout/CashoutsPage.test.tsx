@@ -64,6 +64,7 @@ const submissions: CashoutSubmissionListItem[] = [
     status: "processing",
     employeeUserId: user.id,
     submittedAt: "2026-07-17T01:00:00Z",
+    businessDate: "2026-07-17",
     completedByUserId: null,
     firstCompletedAt: null,
     tipoutDepartments: null,
@@ -76,6 +77,7 @@ const submissions: CashoutSubmissionListItem[] = [
     status: "completed",
     employeeUserId: user.id,
     submittedAt: "2026-07-16T01:00:00Z",
+    businessDate: "2026-07-15",
     completedByUserId: user.id,
     firstCompletedAt: "2026-07-16T02:00:00Z",
     tipoutDepartments: ["kitchen"],
@@ -118,8 +120,13 @@ describe("CashoutsPage", () => {
   it("only offers cancellation for incomplete submissions", async () => {
     renderPage();
 
-    expect(await screen.findByText("#processi")).toBeDefined();
-    expect(screen.getByText("#complete")).toBeDefined();
+    // The secondary line reads "For <business date> · #<id>"; the rendered
+    // date is locale-dependent, so match around it.
+    const processingLine = await screen.findByText(/#processi/);
+    expect(processingLine.textContent).toMatch(/^For .+ · #processi$/);
+    expect(screen.getByText(/#complete/).textContent).toMatch(
+      /^For .+ · #complete$/,
+    );
     expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
   });
 
@@ -168,6 +175,7 @@ describe("CashoutsPage", () => {
       status: "processing",
       employeeUserId: user.id,
       submittedAt: "2026-07-17T01:00:00Z",
+      businessDate: "2026-07-17",
       completedByUserId: null,
       firstCompletedAt: null,
       tipoutDepartments: null,
@@ -178,7 +186,7 @@ describe("CashoutsPage", () => {
     renderPage();
 
     // Both rows render despite sharing the same truncated label.
-    expect(await screen.findAllByText("#aaaaaaaa")).toHaveLength(2);
+    expect(await screen.findAllByText(/#aaaaaaaa/)).toHaveLength(2);
     const rowLinks = screen
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
