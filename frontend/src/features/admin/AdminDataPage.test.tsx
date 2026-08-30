@@ -122,6 +122,25 @@ describe("AdminDataPage", () => {
     expect(screen.getAllByRole("cell", { name: AUG_11 })).toHaveLength(2);
   });
 
+  it("shows each department's tipout, dash for the untipped", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    for (const department of ["Kitchen", "Bar", "Expo", "Host"]) {
+      expect(
+        screen.getByRole("columnheader", { name: `${department} tipout` }),
+      ).toBeDefined();
+    }
+    // Every fixture row tips out to the kitchen only: the other departments
+    // read "—", not a misleading $0.00.
+    expect(screen.getAllByRole("cell", { name: "$24.00" })).toHaveLength(
+      rows.length,
+    );
+    expect(
+      screen.getAllByRole("cell", { name: "—" }).length,
+    ).toBeGreaterThanOrEqual(rows.length * 3);
+  });
+
   it("keeps the submission links intact", async () => {
     renderPage();
 

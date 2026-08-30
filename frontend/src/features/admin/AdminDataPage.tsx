@@ -18,25 +18,12 @@ import {
 } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 
+/**
+ * A tipout column is null for a department that was not tipped out, so the
+ * cell reads "—" rather than a misleading $0.00.
+ */
 function money(value: string | null): string {
   return value != null ? `$${value}` : "—";
-}
-
-/**
- * The row's tipouts added up. Null when none was calculated — a cashout that
- * tipped out to nobody — so the cell reads "—" rather than a misleading
- * $0.00.
- */
-function totalTipout(row: CashoutDataRow): string | null {
-  const amounts = [
-    row.barTipout,
-    row.kitchenTipout,
-    row.expoTipout,
-    row.hostTipout,
-  ].filter((value): value is string => value != null);
-
-  if (amounts.length === 0) return null;
-  return amounts.reduce((sum, value) => sum + Number(value), 0).toFixed(2);
 }
 
 /** The distinct employees appearing in the rows, sorted by name. */
@@ -135,17 +122,23 @@ export function AdminDataPage() {
             />
           ) : (
             <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-180 text-sm">
+              <table className="w-full min-w-230 text-sm">
                 <thead>
                   <tr className="border-line text-ink-muted border-b text-left text-xs">
                     <th className="px-4 py-2.5 font-medium">Employee</th>
                     <th className="px-4 py-2.5 font-medium">Date</th>
                     <th className="px-4 py-2.5 font-medium">Submission</th>
                     <th className="px-4 py-2.5 text-right font-medium">
-                      Net sales
+                      Kitchen tipout
                     </th>
                     <th className="px-4 py-2.5 text-right font-medium">
-                      Tipouts
+                      Bar tipout
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium">
+                      Expo tipout
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium">
+                      Host tipout
                     </th>
                     <th className="px-4 py-2.5 text-right font-medium">
                       Owed to house
@@ -176,10 +169,16 @@ export function AdminDataPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        ${row.totalNetSales}
+                        {money(row.kitchenTipout)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        {money(totalTipout(row))}
+                        {money(row.barTipout)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {money(row.expoTipout)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {money(row.hostTipout)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {money(row.cashOwedToHouse)}
