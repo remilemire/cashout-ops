@@ -33,6 +33,7 @@ SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
     "/submissions",
     response_model=CashoutSubmissionOut,
     status_code=status.HTTP_201_CREATED,
+    responses=error_responses("SUBMISSION_DUPLICATE_DAY", "VALIDATION_FAILED"),
 )
 async def create_submission(
     db: DbSession,
@@ -42,9 +43,11 @@ async def create_submission(
 ) -> CashoutSubmissionOut:
     """Open a new cashout submission (status `PROCESSING`).
 
-    Cashouts are not shift-locked; a cashier may open one at any time. The
-    optional `businessDate` is the day the cashout is for — yesterday, for a
-    close-out after midnight or a missed day — and defaults to today.
+    Cashouts are not shift-locked; a cashier may open one at any time — but
+    only one live cashout per business day, so opening a second for a day
+    that already has one conflicts. The optional `businessDate` is the day
+    the cashout is for — yesterday, for a close-out after midnight or a
+    missed day — and defaults to today.
     """
     submission = await submissions_service.create_submission(
         db,

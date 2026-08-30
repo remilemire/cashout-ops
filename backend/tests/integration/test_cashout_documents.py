@@ -198,6 +198,9 @@ async def test_upload_rejects_duplicate_document(
     # The duplicate was rejected before its bytes were written to storage.
     assert len(storage.objects) == stored_before
 
-    # The same file is still allowed in a *different* submission.
-    other_submission_id = await create_submission(cashier_client)
+    # The same file is still allowed in a *different* submission (another
+    # day's — one live cashout per business day).
+    other_submission_id = await create_submission(
+        cashier_client, business_date="2026-08-28"
+    )
     await upload_document(cashier_client, other_submission_id, drain=drain_outbox)

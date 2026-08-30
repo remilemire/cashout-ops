@@ -35,10 +35,12 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
 
 # cashout_data.submission_id is ON DELETE RESTRICT: reconciled data blocks
 # deleting its submission. The (submission, checksum) unique index rejects
-# uploading the same file twice into one cashout.
+# uploading the same file twice into one cashout. The partial (employee, day)
+# unique index rejects opening a second live cashout for the same day.
 constraint_code_map: ConstraintCodeMap[ErrorCode] = {
     "cashout_data_submission_id_fkey": "SUBMISSION_HAS_DATA",
     "ix_cashout_documents_submission_checksum": "DOCUMENT_DUPLICATE",
+    "ix_cashout_submissions_employee_business_date": "SUBMISSION_DUPLICATE_DAY",
 }
 
 __all__ = ["ErrorCode", "constraint_code_map", "error_definition_list"]

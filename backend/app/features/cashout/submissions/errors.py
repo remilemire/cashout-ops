@@ -13,6 +13,7 @@ type ErrorCode = Literal[
     "SUBMISSION_EMPTY",
     "SUBMISSION_UNVERIFIED",
     "SUBMISSION_HAS_DATA",
+    "SUBMISSION_DUPLICATE_DAY",
 ]
 
 error_definition_list: ErrorDefinitionList[ErrorCode] = [
@@ -45,6 +46,11 @@ error_definition_list: ErrorDefinitionList[ErrorCode] = [
         code="SUBMISSION_HAS_DATA",
         kind="CONFLICT",
         message="This cashout has reconciled data and cannot be deleted.",
+    ),
+    ErrorDefinition(
+        code="SUBMISSION_DUPLICATE_DAY",
+        kind="CONFLICT",
+        message="A cashout for this day already exists.",
     ),
 ]
 

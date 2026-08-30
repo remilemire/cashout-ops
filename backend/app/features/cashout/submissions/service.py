@@ -25,8 +25,11 @@ from .types import CashoutSubmissionStatus
 async def create_submission(
     db: AsyncSession, *, user_id: UUID, business_date: date | None = None
 ) -> CashoutSubmission:
-    # Cashouts are not shift-locked; a user may open one at any time. The
-    # creator is the cashout's employee.
+    # Cashouts are not shift-locked; a user may open one at any time — but at
+    # most one live cashout per business day: the partial unique index on
+    # (employee_user_id, business_date) rejects a duplicate at the flush
+    # below, and the integrity translator turns it into
+    # SUBMISSION_DUPLICATE_DAY. The creator is the cashout's employee.
     #
     # The client normally supplies business_date: the cashier's local date is
     # the restaurant's day, and the server's timezone need not match it. The

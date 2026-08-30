@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ARRAY, Date, DateTime, ForeignKey, Uuid, func
+from sqlalchemy import ARRAY, Date, DateTime, ForeignKey, Index, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.features.cashout.data.types import TipoutDepartment
@@ -22,6 +22,19 @@ if TYPE_CHECKING:
 
 class CashoutSubmission(Base):
     __tablename__ = "cashout_submissions"
+    # Name the unique index explicitly: cashout/errors.py maps it to
+    # SUBMISSION_DUPLICATE_DAY, and a unique-index violation reports the index
+    # name. Partial — live rows only — so a cancelled (soft-deleted) cashout
+    # doesn't block opening a new one for the same day.
+    __table_args__ = (
+        Index(
+            "ix_cashout_submissions_employee_business_date",
+            "employee_user_id",
+            "business_date",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(

@@ -239,3 +239,66 @@ def test_upgrade_head_reopens_unreconciled_cashouts(migrated_url: str) -> None:
         assert departments == "kitchen"
     finally:
         engine.dispose()
+
+
+def test_upgrade_head_dedups_live_cashout_days(migrated_url: str) -> None:
+    """Same-day live duplicates are soft-deleted before the day becomes unique.
+
+    The business_date backfill gave same-day submissions the same date, so a
+    database can hold several live cashouts for one (employee, day) — which
+    the new partial unique index cannot be created over. `upgrade head` keeps
+    the best row per day (a completed cashout outranks drafts, then the
+    newest) and soft-deletes the rest, exactly as cancelling does.
+    """
+    _upgrade(migrated_url, "c7a4e29d81b3")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date,
+                         status)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111',
+                            now() - interval '1 hour', '2026-08-28',
+                            'completed'),
+                           ('33333333-3333-3333-3333-333333333333',
+                            '11111111-1111-1111-1111-111111111111',
+                            now(), '2026-08-28', 'processing');
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            live_by_id = {
+                row[0]: row[1]
+                for row in conn.execute(
+                    text("SELECT id::text, deleted_at IS NULL FROM cashout_submissions")
+                )
+            }
+            indexdef = conn.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes WHERE indexname ="
+                    " 'ix_cashout_submissions_employee_business_date'"
+                )
+            ).scalar_one()
+        # The completed cashout keeps the day even though the draft is newer:
+        # it holds the day's reconciled data, and the app refuses to delete
+        # it. The draft is soft-deleted, not removed.
+        assert live_by_id == {
+            "22222222-2222-2222-2222-222222222222": True,
+            "33333333-3333-3333-3333-333333333333": False,
+        }
+        # The index the dedup made room for: unique over live rows only.
+        assert "UNIQUE" in indexdef
+        assert "deleted_at IS NULL" in indexdef
+    finally:
+        engine.dispose()

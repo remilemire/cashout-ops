@@ -358,12 +358,61 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
 
 
 async def test_create_submission_anytime(cashier_client: AsyncClient) -> None:
-    # Cashouts are not shift-locked: a user can open one at any time, and
-    # can open more than one.
-    first = await create_submission(cashier_client)
-    second = await create_submission(cashier_client)
+    # Cashouts are not shift-locked: a user can open one at any time — say,
+    # catching up several missed days at once — as long as each is for its
+    # own business day.
+    first = await create_submission(cashier_client, business_date="2026-08-27")
+    second = await create_submission(cashier_client, business_date="2026-08-28")
 
     assert first != second
+
+
+async def test_create_duplicate_day_conflicts(cashier_client: AsyncClient) -> None:
+    # One live cashout per business day: the partial unique index rejects a
+    # second, and the constraint violation surfaces as a clean 409.
+    await create_submission(cashier_client, business_date="2026-08-28")
+
+    response = await cashier_client.post(
+        "/api/cashout/submissions",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_DUPLICATE_DAY"
+
+
+async def test_cancelled_cashout_does_not_block_the_day(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client, business_date="2026-08-28")
+    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    # Cancelling soft-deletes (the document is a trace), so the row survives —
+    # but the unique index is partial, and a stamped row no longer holds the
+    # day.
+    response = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+    assert response.status_code == 204
+
+    replacement = await create_submission(cashier_client, business_date="2026-08-28")
+    assert replacement != submission_id
+
+
+async def test_two_users_may_share_a_business_day(
+    cashier_client: AsyncClient, make_client: ClientFactory
+) -> None:
+    # The day is unique per employee, not per restaurant: two cashiers each
+    # open their own cashout for the same day.
+    other = await make_client(email="other@test.com")
+
+    await create_submission(cashier_client, business_date="2026-08-28")
+    await create_submission(other, business_date="2026-08-28")
 
 
 async def test_create_submission_with_business_date(
