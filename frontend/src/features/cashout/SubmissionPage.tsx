@@ -78,6 +78,8 @@ export function SubmissionPage() {
         queryKey: cashoutKeys.submission(submissionId),
       });
       void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+      // The completed banner renders at the top; the button sits at the bottom.
+      window.scrollTo({ top: 0, behavior: "smooth" });
     },
   });
 

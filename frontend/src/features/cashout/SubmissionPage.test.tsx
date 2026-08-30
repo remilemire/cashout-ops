@@ -59,6 +59,9 @@ const completeSubmissionMock = vi.mocked(cashoutApi.completeSubmission);
 const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
 const useAuthMock = vi.mocked(useAuth);
 
+// jsdom doesn't implement window.scrollTo; completing the cashout calls it.
+const scrollToMock = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+
 const employee: User = {
   id: "user-1",
   createdAt: "2026-07-17T00:00:00Z",
@@ -184,6 +187,7 @@ beforeEach(() => {
   completeSubmissionMock.mockReset();
   uploadManualDocumentMock.mockReset();
   useAuthMock.mockReset();
+  scrollToMock.mockClear();
   getSubmissionMock.mockResolvedValue(completedSubmission);
   unsubmitSubmissionMock.mockResolvedValue({
     ...completedSubmission,
@@ -280,6 +284,21 @@ describe("SubmissionPage", () => {
         false,
       );
     }
+  });
+
+  it("scrolls back to the top when completing succeeds", async () => {
+    // The completed banner renders at the top of the page, far above the
+    // Complete button the cashier just clicked.
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete cashout" }),
+    );
+
+    await waitFor(() =>
+      expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: "smooth" }),
+    );
   });
 
   it("completes with no departments when none is selected", async () => {
