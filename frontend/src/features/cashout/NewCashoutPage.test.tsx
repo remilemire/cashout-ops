@@ -67,13 +67,12 @@ const submission: CashoutSubmission = {
 };
 
 /**
- * Expected dates via the same LOCAL-date logic the page uses — not
- * toISOString(), which renders the UTC day and diverges in the evening in
- * negative-offset timezones.
+ * Today via the same LOCAL-date logic the page uses — not toISOString(),
+ * which renders the UTC day and diverges in the evening in negative-offset
+ * timezones.
  */
-function localDay(offsetDays = 0): string {
+function localToday(): string {
   const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
@@ -171,21 +170,25 @@ describe("NewCashoutPage", () => {
 
     await waitFor(() => expect(createSubmissionMock).toHaveBeenCalledOnce());
     expect(createSubmissionMock).toHaveBeenCalledWith({
-      businessDate: localDay(),
+      businessDate: localToday(),
     });
   });
 
-  it("creates the submission for yesterday when the cashier picks it", async () => {
+  it("creates the submission for the picked date", async () => {
+    // Any date, not just yesterday: a cashier can catch up a day from last
+    // week.
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    fireEvent.change(screen.getByLabelText("Cashout for"), {
+      target: { value: "2026-08-20" },
+    });
     fireEvent.drop(screen.getByLabelText("Upload a document"), {
       dataTransfer: { files: [pdf] },
     });
 
     await waitFor(() => expect(createSubmissionMock).toHaveBeenCalledOnce());
     expect(createSubmissionMock).toHaveBeenCalledWith({
-      businessDate: localDay(-1),
+      businessDate: "2026-08-20",
     });
   });
 
