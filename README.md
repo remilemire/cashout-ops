@@ -2,9 +2,9 @@
 
 Internal operations tool that replaces Whiskey District's paper-based end-of-shift cashout process with a digital workflow: AI-extracted document data, structured storage in Postgres, and management-side review and reporting.
 
-Live deployment: <https://cashout-ops.onrender.com>
+Live deployment: <https://whiskeydistrictcashout.com>
 
-> **Status:** early build. Authentication (passwordless email sign-in links), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The per-document extraction schemas still hold placeholder fields, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
+> **Status:** early build. Authentication (passwordless email sign-in links), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The tipout rates are still placeholders, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
 
 ---
 
@@ -67,8 +67,9 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
-- Fully-migrated schema: `users`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
-- Cashout domain (create/list/delete submission, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification, complete) with a pytest suite over a throwaway Postgres
+- Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Cashout domain (create/list/delete submission — at most one live cashout per employee per business day, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
+- Cross-document reconciliation on completion: the server summaries' grand totals and transaction counts must add up to the TouchBistro report's card payments and card orders, or completion fails naming what disagrees
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - React 19 SPA: auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (drag-and-drop upload → poll extraction → correct → verify → complete), and admin submissions/data/users views
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
@@ -76,13 +77,15 @@ The longer-term goal is to grow this into a broader internal operations platform
 
 ## Planned scope
 
-These are designed but not yet implemented in code. Tracked here so the gap between scaffold and intent is explicit.
+These are designed but not yet finished in code. Tracked here so the gap between what runs today and the intent is explicit.
 
-**Extraction schemas** — the per-document data models (`features/cashout/extraction/schemas.py`) currently hold placeholder fields so the pipeline runs end to end. The real observable fields per document type, deterministic post-extraction validation, and cross-document reconciliation still need to be defined.
+**Tipout rates** — the per-department rates in `core/config/tipout.py` are placeholders. The real rates must replace them before the app reconciles a real cashout.
 
-**Field-typed correction editors** — the cashier and admin flows are stable, but the verification form still renders every extracted value as a plain text input. Per-document-type editors follow once the extraction schemas are real. Paste-to-upload is also still outstanding (drag-and-drop works).
+**Deterministic extraction validation** — the per-document schemas and the cross-document reconciliation rules are implemented; what remains is deterministic post-extraction validation of a single document's values (totals reconcile, amounts non-negative) before they reach reconciliation.
 
-**Admin flow** — historical views, filtering by date range and server, editing submitted data, discrepancy investigation.
+**Field-typed correction editors** — the cashier and admin flows are stable, and the verification form groups and labels fields per document type, but it still renders every value as a plain text input. Per-document-type editors (currency, counts) are the remaining step. Paste-to-upload is also still outstanding (drag-and-drop works).
+
+**Admin flow** — the cashout-data view filters by employee and business day; date-*range* filtering, editing submitted data, and discrepancy investigation are still to come.
 
 **Reporting** — Excel/CSV/PDF/Google Sheets export, plus Power Query consumption of the Postgres data as the live reporting surface for management.
 
@@ -105,13 +108,13 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── core/                      # config/ (one settings group per concern), AI model catalog, storage/email provider enums, cookies, logging, shared schemas
 │       ├── infrastructure/            # db/ (Base, registry, lifespan, get_db), redis/ (client, lifespan, get_redis), outbox/ (dispatcher, messages)
 │       ├── lib/                       # pure helpers: casing, documents
-│       ├── security/                  # CSRF cookies, token crypto, require_csrf, rate_limit/ (Redis fixed window)
+│       ├── security/                  # CSRF cookies, token crypto, require_csrf, time_floor, rate_limit/ (Redis fixed window)
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
-│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), storage/ (+ get_document_storage)
+│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), oauth/ (Authlib + OAuthIssuer), storage/ (+ get_document_storage)
 │       ├── document_ai/               # DocumentAIClient (generic classify + extract)
-│       ├── features/                  # auth (shared/sessions, email_challenges, oauth/+external_identities, dependencies: get_current_user/require_admin/require_owner), users, cashout
-│       │   └── cashout/               # submissions/, documents/, analyses/, data/ sub-features + shared/ (access policy); thin root router/errors/models/outbox surfaces
-│       │       └── extraction/        # CashoutDocumentProcessor, registry, schemas (placeholder fields), get_cashout_document_processor
+│       ├── features/                  # auth (sessions/, email_challenges/, oauth/+external_identities/, shared/ (access, accounts), dependencies: get_current_user/require_admin/require_owner), users, cashout
+│       │   └── cashout/               # submissions/, documents/, analyses/, data/ sub-features + shared/ (access policy, intake workflows); thin root router/errors/models/outbox surfaces
+│       │       └── extraction/        # CashoutDocumentProcessor, registry, per-document schemas with field hints, get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
@@ -202,6 +205,10 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `OUTBOX_CLAIM_TTL_SECONDS` | `outbox.CLAIM_TTL_SECONDS` | no  | `30.0`                                            | How long a claim is protected before a crashed worker's row becomes claimable again.                 |
 | `OUTBOX_BACKOFF_BASE_SECONDS` | `outbox.BACKOFF_BASE_SECONDS` | no | `5.0`                                         | Retry backoff base — a failed attempt waits `base * 2^(attempt-1)`.                                  |
 | `OUTBOX_BACKOFF_CAP_SECONDS` | `outbox.BACKOFF_CAP_SECONDS` | no | `900.0`                                        | Ceiling on that exponential backoff.                                                                 |
+| `TIPOUT_BAR_RATE`     | `tipout.BAR_RATE` | no | `0.0500`                                                    | Fraction of **drink** net sales the bar tips out on (`0.05` is 5%). **Placeholder** — see [Planned scope](#planned-scope). Completion snapshots the rate onto the cashout, so a change here only affects cashouts closed afterwards. |
+| `TIPOUT_KITCHEN_RATE` | `tipout.KITCHEN_RATE` | no | `0.0300`                                                | Fraction of **food** net sales the kitchen tips out on. **Placeholder**, snapshotted at completion.   |
+| `TIPOUT_EXPO_RATE`    | `tipout.EXPO_RATE` | no | `0.0100`                                                   | Fraction of **total** net sales expo tips out on. **Placeholder**, snapshotted at completion.         |
+| `TIPOUT_HOST_RATE`    | `tipout.HOST_RATE` | no | `0.0100`                                                   | Fraction of **total** net sales host tips out on. **Placeholder**, snapshotted at completion.         |
 
 The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config/ai.py](backend/app/core/config/ai.py) inverts that map to resolve `settings.ai.PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
@@ -265,7 +272,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
 
-**Settings.** `Settings` ([core/config/](backend/app/core/config/)) is one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `storage`, `outbox`, `rate_limit` — each a `BaseSettings` reading `.env` under its own `env_prefix`, so code reads `settings.storage.LOCAL_DIR`. Provider-conditional validation lives in the group it belongs to, so an incomplete deployment fails to load its configuration rather than failing on first use. `settings.app.DEBUG` is a computed field derived from `APP_ENV`.
+**Settings.** `Settings` ([core/config/](backend/app/core/config/)) is one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `storage`, `outbox`, `rate_limit`, `tipout` — each a `BaseSettings` reading `.env` under its own `env_prefix`, so code reads `settings.storage.LOCAL_DIR`. Provider-conditional validation lives in the group it belongs to, so an incomplete deployment fails to load its configuration rather than failing on first use. `settings.app.DEBUG` is a computed field derived from `APP_ENV`.
 
 ## Authentication and sessions
 
@@ -320,20 +327,24 @@ Implemented under the `/api` prefix:
 | POST   | `/api/users/{id}/demote`                      | admin + CSRF    | 200     | Revoke a user's admin access (cannot demote yourself or the owner). |
 | DELETE | `/api/users/{id}`                             | admin + CSRF    | 204     | Delete a user (the owner cannot be deleted). |
 | POST   | `/api/users/{id}/transfer-ownership`          | owner + CSRF    | 200     | Transfer ownership to an admin; the caller becomes a plain admin. |
-| POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Create a cashout submission (any time — not shift-locked).  |
+| POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Open a cashout submission (any time — not shift-locked); optional `businessDate` defaults to today, and a second live cashout for the same day conflicts. |
 | GET    | `/api/cashout/submissions`                    | session         | 200     | List submissions, newest first — your own as a cashier, everyone's as an admin. |
 | GET    | `/api/cashout/submissions/{id}`               | submitter or admin | 200  | Submission detail with documents (analyses embedded) + data. |
 | DELETE | `/api/cashout/submissions/{id}`               | submitter + CSRF | 204    | Delete a submission unless reconciled cashout data exists.  |
 | POST   | `/api/cashout/submissions/{id}/complete`      | submitter + CSRF | 200    | Reconcile the verified analyses → `COMPLETED`.              |
+| POST   | `/api/cashout/submissions/{id}/unsubmit`      | admin + CSRF     | 200    | Reopen a completed cashout: drops its reconciled data, back to `PROCESSING` (analyses stay verified). |
 | POST   | `/api/cashout/submissions/{id}/documents`     | submitter + CSRF | 201    | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
+| POST   | `/api/cashout/submissions/{id}/documents/manual` | submitter + CSRF | 201 | Upload a document with manually entered details (multipart); skips AI, so the analysis lands `VERIFIED`. |
 | DELETE | `/api/cashout/documents/{id}`                 | submitter + CSRF | 204    | Remove a document and its analysis while the submission is still `PROCESSING`. |
 | GET    | `/api/cashout/documents/{id}/content`         | submitter or admin | 200  | Serve the original uploaded bytes inline (image or PDF).    |
 | POST   | `/api/cashout/documents/{id}/extract`         | submitter + CSRF | 200    | Restart extraction after a `FAILED` attempt (background, poll again). |
+| POST   | `/api/cashout/documents/{id}/manual`          | submitter + CSRF | 200    | Replace a document's analysis with manually entered details; skips AI, lands `VERIFIED`. |
 | GET    | `/api/cashout/analyses/{id}`                  | submitter or admin | 200  | Poll the analysis: `EXTRACTING` → `NEEDS_VERIFICATION` \| `FAILED`. |
 | POST   | `/api/cashout/analyses/{id}/verify`           | submitter + CSRF | 200    | Confirm an extraction, optionally with corrected values.    |
+| POST   | `/api/cashout/analyses/{id}/unverify`         | submitter + CSRF | 200    | Send a verified extraction back to `NEEDS_VERIFICATION` for editing. |
 | GET    | `/api/cashout/data`                           | admin           | 200     | List every reconciled cashout data row, newest first.       |
 
-"Submitter" is the cashier who created the submission — enforced in the cashout service, not by a dependency; it is unrelated to the single **owner** role, which only gates `transfer-ownership`. CSRF is checked on unsafe methods only, so the `GET` rows carry no CSRF requirement even though the routers declare `require_csrf`.
+"Submitter" is the cashier who created the submission — enforced in the cashout service ([cashout/shared/access.py](backend/app/features/cashout/shared/access.py)), not by a dependency. Admins (and the owner) have full control over every cashout, so every "submitter" row admits an admin too; it is unrelated to the single **owner** role, which only gates `transfer-ownership`. CSRF is checked on unsafe methods only, so the `GET` rows carry no CSRF requirement even though the routers declare `require_csrf`.
 
 The auth endpoints are rate limited (per client IP on each endpoint, sign-in emails per address, and link verification per challenge), and cashout document upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
 
@@ -341,7 +352,7 @@ Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the ap
 
 ## Deployment
 
-The app is deployed to Render at <https://cashout-ops.onrender.com>.
+The app is deployed to Render at <https://whiskeydistrictcashout.com>.
 
 The three scripts under `backend/scripts/` are the Render deploy hooks:
 
@@ -362,9 +373,10 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 
 ### Known incomplete work
 
-The backend domain and AI pipeline are implemented and tested. What's left:
+The backend domain and AI pipeline are implemented and tested. What's left is tracked in [Planned scope](#planned-scope); the two placeholders carried in code are:
 
-- **Extraction schemas are placeholders** — `features/cashout/extraction/schemas.py` holds dummy fields per document type. The real observable fields, deterministic post-extraction validation, and cross-document reconciliation (the data sub-feature's `service.reconcile`) still need to be defined.
+- **Tipout rates are placeholders** — `core/config/tipout.py` ships stand-in rates (`TODO(tipout)`), overridable via the `TIPOUT_*` variables. The real rates must be set before the app reconciles a real cashout.
+- **No deterministic extraction validation** — `features/cashout/extraction/processor.py` carries a `TODO(document-ai)` for value-level checks (totals reconcile, amounts non-negative) on a single document, ahead of the cross-document reconciliation that already runs at completion.
 
 ## License
 
