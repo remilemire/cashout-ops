@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.document_ai import FieldHint, Money
 
@@ -26,6 +26,7 @@ class ServerSummaryReportData(CashoutDocumentSchema):
     ]
     grand_total_transaction_count: Annotated[
         int,
+        Field(ge=0),
         FieldHint(
             sections=("GRAND TOTALS",),
             anchors=("beside Grand Total", "last row", "middle column"),
@@ -83,6 +84,7 @@ class TouchBistroReportData(CashoutDocumentSchema):
 
     card_transaction_count: Annotated[
         int,
+        Field(ge=0),
         FieldHint(
             labels=("Orders:",),
             sections=("Payment and Refund Totals", "Card"),

@@ -110,8 +110,9 @@ class CashoutDocumentProcessor:
         # (registry-level unit test).
         schema = CASHOUT_DOCUMENT_SCHEMAS[value]
 
-        # TODO(document-ai): Add deterministic validation over the extracted
-        # data (totals reconcile, amounts non-negative, ...).
+        # No validation pass here: the schema enforces per-field validity
+        # (Money parsing, non-negative counts), and cross-document checks
+        # belong to data/reconciliation.py when the submission completes.
         analysis = await self._documents.process(
             document, schema, instructions=_EXTRACT_INSTRUCTIONS
         )

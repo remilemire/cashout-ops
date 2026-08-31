@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -547,7 +547,7 @@ def test_money_declares_an_unadorned_string_to_providers() -> None:
 
 
 # ================================
-# --- Cashout hint declarations --
+# -- Cashout schema declarations -
 # ================================
 
 
@@ -580,6 +580,50 @@ def test_field_hints_stay_out_of_the_json_schema() -> None:
     schema = json.dumps(TouchBistroReportData.model_json_schema())
     assert "FieldHint" not in schema
     assert "Gross Sales" not in schema
+
+
+# Valid payloads, as provider output arrives (model_validate, not a typed
+# constructor). Counts sit at the zero boundary: ge=0 must admit an empty
+# tender.
+_SERVER_SUMMARY_VALID: dict[str, Any] = {
+    "grand_total": "100.00",
+    "grand_total_transaction_count": 0,
+}
+_TOUCHBISTRO_VALID: dict[str, Any] = {
+    "food_net_sales": "800.00",
+    "drink_net_sales": "400.00",
+    "total_net_sales": "1200.00",
+    "card_transaction_count": 0,
+    "cash_payment_total": "150.00",
+    "card_payment_total": "1234.56",
+    "card_tip_total": "180.00",
+}
+
+
+@pytest.mark.parametrize(
+    ("schema", "payload", "count_field"),
+    [
+        (
+            ServerSummaryReportData,
+            _SERVER_SUMMARY_VALID,
+            "grand_total_transaction_count",
+        ),
+        (TouchBistroReportData, _TOUCHBISTRO_VALID, "card_transaction_count"),
+    ],
+    ids=["server_summary", "touchbistro"],
+)
+def test_transaction_counts_cannot_be_negative(
+    schema: type[BaseModel], payload: dict[str, Any], count_field: str
+) -> None:
+    # A printed count cannot be negative, so the schema rejects one
+    # deterministically — for AI extraction and manual entry alike. Monetary
+    # fields carry no such bound (refunds and credits legitimately print
+    # negative); cross-field consistency is data/reconciliation.py's job.
+    assert schema.model_validate(payload)
+
+    with pytest.raises(ValidationError) as exc_info:
+        schema.model_validate({**payload, count_field: -1})
+    assert [error["loc"] for error in exc_info.value.errors()] == [(count_field,)]
 
 
 # ================================
