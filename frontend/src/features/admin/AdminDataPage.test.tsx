@@ -1,7 +1,7 @@
 // frontend/src/features/admin/AdminDataPage.test.tsx
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -103,6 +103,13 @@ function renderPage() {
   );
 }
 
+/** The table's totals row: the one headed by the "Total" row header. */
+function totalsRow(): HTMLTableRowElement {
+  const row = screen.getByRole("rowheader", { name: "Total" }).closest("tr");
+  if (row == null) throw new Error("totals row header is not in a row");
+  return row;
+}
+
 beforeEach(() => {
   listDataMock.mockReset();
   listDataMock.mockResolvedValue(rows);
@@ -139,6 +146,48 @@ describe("AdminDataPage", () => {
     expect(
       screen.getAllByRole("cell", { name: "—" }).length,
     ).toBeGreaterThanOrEqual(rows.length * 3);
+  });
+
+  it("totals the money columns, dash where no row has a value", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    const cells = within(totalsRow())
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+
+    // The empty cell spans the Date and Submission columns; the sums follow
+    // in column order: kitchen, bar, expo, host, owed to house, owed to
+    // employee. Never-tipped columns read "—", not $0.00.
+    expect(cells).toEqual(["", "$72.00", "—", "—", "—", "—", "$18.00"]);
+  });
+
+  it("totals only the rows left by the date filter", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-10" },
+    });
+
+    const totals = within(totalsRow());
+    expect(totals.getByRole("cell", { name: "$24.00" })).toBeDefined();
+    expect(totals.getByRole("cell", { name: "$6.00" })).toBeDefined();
+    expect(totals.queryByRole("cell", { name: "$72.00" })).toBeNull();
+  });
+
+  it("totals only the rows left by the employee filter", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    fireEvent.change(screen.getByLabelText("Employee"), {
+      target: { value: grace.id },
+    });
+
+    const totals = within(totalsRow());
+    expect(totals.getByRole("cell", { name: "$24.00" })).toBeDefined();
+    expect(totals.getByRole("cell", { name: "$6.00" })).toBeDefined();
+    expect(totals.queryByRole("cell", { name: "$72.00" })).toBeNull();
   });
 
   it("keeps the submission links intact", async () => {

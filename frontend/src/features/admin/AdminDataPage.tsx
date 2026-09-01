@@ -18,6 +18,8 @@ import {
 } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 
+import { MONEY_COLUMNS, columnTotals } from "./cashoutDataTable";
+
 /**
  * A tipout column is null for a department that was not tipped out, so the
  * cell reads "—" rather than a misleading $0.00.
@@ -59,6 +61,8 @@ export function AdminDataPage() {
       (dateFilter === "" || row.submission.businessDate === dateFilter) &&
       (employeeFilter === "" || row.submission.employee.id === employeeFilter),
   );
+
+  const totals = columnTotals(filteredRows);
 
   function clearFilters() {
     setDateFilter("");
@@ -128,24 +132,14 @@ export function AdminDataPage() {
                     <th className="px-4 py-2.5 font-medium">Employee</th>
                     <th className="px-4 py-2.5 font-medium">Date</th>
                     <th className="px-4 py-2.5 font-medium">Submission</th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Kitchen tipout
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Bar tipout
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Expo tipout
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Host tipout
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Owed to house
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-medium">
-                      Owed to employee
-                    </th>
+                    {MONEY_COLUMNS.map((column) => (
+                      <th
+                        key={column.key}
+                        className="px-4 py-2.5 text-right font-medium"
+                      >
+                        {column.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -168,27 +162,34 @@ export function AdminDataPage() {
                           #{row.submissionId.slice(0, 8)}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.kitchenTipout)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.barTipout)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.expoTipout)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.hostTipout)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.cashOwedToHouse)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {money(row.cashOwedToEmployee)}
-                      </td>
+                      {MONEY_COLUMNS.map((column) => (
+                        <td
+                          key={column.key}
+                          className="px-4 py-3 text-right tabular-nums"
+                        >
+                          {money(row[column.key])}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  {/* Totals of the rows on screen, so they follow the filters. */}
+                  <tr className="border-line border-t-2 font-semibold">
+                    <th scope="row" className="px-4 py-3 text-left">
+                      Total
+                    </th>
+                    <td colSpan={2} />
+                    {MONEY_COLUMNS.map((column) => (
+                      <td
+                        key={column.key}
+                        className="px-4 py-3 text-right tabular-nums"
+                      >
+                        {money(totals[column.key])}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
               </table>
             </Card>
           )}
