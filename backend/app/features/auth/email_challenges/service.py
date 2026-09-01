@@ -21,7 +21,7 @@ from app.features.auth.shared import accounts
 from app.features.users import service as users_service
 from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
-from app.security.crypto import hash_secret_token
+from app.security.crypto import hash_identifier, hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
@@ -36,12 +36,17 @@ MAX_CODE_ATTEMPTS = 5
 
 
 def _pointer_hash(email: str) -> str:
-    """The address as it is keyed in Redis: hashed, so no PII lands in a key.
+    """The address as it is keyed in Redis: digested, keeping it out of key names.
+
+    Not a confidentiality measure — an address is low-entropy enough to
+    recover from its digest, and the challenge value holds the plaintext
+    anyway. It keeps addresses out of the surfaces that expose key names but
+    not values (SCAN, MONITOR, the slowlog, per-key metrics).
 
     Lowercased before hashing, matching the per-email rate limiter, so casing
     variants of one address share a pointer.
     """
-    return hash_secret_token(email.lower())
+    return hash_identifier(email.lower())
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
