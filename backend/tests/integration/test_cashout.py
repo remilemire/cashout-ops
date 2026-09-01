@@ -46,6 +46,7 @@ async def test_full_cashout_flow(
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
     assert created["status"] == DocumentAnalysisStatus.EXTRACTING.value
     assert created["extractedDataJson"] is None
+    assert created["schemaVersion"] is None
 
     # Polling picks up the background extraction's outcome.
     analysis = await poll_analysis(cashier_client, created["id"])
@@ -57,6 +58,9 @@ async def test_full_cashout_flow(
     assert analysis["classificationConfidence"] == 0.95
     assert analysis["extractedDataJson"] == TOUCHBISTRO_EXTRACTED
     assert analysis["extractionConfidence"] == 0.9
+    # The extraction records which shape of its schema it wrote.
+    assert analysis["schemaName"] == "TouchBistroReportData"
+    assert analysis["schemaVersion"] == 1
 
     # The cashout also needs the terminal summary its card payments are
     # cross-checked against.

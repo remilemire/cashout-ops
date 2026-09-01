@@ -25,6 +25,10 @@ from pydantic import ValidationError
 
 from app.errors import AppError
 from app.features.cashout.analyses.model import CashoutDocumentAnalysis
+from app.features.cashout.extraction.registry import (
+    UnknownSchemaVersionError,
+    upcast_stored_document_data,
+)
 from app.features.cashout.extraction.schemas import (
     CashoutDocumentSchema,
     ServerSummaryReportData,
@@ -132,14 +136,27 @@ def _verified_data[SchemaT: CashoutDocumentSchema](
 ) -> SchemaT:
     """Read an analysis's verified data as its document type's schema.
 
-    Verification stores the cashier's corrections as typed, without checking
-    them against the schema, so this is where an unreadable correction (or a
-    field dropped from the payload) surfaces: as a completion conflict naming
-    the document, rather than a field-level 422 on a request that changed
-    nothing.
+    The stored payload keeps the shape of the schema version it was extracted
+    (or entered) under; the registry's upcasts lift an older shape to what the
+    current schema validates, so a cashout analyzed before a schema change
+    still reconciles. Verification stores the cashier's corrections as typed,
+    without checking them against the schema, so this is where an unreadable
+    correction (or a field dropped from the payload) surfaces: as a completion
+    conflict naming the document, rather than a field-level 422 on a request
+    that changed nothing.
     """
+    data = analysis.verified_data_json
     try:
-        return schema.model_validate(analysis.verified_data_json)
+        if data is not None:
+            data = upcast_stored_document_data(
+                schema, data, schema_version=analysis.schema_version
+            )
+        return schema.model_validate(data)
+    except UnknownSchemaVersionError as exc:
+        raise AppError(
+            "RECONCILE_DOCUMENT_DATA_INVALID",
+            f"Verified data for analysis {analysis.id} cannot be read: {exc}",
+        ) from exc
     except ValidationError as exc:
         raise AppError(
             "RECONCILE_DOCUMENT_DATA_INVALID",

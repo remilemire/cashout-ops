@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.document_ai import ClassificationHint
@@ -49,6 +49,63 @@ CASHOUT_CLASSIFICATION_HINTS: Mapping[
 }
 
 
+# One step of a schema's stored-data history: a payload as written under
+# `from_version`, returned in the shape of `from_version + 1`. Pure dict → dict;
+# validation stays with the reader.
+type DocumentDataUpcast = Callable[[dict[str, Any]], dict[str, Any]]
+
+# {schema: {from_version: upcast}} — how a stored payload written under an
+# older SCHEMA_VERSION is lifted, one step at a time, to the shape the current
+# schema validates. Bumping a schema's SCHEMA_VERSION means adding the step
+# for the version it replaces here; a unit test enforces that every chain is
+# contiguous from 1 to the current version.
+CASHOUT_SCHEMA_UPCASTS: Mapping[
+    type[CashoutDocumentSchema], Mapping[int, DocumentDataUpcast]
+] = {
+    TouchBistroReportData: {},
+    ServerSummaryReportData: {},
+}
+
+
+class UnknownSchemaVersionError(Exception):
+    """Stored document data carries a version this build cannot read: ahead of
+    the current schema (a rollback reading newer rows) or missing its upcast
+    step. Readers translate it into their own vocabulary."""
+
+
+def upcast_stored_document_data(
+    schema: type[CashoutDocumentSchema],
+    data: Mapping[str, Any],
+    *,
+    schema_version: int | None,
+) -> dict[str, Any]:
+    """Lift stored document data to the shape `schema` currently validates.
+
+    `schema_version` is the SCHEMA_VERSION the payload was written under; rows
+    from before versions were recorded carry null, which means 1 — the only
+    version that existed. Data already at the current version passes through
+    unchanged. Raises UnknownSchemaVersionError when no upcast path exists.
+    """
+    version = 1 if schema_version is None else schema_version
+    current = schema.SCHEMA_VERSION
+    if version > current:
+        raise UnknownSchemaVersionError(
+            f"{schema.__name__} data is at version {version}, ahead of the"
+            f" current version {current}."
+        )
+    upcasts = CASHOUT_SCHEMA_UPCASTS.get(schema, {})
+    payload = dict(data)
+    while version < current:
+        step = upcasts.get(version)
+        if step is None:
+            raise UnknownSchemaVersionError(
+                f"{schema.__name__} has no upcast from version {version}."
+            )
+        payload = step(payload)
+        version += 1
+    return payload
+
+
 def parse_manual_document_data(
     classification: CashoutDocumentClassification, data: Mapping[str, Any]
 ) -> CashoutDocumentSchema:
@@ -66,5 +123,9 @@ def parse_manual_document_data(
 __all__ = [
     "CASHOUT_CLASSIFICATION_HINTS",
     "CASHOUT_DOCUMENT_SCHEMAS",
+    "CASHOUT_SCHEMA_UPCASTS",
+    "DocumentDataUpcast",
+    "UnknownSchemaVersionError",
     "parse_manual_document_data",
+    "upcast_stored_document_data",
 ]

@@ -142,6 +142,7 @@ const verifiedSubmission: CashoutSubmissionDetail = {
         classification: "touchbistro_report",
         classificationConfidence: 0.95,
         schemaName: "TouchBistroReportData",
+        schemaVersion: 1,
         extractedDataJson: { total_net_sales: "1500.00" },
         extractionConfidence: 0.9,
         issues: null,

@@ -22,6 +22,9 @@ class CashoutDocumentAnalysisOut(BaseOut):
     classification: CashoutDocumentClassification | None = None
     classification_confidence: float | None = None
     schema_name: str | None = None
+    # Which shape of the named schema the extracted data follows; data written
+    # under an older version keeps its shape until a re-extraction replaces it.
+    schema_version: int | None = None
     extracted_data_json: dict[str, Any] | None = None
     extraction_confidence: float | None = None
     issues: list[dict[str, Any]] | None = None

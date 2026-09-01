@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +13,14 @@ class CashoutDocumentSchema(BaseModel):
     """Base for AI-extracted cashout document data, not an HTTP schema."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # The version of the shape this schema currently declares. Stored beside
+    # every extraction (and manual entry), so data written by an older shape
+    # stays readable after the schema changes. Changing a schema's fields or
+    # their meaning means bumping its override of this and registering an
+    # upcast for the previous version in the registry (unit-test-enforced);
+    # loosening a constraint the old data already satisfies needs neither.
+    SCHEMA_VERSION: ClassVar[int] = 1
 
 
 class ServerSummaryReportData(CashoutDocumentSchema):

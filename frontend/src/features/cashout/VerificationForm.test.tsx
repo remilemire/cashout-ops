@@ -29,6 +29,7 @@ const analysis: CashoutDocumentAnalysis = {
   classification: "server_summary_report",
   classificationConfidence: 0.95,
   schemaName: "ServerSummaryReportData",
+  schemaVersion: 1,
   // grand_total is a Decimal, so the API serializes it as a string; the count
   // stays a JSON number. Both types are exercised by the coercion test below.
   extractedDataJson: {

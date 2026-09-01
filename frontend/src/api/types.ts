@@ -189,6 +189,12 @@ export interface CashoutDocumentAnalysis {
   classification: CashoutDocumentClassification | null;
   classificationConfidence: number | null;
   schemaName: string | null;
+  /**
+   * Which shape of the named schema the extracted data follows. Data written
+   * under an older version keeps its shape until a re-extraction replaces it;
+   * rendering stays data-driven, so no branching on it is needed here.
+   */
+  schemaVersion: number | null;
   extractedDataJson: Record<string, unknown> | null;
   extractionConfidence: number | null;
   issues: FieldIssue[] | null;

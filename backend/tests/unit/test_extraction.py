@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -28,11 +28,16 @@ from app.document_ai import (
 from app.document_ai.errors import AI_ERROR_CODES
 from app.document_ai.hints import collect_field_hints
 from app.features.cashout.extraction import CashoutDocumentProcessor
+from app.features.cashout.extraction import registry as extraction_registry
 from app.features.cashout.extraction.registry import (
     CASHOUT_CLASSIFICATION_HINTS,
     CASHOUT_DOCUMENT_SCHEMAS,
+    CASHOUT_SCHEMA_UPCASTS,
+    UnknownSchemaVersionError,
+    upcast_stored_document_data,
 )
 from app.features.cashout.extraction.schemas import (
+    CashoutDocumentSchema,
     ServerSummaryReportData,
     TouchBistroReportData,
 )
@@ -100,6 +105,7 @@ async def test_processor_classifies_and_extracts() -> None:
     assert result.confidence == 0.8
     assert result.issues[0].path == "grand_total"
     assert result.schema_name == "ServerSummaryReportData"
+    assert result.schema_version == ServerSummaryReportData.SCHEMA_VERSION
 
 
 async def test_processor_raises_when_the_document_cannot_be_placed() -> None:
@@ -148,6 +154,7 @@ async def test_processor_supplied_classification_skips_classify() -> None:
     assert isinstance(result.data, ServerSummaryReportData)
     assert result.confidence == 0.8
     assert result.schema_name == "ServerSummaryReportData"
+    assert result.schema_version == ServerSummaryReportData.SCHEMA_VERSION
 
 
 async def test_processor_propagates_document_ai_error() -> None:
@@ -650,6 +657,101 @@ def test_transaction_counts_cannot_be_negative(
     with pytest.raises(ValidationError) as exc_info:
         schema.model_validate({**payload, count_field: -1})
     assert [error["loc"] for error in exc_info.value.errors()] == [(count_field,)]
+
+
+# ================================
+# ------ Schema versioning -------
+# ================================
+
+
+def test_every_registered_schema_declares_a_contiguous_upcast_chain() -> None:
+    # Bumping a SCHEMA_VERSION without registering the step from the version
+    # it replaces would strand every stored row at the old shape; a chain
+    # entry without the bump would never run. Both mistakes must fail here
+    # rather than at the first completion that reads an old row.
+    assert set(CASHOUT_SCHEMA_UPCASTS) == set(CASHOUT_DOCUMENT_SCHEMAS.values())
+    for schema, upcasts in CASHOUT_SCHEMA_UPCASTS.items():
+        assert schema.SCHEMA_VERSION >= 1, schema.__name__
+        assert set(upcasts) == set(range(1, schema.SCHEMA_VERSION)), schema.__name__
+
+
+def test_upcast_passes_current_version_data_through() -> None:
+    data = {"grand_total": "100.00", "grand_total_transaction_count": 3}
+
+    lifted = upcast_stored_document_data(
+        ServerSummaryReportData,
+        data,
+        schema_version=ServerSummaryReportData.SCHEMA_VERSION,
+    )
+
+    assert lifted == data
+    # A copy, not the stored payload itself: later steps mutate freely.
+    assert lifted is not data
+
+
+class _VersionedRecord(CashoutDocumentSchema):
+    """A synthetic two-bump history: v1 {"count"} → v2 {"total"} → v3 adds
+    "label"."""
+
+    SCHEMA_VERSION: ClassVar[int] = 3
+
+    total: int
+    label: str
+
+
+def _rename_count_to_total(data: dict[str, Any]) -> dict[str, Any]:
+    return {"total": data["count"]}
+
+
+def _add_label(data: dict[str, Any]) -> dict[str, Any]:
+    return {**data, "label": "unlabelled"}
+
+
+def test_upcast_walks_stored_data_up_to_the_current_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        extraction_registry,
+        "CASHOUT_SCHEMA_UPCASTS",
+        {_VersionedRecord: {1: _rename_count_to_total, 2: _add_label}},
+    )
+
+    # A v1 payload crosses both steps; a v2 payload only the second. A null
+    # stored version means the row predates versioning, when only v1 existed.
+    for stored_version in (1, None):
+        lifted = upcast_stored_document_data(
+            _VersionedRecord, {"count": 5}, schema_version=stored_version
+        )
+        assert lifted == {"total": 5, "label": "unlabelled"}
+    lifted = upcast_stored_document_data(
+        _VersionedRecord, {"total": 7}, schema_version=2
+    )
+    assert lifted == {"total": 7, "label": "unlabelled"}
+
+    # The lifted payload is exactly what the current schema validates.
+    record = _VersionedRecord.model_validate(lifted)
+    assert record.total == 7
+
+
+def test_upcast_rejects_a_version_ahead_of_the_schema() -> None:
+    # A rollback reading rows written by a newer build has no path down; the
+    # reader translates this into its own failure rather than misreading.
+    with pytest.raises(UnknownSchemaVersionError):
+        upcast_stored_document_data(
+            ServerSummaryReportData,
+            {},
+            schema_version=ServerSummaryReportData.SCHEMA_VERSION + 1,
+        )
+
+
+def test_upcast_rejects_a_version_with_no_registered_step() -> None:
+    # Unreachable for registered schemas (the contiguity test above), but the
+    # walk must still fail loudly rather than validate an unlifted payload.
+    class _OrphanRecord(CashoutDocumentSchema):
+        SCHEMA_VERSION: ClassVar[int] = 2
+
+    with pytest.raises(UnknownSchemaVersionError):
+        upcast_stored_document_data(_OrphanRecord, {}, schema_version=1)
 
 
 # ================================

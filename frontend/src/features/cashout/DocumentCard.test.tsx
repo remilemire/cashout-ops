@@ -68,6 +68,7 @@ const analysis: CashoutDocumentAnalysis = {
   classification: "server_summary_report",
   classificationConfidence: 0.95,
   schemaName: "ServerSummaryReportData",
+  schemaVersion: 1,
   extractedDataJson: {
     grand_total: "1234.56",
     grand_total_transaction_count: 42,

@@ -60,6 +60,9 @@ class CashoutDocumentProcessingResult:
     confidence: float
     issues: list[FieldIssue]
     schema_name: str
+    # The SCHEMA_VERSION the data was extracted under: which shape of the
+    # named schema the dumped payload follows when read back later.
+    schema_version: int
 
 
 class CashoutDocumentProcessor:
@@ -123,6 +126,7 @@ class CashoutDocumentProcessor:
             confidence=analysis.confidence,
             issues=analysis.issues,
             schema_name=schema.__name__,
+            schema_version=schema.SCHEMA_VERSION,
         )
 
 

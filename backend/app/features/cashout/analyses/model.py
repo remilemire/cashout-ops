@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +70,11 @@ class CashoutDocumentAnalysis(Base):
     )
 
     schema_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The named schema's SCHEMA_VERSION when the data was written: which shape
+    # extracted_data_json (and the verified data derived from it) follows.
+    # Readers lift older shapes forward through the extraction registry's
+    # upcasts, so the row stays readable after the schema changes.
+    schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extracted_data_json: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True
     )

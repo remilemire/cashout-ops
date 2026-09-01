@@ -65,6 +65,7 @@ async def test_manual_upload_lands_verified_without_ai(
     )
     assert analysis["classificationConfidence"] is None
     assert analysis["schemaName"] == "ServerSummaryReportData"
+    assert analysis["schemaVersion"] == 1
     # The messy typed input was coerced by the schema — Money strips the
     # comma, the count string parses to an int — and both data fields carry
     # the same validated dump.
@@ -271,6 +272,7 @@ async def test_convert_unclassified_analysis_to_manual(
     )
     assert entered["classificationConfidence"] is None
     assert entered["schemaName"] == "ServerSummaryReportData"
+    assert entered["schemaVersion"] == 1
     assert entered["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
 
 
@@ -335,6 +337,7 @@ async def test_unverify_manual_analysis_reopens_for_editing(
     assert reopened["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert reopened["provider"] is None
     assert reopened["schemaName"] == "ServerSummaryReportData"
+    assert reopened["schemaVersion"] == 1
     assert reopened["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
     # Unverify preserves the verified data as the seed for the re-edit; for a
     # manual entry it equals what was typed in.

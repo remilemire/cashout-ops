@@ -125,6 +125,7 @@ async def record_manual_entry(
     analysis.classification = classification
     analysis.classification_confidence = None
     analysis.schema_name = type(data).__name__
+    analysis.schema_version = type(data).SCHEMA_VERSION
     analysis.extracted_data_json = dumped
     analysis.extraction_confidence = None
     analysis.issues = None
@@ -405,6 +406,7 @@ async def _apply_extraction(
     analysis.classification_confidence = result.classification_confidence
     analysis.completed_at = datetime.now(UTC)
     analysis.schema_name = result.schema_name
+    analysis.schema_version = result.schema_version
     analysis.extracted_data_json = result.data.model_dump(mode="json")
     analysis.extraction_confidence = result.confidence
     analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
@@ -446,6 +448,7 @@ async def _reset_analysis(
     analysis.classification = None
     analysis.classification_confidence = None
     analysis.schema_name = None
+    analysis.schema_version = None
     analysis.extracted_data_json = None
     analysis.extraction_confidence = None
     analysis.issues = None

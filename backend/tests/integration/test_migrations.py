@@ -302,3 +302,78 @@ def test_upgrade_head_dedups_live_cashout_days(migrated_url: str) -> None:
         assert "deleted_at IS NULL" in indexdef
     finally:
         engine.dispose()
+
+
+def test_upgrade_head_stamps_existing_extractions_at_version_one(
+    migrated_url: str,
+) -> None:
+    """Pre-versioning extraction data is backfilled as schema version 1.
+
+    Every row written before versions were recorded came from a version-1
+    schema — the only version that has existed — so `upgrade head` stamps the
+    rows that hold data. Rows with no schema captured (failed or in-flight
+    analyses) stay null, like their schema_name.
+    """
+    # The last revision before schema versions were recorded.
+    _upgrade(migrated_url, "e8f4a2b19c67")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-08-28');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'application/pdf', 'key-1', 'doc.pdf', 'checksum-1',
+                            '11111111-1111-1111-1111-111111111111', now()),
+                           ('44444444-4444-4444-4444-444444444444',
+                            '22222222-2222-2222-2222-222222222222',
+                            'application/pdf', 'key-2', 'other.pdf',
+                            'checksum-2',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status,
+                         classification, schema_name, extracted_data_json,
+                         completed_at)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'needs_verification',
+                            'server_summary_report', 'ServerSummaryReportData',
+                            '{"grand_total": "1.00"}'::jsonb, now()),
+                           ('66666666-6666-6666-6666-666666666666',
+                            '44444444-4444-4444-4444-444444444444', 'anthropic',
+                            'some-model', 'failed', NULL, NULL, NULL, now());
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            version_by_id = {
+                row[0]: row[1]
+                for row in conn.execute(
+                    text(
+                        "SELECT id::text, schema_version FROM cashout_document_analyses"
+                    )
+                )
+            }
+        assert version_by_id == {
+            "55555555-5555-5555-5555-555555555555": 1,
+            "66666666-6666-6666-6666-666666666666": None,
+        }
+    finally:
+        engine.dispose()
