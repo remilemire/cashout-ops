@@ -14,7 +14,7 @@ from app.core.outbox import OutboxMessageDefinitionList
 from .email_challenges.outbox import (
     OutboxMessageType as EmailChallengeOutboxMessageType,
 )
-from .email_challenges.outbox import SendLoginLinkEmailOutboxHandler
+from .email_challenges.outbox import SendLoginCodeEmailOutboxHandler
 from .email_challenges.outbox import (
     outbox_message_definitions as email_challenge_outbox_message_definitions,
 )
@@ -27,6 +27,6 @@ outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
 
 __all__ = [
     "OutboxMessageType",
-    "SendLoginLinkEmailOutboxHandler",
+    "SendLoginCodeEmailOutboxHandler",
     "outbox_message_definitions",
 ]

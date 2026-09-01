@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.features.auth.outbox import SendLoginLinkEmailOutboxHandler
+from app.features.auth.outbox import SendLoginCodeEmailOutboxHandler
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.outbox.dispatcher import OutboxDispatcher
 from app.infrastructure.outbox.lifespan import create_outbox_handler_registry
@@ -47,7 +47,7 @@ def drain_outbox(
     # `ai_client` still steer what the drained extraction returns.
     registry = create_outbox_handler_registry(
         [
-            SendLoginLinkEmailOutboxHandler(redis_client, email_client),
+            SendLoginCodeEmailOutboxHandler(redis_client, email_client),
             RunExtractionOutboxHandler(db_sessionmaker, ai_client, storage),
         ]
     )

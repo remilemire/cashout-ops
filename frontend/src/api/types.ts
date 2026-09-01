@@ -111,16 +111,6 @@ export interface LoginStart {
   challengeId: string;
 }
 
-export interface VerifyLoginLinkInput {
-  challengeId: string;
-  token: string;
-}
-
-/** The 6-digit code shown on the magic-link page. */
-export interface LoginCode {
-  code: string;
-}
-
 export interface VerifyLoginCodeInput {
   challengeId: string;
   code: string;

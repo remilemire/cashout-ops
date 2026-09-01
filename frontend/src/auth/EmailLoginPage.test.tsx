@@ -17,7 +17,6 @@ vi.mock("@/api/auth", () => ({
   authApi: {
     me: vi.fn(),
     startLogin: vi.fn(),
-    verifyLoginLink: vi.fn(),
     verifyLoginCode: vi.fn(),
     logout: vi.fn(),
   },
@@ -75,7 +74,7 @@ function renderPage() {
 async function startChallenge(user: ReturnType<typeof userEvent.setup>) {
   await user.type(await screen.findByLabelText("Email"), "cashier@test.com");
   await user.click(
-    screen.getByRole("button", { name: "Email me a sign-in link" }),
+    screen.getByRole("button", { name: "Email me a sign-in code" }),
   );
   await screen.findByText("Check your email");
 }
@@ -139,7 +138,7 @@ describe("EmailLoginPage", () => {
 
     await user.type(await screen.findByLabelText("Email"), "cashier@test.com");
     await user.click(
-      screen.getByRole("button", { name: "Email me a sign-in link" }),
+      screen.getByRole("button", { name: "Email me a sign-in code" }),
     );
 
     // The Retry-After hint (300s) is surfaced as a rounded-up wait.
@@ -176,7 +175,7 @@ describe("EmailLoginPage", () => {
     // The unified server error is replaced by gentler contextual copy here.
     expect(
       await screen.findByText(
-        "That code didn't work. Double-check it, or start over to get a new link.",
+        "That code didn't work. Double-check it, or start over to get a new code.",
       ),
     ).toBeDefined();
 

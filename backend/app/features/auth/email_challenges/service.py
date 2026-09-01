@@ -2,11 +2,10 @@
 
 """Email-challenge orchestration (passwordless sign-in).
 
-Initiation stores a Redis challenge and emails a magic sign-in link;
-visiting the link reveals a 6-digit code; entering the code in the
-initiating tab consumes the challenge. Only SHA-256
-hashes of the link token and the code reach the store — the plaintexts
-exist solely in the email and on the link landing page.
+Initiation stores a Redis challenge and emails a 6-digit sign-in code;
+entering the code in the initiating tab consumes the challenge. Only the
+SHA-256 hash of the code reaches the store — the plaintext exists solely
+in the email.
 """
 
 from __future__ import annotations
@@ -26,20 +25,14 @@ from app.security.crypto import hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
-from .outbox import SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS
+from .outbox import SEND_LOGIN_CODE_EMAIL_MAX_ATTEMPTS
 
 if TYPE_CHECKING:
     from app.features.users.model import User
 
-# Six numeric digits (leading zeros allowed).
-CODE_DIGITS = 6
 # Code submissions allowed per challenge, counted by an atomic Redis counter
 # (`store.count_code_attempt`); a wrong guess at the cap destroys the challenge.
 MAX_CODE_ATTEMPTS = 5
-
-
-def _generate_code() -> str:
-    return f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
 
 
 def _pointer_hash(email: str) -> str:
@@ -57,16 +50,15 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     Always succeeds: an unknown address gets a decoy id — neutral response,
     nothing stored, no email — indistinguishable from a real challenge, so
     the endpoint cannot be used for account enumeration. For a real user the
-    challenge is stored in Redis and the link email is enqueued on the
+    challenge is stored in Redis and the code email is enqueued on the
     outbox, so it is sent only once the request commits.
 
     Nothing is written to the users table here. BOOTSTRAP_OWNER_EMAIL is a
     valid recipient while it may still claim ownership, but the account is
-    created only once the emailed link's code comes back (see
-    `consume_code`) — creating it here would let any unauthenticated request
-    mint the owner. The recipient test is the same one `consume_code` will
-    apply, so an address that cannot sign in is never emailed a link that
-    cannot work.
+    created only once the emailed code comes back (see `consume_code`) —
+    creating it here would let any unauthenticated request mint the owner.
+    The recipient test is the same one `consume_code` will apply, so an
+    address that cannot sign in is never emailed a code that cannot work.
     """
     user = await users_service.find_by_email(db, email=email)
 
@@ -74,7 +66,7 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
         return str(uuid4())  # decoy id
 
     # One active challenge per address: starting a new sign-in invalidates the
-    # previous link and code. The Redis delete is not transactional with the
+    # previous code. The Redis delete is not transactional with the
     # request, which is acceptable — worst case a rolled-back initiate
     # destroyed a previous challenge the user had already abandoned by
     # re-initiating.
@@ -94,41 +86,12 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     )
     await outbox_service.enqueue(
         db,
-        type="auth.send_login_link_email",
+        type="auth.send_login_code_email",
         payload={"challenge_id": challenge_id},
-        max_attempts=SEND_LOGIN_LINK_EMAIL_MAX_ATTEMPTS,
+        max_attempts=SEND_LOGIN_CODE_EMAIL_MAX_ATTEMPTS,
     )
 
     return challenge_id
-
-
-async def consume_link(redis: Redis, *, challenge_id: str, token: str) -> str:
-    """Confirm the emailed link and return a fresh one-time code.
-
-    The link is single-use: verifying clears `token_hash` in the same write
-    that stores the code's hash, so a second verify with the same token is
-    rejected. The challenge itself survives — `consume_code` still needs it —
-    and the atomic attempt counter keyed by the challenge id keeps counting
-    guesses from the initiating tab. Sign-in completes via `verify_code`.
-    """
-    challenge = await store.find(redis, challenge_id=challenge_id)
-
-    if (
-        challenge is None
-        or challenge.token_hash is None
-        or not secrets.compare_digest(challenge.token_hash, hash_secret_token(token))
-    ):
-        raise AppError("EMAIL_CHALLENGE_INVALID")
-
-    code = _generate_code()
-    challenge.code_hash = hash_secret_token(code)
-    # Verifying consumes the link: with the hash cleared, a replayed link
-    # hits the `token_hash is None` branch above.
-    challenge.token_hash = None
-    if not await store.update(redis, challenge_id=challenge_id, challenge=challenge):
-        raise AppError("EMAIL_CHALLENGE_INVALID")
-
-    return code
 
 
 async def consume_code(
@@ -137,8 +100,8 @@ async def consume_code(
     """Consume the challenge and return its user; the router completes
     sign-in via `access.grant`.
 
-    Accepting the code is this flow's mailbox proof — the emailed link is
-    what minted it — so this is also where BOOTSTRAP_OWNER_EMAIL's account
+    Accepting the code is this flow's mailbox proof — the code only exists
+    in the email — so this is also where BOOTSTRAP_OWNER_EMAIL's account
     is created, rather than at initiation, where an unauthenticated request
     would have been enough to create it (see `accounts.resolve`).
 
@@ -147,6 +110,8 @@ async def consume_code(
     """
     challenge = await store.find(redis, challenge_id=challenge_id)
 
+    # `code_hash is None` means the outbox handler has not minted and emailed
+    # the code yet — nothing to compare, and no attempt is counted.
     if challenge is None or challenge.code_hash is None:
         raise AppError("EMAIL_CHALLENGE_INVALID")
 
@@ -186,4 +151,4 @@ async def consume_code(
     return user
 
 
-__all__ = ["initiate", "consume_link", "consume_code"]
+__all__ = ["initiate", "consume_code"]

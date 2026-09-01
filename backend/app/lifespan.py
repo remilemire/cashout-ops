@@ -6,7 +6,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.features.auth.outbox import SendLoginLinkEmailOutboxHandler
+from app.features.auth.outbox import SendLoginCodeEmailOutboxHandler
 from app.features.cashout.outbox import RunExtractionOutboxHandler
 from app.infrastructure.db.lifespan import db_lifespan
 from app.infrastructure.outbox.lifespan import (
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
         # torn down on shutdown (the exit stack unwinds in reverse).
         registry = create_outbox_handler_registry(
             [
-                SendLoginLinkEmailOutboxHandler(redis_client, email_client),
+                SendLoginCodeEmailOutboxHandler(redis_client, email_client),
                 RunExtractionOutboxHandler(db.sessionmaker, ai_client, storage),
             ]
         )

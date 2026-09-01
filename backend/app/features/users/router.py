@@ -63,7 +63,7 @@ async def create_user(
 ) -> UserOut:
     """Create a staff account (admin only).
 
-    The new user signs in via an emailed login link — there is no password,
+    The new user signs in via an emailed one-time code — there is no password,
     and no email is sent at creation time.
     """
     user = await users_service.create(db, payload=payload)

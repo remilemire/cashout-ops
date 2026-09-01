@@ -17,15 +17,6 @@ class EmailChallengeStartOut(BaseOut):
 
 # challenge_id stays a plain constrained str rather than a UUID: a garbled id
 # resolves to the unified 401 (missing Redis key) instead of a 422.
-class EmailChallengeVerifyLink(BaseIn):
-    challenge_id: str = Field(min_length=1, max_length=64)
-    token: str = Field(min_length=1, max_length=128)
-
-
-class EmailChallengeVerifyLinkOut(BaseOut):
-    code: str
-
-
 class EmailChallengeVerifyCode(BaseIn):
     challenge_id: str = Field(min_length=1, max_length=64)
     # Length is validated in the service against the issued code, so keep this

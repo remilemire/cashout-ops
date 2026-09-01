@@ -4,7 +4,7 @@ Internal operations tool that replaces Whiskey District's paper-based end-of-shi
 
 Live deployment: <https://whiskeydistrictcashout.com>
 
-> **Status:** early build. Authentication (passwordless email sign-in links), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The tipout rates are still placeholders, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
+> **Status:** early build. Authentication (passwordless emailed sign-in codes), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The tipout rates are still placeholders, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
 
 ---
 
@@ -47,7 +47,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Database    | PostgreSQL 18                                           |
 | KV store    | Redis 8 (`redis-py` asyncio client)                     |
 | Validation  | Pydantic v2 + `pydantic-settings`                       |
-| Auth        | Passwordless email sign-in links + Google OIDC sign-in (Authlib), server-side sessions + CSRF double-submit |
+| Auth        | Passwordless emailed sign-in codes + Google OIDC sign-in (Authlib), server-side sessions + CSRF double-submit |
 | Frontend    | React 19, TypeScript, Vite, TanStack Query, React Router |
 | Styling     | Tailwind CSS v4                                         |
 | Lint/format | Ruff (Python), ESLint + Prettier (TS/React)             |
@@ -59,10 +59,10 @@ The longer-term goal is to grow this into a broader internal operations platform
 ## What works today
 
 - FastAPI app factory with lifespan-managed async DB engine, session factory, and Redis client
-- Passwordless login: submitting an email always returns a challenge (account existence is never revealed); the emailed sign-in link reveals a one-time code, and verifying the code in the initiating tab starts a cookie session — with pluggable `CONSOLE`/`RESEND` email delivery
+- Passwordless login: submitting an email always returns a challenge (account existence is never revealed); a one-time code is emailed, and verifying the code starts a cookie session — with pluggable `CONSOLE`/`RESEND` email delivery
 - Cookie-based session auth backed by SHA-256–hashed session tokens stored in Redis with a TTL
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
-- Transactional outbox for deferred work (login-link emails, AI extraction): enqueued inside the request transaction, delivered by lifespan-managed dispatcher workers
+- Transactional outbox for deferred work (login-code emails, AI extraction): enqueued inside the request transaction, delivered by lifespan-managed dispatcher workers
 - Admin user management: list users, create staff accounts, rename them, promote/demote admins, and delete users — plus a single owner role (bootstrapped account; cannot be demoted or deleted) with owner-to-admin ownership transfer
 - Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
@@ -127,7 +127,7 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
         ├── App.tsx                    # QueryClient + Theme + Auth providers
         ├── router.tsx                 # auth-guarded routes (cashier + admin)
         ├── api/                       # fetch client (CSRF, error contract) + typed contracts
-        ├── auth/                      # AuthProvider, guards, passwordless login pages (LoginPage, EmailLoginPage, LoginLinkPage, CodeInput)
+        ├── auth/                      # AuthProvider, guards, passwordless login pages (LoginPage, EmailLoginPage, CodeInput)
         ├── components/                # ui.tsx primitives (token-driven colors only) + dialog / confirm-dialog
         ├── layout/AppLayout.tsx       # mobile-first shell: top bar + bottom nav
         ├── lib/                       # theme provider, formatting helpers, cx
@@ -171,7 +171,7 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | Variable              | Attribute | Required | Default                                                        | Notes                                                                                                |
 | --------------------- | --------- | -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `APP_ENV`             | `app.ENV` | no       | `prod`                                                         | `prod` or `dev` (validated). Drives `app.DEBUG`, the `Secure` cookie flag, and FastAPI debug mode.   |
-| `APP_BASE_URL`        | `app.BASE_URL` | no  | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the emailed sign-in links. Production must set its real origin. |
+| `APP_BASE_URL`        | `app.BASE_URL` | no  | `http://localhost:5173`                                        | Public base URL of the SPA, used to build the OAuth callback URI. Production must set its real origin. |
 | `DATABASE_URL`        | `db.URL`  | yes      | —                                                              | Async SQLAlchemy URL (`postgresql+psycopg://…`). Unprefixed: used by both the app and Alembic, and injected under this name by hosting platforms. |
 | `REDIS_URL`           | `redis.URL` | yes    | —                                                              | Redis connection URL (`redis://…`). Backs server-side sessions and email challenges; verified with a `PING` at startup.                               |
 | `BOOTSTRAP_OWNER_EMAIL` | `bootstrap.OWNER_EMAIL` | no | `owner@test.com`                                    | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
@@ -276,8 +276,8 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 ## Authentication and sessions
 
-- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a magic sign-in link is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`AUTH_CHALLENGE_TTL_MINUTES`), storing only SHA-256 hashes of the link token and code. Starting a new sign-in invalidates any previous pending challenge for the account.
-- Visiting the link (`POST /api/auth/email-challenges/verify-link`) reveals a one-time code and spends the link — it is single-use, so a second click fails; entering the code in the initiating tab (`POST /api/auth/email-challenges/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
+- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a one-time sign-in code is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`AUTH_CHALLENGE_TTL_MINUTES`), storing only the SHA-256 hash of the code. Starting a new sign-in invalidates any previous pending challenge for the account.
+- Entering the code (`POST /api/auth/email-challenges/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
 - Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `BOOTSTRAP_OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
 - A `csrf_token` cookie (non-HTTP-only) is set alongside it; mutating requests must echo it back via the `X-CSRF-Token` header (double-submit). CSRF and auth are **not** global — they are applied per-route/router as explicit `require_csrf` ([app/security/dependencies.py](backend/app/security/dependencies.py)) / `get_current_user` / `require_admin` / `require_owner` ([app/features/auth/dependencies.py](backend/app/features/auth/dependencies.py)) dependencies.
@@ -313,8 +313,7 @@ Implemented under the `/api` prefix:
 
 | Method | Path                                          | Auth            | Success | Notes                                                       |
 | ------ | --------------------------------------------- | --------------- | ------- | ----------------------------------------------------------- |
-| POST   | `/api/auth/email-challenges`                  | none            | 202     | Start a passwordless challenge; always returns a `challengeId` (a real account gets a sign-in link by email). |
-| POST   | `/api/auth/email-challenges/verify-link`      | none            | 200     | Verify the emailed link (single-use); returns the one-time code to display. |
+| POST   | `/api/auth/email-challenges`                  | none            | 202     | Start a passwordless challenge; always returns a `challengeId` (a real account gets a one-time code by email). |
 | POST   | `/api/auth/email-challenges/verify-code`      | none            | 200     | Complete login in the initiating tab; sets `session_token` + `csrf_token` cookies. |
 | POST   | `/api/auth/logout`                            | none            | 204     | Clears both cookies and deletes the Redis session (best-effort). |
 | GET    | `/api/auth/oauth/{issuer}/start`              | none            | 302     | Begin OAuth sign-in (top-level navigation); sets the `oauth_flow` cookie and redirects to the issuer. |
@@ -360,7 +359,7 @@ The three scripts under `backend/scripts/` are the Render deploy hooks:
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
 - `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --forwarded-allow-ips='*'`. The start command trusts Render's `X-Forwarded-For` (only the platform proxy can reach the service) so per-IP rate limiting sees real client addresses.
 
-The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `BOOTSTRAP_OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the emailed sign-in links) configured (and `APP_ENV=prod`, which is also the default). To actually deliver sign-in link emails set `EMAIL_PROVIDER=resend` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise links are only logged to stdout (`console`), so nobody can sign in.
+The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `BOOTSTRAP_OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the OAuth callback URI) configured (and `APP_ENV=prod`, which is also the default). To actually deliver sign-in code emails set `EMAIL_PROVIDER=resend` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise codes are only logged to stdout (`console`), so nobody can sign in.
 
 ## Conventions
 

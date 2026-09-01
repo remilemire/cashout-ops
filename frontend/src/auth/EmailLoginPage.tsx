@@ -91,7 +91,7 @@ export function EmailLoginPage() {
   // expired codes alike; on this screen a gentler nudge fits all of them.
   const codeErrorMessage =
     error instanceof ApiError && error.code === "EMAIL_CHALLENGE_INVALID"
-      ? "That code didn't work. Double-check it, or start over to get a new link."
+      ? "That code didn't work. Double-check it, or start over to get a new code."
       : rateLimitMessage;
 
   return (
@@ -101,7 +101,7 @@ export function EmailLoginPage() {
           <>
             <h1 className="mb-1 text-lg font-semibold">Sign in with email</h1>
             <p className="text-ink-muted mb-4 text-sm">
-              Enter your email and we&apos;ll email you a sign-in link.
+              Enter your email and we&apos;ll email you a one-time sign-in code.
             </p>
             <form onSubmit={(e) => void onSubmitEmail(e)} className="space-y-3">
               <TextField
@@ -113,7 +113,7 @@ export function EmailLoginPage() {
               />
               <ErrorBanner error={error} message={rateLimitMessage} />
               <Button type="submit" loading={pending} className="w-full">
-                Email me a sign-in link
+                Email me a sign-in code
               </Button>
               <div className="text-center">
                 <Button
@@ -134,8 +134,7 @@ export function EmailLoginPage() {
             <h1 className="mb-1 text-lg font-semibold">Check your email</h1>
             <p className="text-ink-muted mb-4 text-sm">
               If an account exists for <strong>{challenge.email}</strong>, we
-              sent it a sign-in link. Open the link, then enter the code it
-              shows you here.
+              emailed it a 6-digit sign-in code. Enter it here.
             </p>
             <div className="space-y-3">
               <CodeInput

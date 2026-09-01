@@ -70,7 +70,7 @@ def test_email_challenge_routes_enter_the_time_floor_first() -> None:
     the client side; this pins the structure that guarantees it.
     """
     routes = list(_api_routes(email_challenges_router.routes))
-    assert len(routes) == 3
+    assert len(routes) == 2
 
     for route in routes:
         first = route.dependant.dependencies[0]

@@ -35,26 +35,20 @@ async def login(
 ) -> None:
     """Sign in through the passwordless challenge flow.
 
-    Initiates the challenge, drains the outbox to deliver the link email,
-    verifies the link for the one-time code, and completes with the code;
-    the client then carries session + csrf cookies.
+    Initiates the challenge, drains the outbox to deliver the code email,
+    and completes with the emailed code; the client then carries
+    session + csrf cookies.
     """
     start = await client.post("/api/auth/email-challenges", json={"email": email})
     assert start.status_code == 202, start.text
+    challenge_id = start.json()["challengeId"]
 
     await drain_outbox()
-    link = email_client.latest_link(to=email)
-
-    verified_link = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-    assert verified_link.status_code == 200, verified_link.text
-    code = verified_link.json()["code"]
+    code = email_client.latest_code(to=email)
 
     verified_code = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
     assert verified_code.status_code == 200, verified_code.text
 

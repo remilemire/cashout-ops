@@ -2,11 +2,11 @@
 
 """Rate limiting on the pre-session auth endpoints and the cashout quotas.
 
-The passwordless routes carry two layers: per-identifier limits (email
-address, challenge id) against targeted abuse, and per-IP caps on request
-volume from one source. The AI-costly cashout endpoints carry per-user
-quotas bounding provider spend. All requests here share the test client's
-IP; the autouse FLUSHDB between tests resets every counter.
+The passwordless routes carry two layers: a per-email limit against
+targeted abuse of one address, and per-IP caps on request volume from one
+source. The AI-costly cashout endpoints carry per-user quotas bounding
+provider spend. All requests here share the test client's IP; the autouse
+FLUSHDB between tests resets every counter.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.features.auth.email_challenges.dependencies import MAX_LINK_ATTEMPTS
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
@@ -26,7 +25,7 @@ from tests.support.cashout import (
 )
 from tests.support.documents import SAMPLE_PDF_BYTES, SAMPLE_PNG_UPLOAD
 from tests.support.factories import create_user
-from tests.support.fakes import FakeAIClient, FakeEmailClient, LoginLink
+from tests.support.fakes import FakeAIClient
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 from tests.support.fixtures.redis import redis_keys
@@ -43,19 +42,6 @@ async def _initiate(client: AsyncClient, *, email: str = CASHIER_EMAIL) -> str:
     response = await client.post("/api/auth/email-challenges", json={"email": email})
     assert response.status_code == 202, response.text
     return response.json()["challengeId"]
-
-
-async def _initiate_and_deliver(
-    client: AsyncClient,
-    drain_outbox: OutboxDrain,
-    email_client: FakeEmailClient,
-    *,
-    email: str = CASHIER_EMAIL,
-) -> LoginLink:
-    """Start a challenge and deliver its link email, returning the link."""
-    await _initiate(client, email=email)
-    await drain_outbox()
-    return email_client.latest_link(to=email)
 
 
 # ================================
@@ -150,38 +136,6 @@ async def test_initiate_per_ip_is_limited(client: AsyncClient) -> None:
 
     assert response.status_code == 429, response.text
     assert response.json()["code"] == RATE_LIMITED_CODE
-
-
-# ================================
-# ---------- Verify link ---------
-# ================================
-
-
-async def test_verify_link_per_challenge_is_limited(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    email_client: FakeEmailClient,
-    drain_outbox: OutboxDrain,
-) -> None:
-    await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-
-    for _ in range(MAX_LINK_ATTEMPTS):
-        response = await client.post(
-            "/api/auth/email-challenges/verify-link",
-            json={"challengeId": link.challenge_id, "token": "not-the-token"},
-        )
-        assert response.status_code == 401
-        assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-    # The challenge-keyed limit fires before the service runs: even the
-    # correct token gets 429 once the budget is spent.
-    final = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-    assert final.status_code == 429, final.text
-    assert final.json()["code"] == RATE_LIMITED_CODE
 
 
 # ================================

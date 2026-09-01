@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from collections.abc import AsyncIterator
@@ -10,7 +11,7 @@ from collections.abc import AsyncIterator
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -23,7 +24,7 @@ from app.infrastructure.outbox.messages.model import OutboxMessage
 from app.infrastructure.redis import Redis
 from tests.support.api import csrf_headers
 from tests.support.factories import create_user
-from tests.support.fakes import FakeEmailClient, LoginLink
+from tests.support.fakes import FakeEmailClient
 from tests.support.fixtures.outbox import OutboxDrain
 from tests.support.fixtures.redis import redis_keys
 
@@ -42,20 +43,11 @@ async def _initiate_and_deliver(
     email_client: FakeEmailClient,
     *,
     email: str = CASHIER_EMAIL,
-) -> LoginLink:
-    """Start a challenge and deliver its link email, returning the link."""
-    await _initiate(client, email=email)
+) -> tuple[str, str]:
+    """Start a challenge and deliver its code email; (challenge_id, code)."""
+    challenge_id = await _initiate(client, email=email)
     await drain_outbox()
-    return email_client.latest_link(to=email)
-
-
-async def _obtain_code(client: AsyncClient, link: LoginLink) -> str:
-    response = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-    assert response.status_code == 200, response.text
-    return response.json()["code"]
+    return challenge_id, email_client.latest_code(to=email)
 
 
 # ================================
@@ -63,7 +55,7 @@ async def _obtain_code(client: AsyncClient, link: LoginLink) -> str:
 # ================================
 
 
-async def test_start_login_returns_challenge_and_emails_link(
+async def test_start_login_returns_challenge_and_emails_code(
     client: AsyncClient,
     db_session: AsyncSession,
     redis_client: Redis,
@@ -83,20 +75,20 @@ async def test_start_login_returns_challenge_and_emails_link(
     assert "csrf_token" not in client.cookies
 
     # The outbox message (delivered by the drain, as the dispatcher would in
-    # production) emailed a single magic link for the challenge.
+    # production) emailed a single 6-digit sign-in code for the challenge.
     assert await drain_outbox() == 1
     [email] = email_client.sent
     assert email.to == CASHIER_EMAIL
-    assert f"/login/link?challenge={challenge_id}" in email.html
-    assert "token=" in email.html
+    assert email.subject == "Your Whiskey District sign-in code"
+    code = email_client.latest_code(to=CASHIER_EMAIL)
+    assert re.fullmatch(r"\d{6}", code)
 
-    # Exactly one stored challenge, holding the token's hash — never the token.
+    # Exactly one stored challenge, holding the code's hash — never the code.
     [key] = await redis_keys(redis_client, "email_challenge:*")
     assert key == f"email_challenge:{challenge_id}"
-    link = email_client.latest_link(to=CASHIER_EMAIL)
     raw = await redis_client.get(key)
     assert raw is not None
-    assert link.token not in str(raw)
+    assert code not in str(raw)
 
 
 async def test_start_login_unknown_email_is_neutral(
@@ -124,13 +116,12 @@ async def test_start_login_for_owner_creates_no_account(
     email_client: FakeEmailClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Everything short of the code is reachable by an unauthenticated stranger
-    # — initiating, the link email going out, even clicking the link — so none
-    # of it may create the privileged account.
-    link = await _initiate_and_deliver(
+    # Everything short of verifying the code is reachable by an
+    # unauthenticated stranger — initiating, the code email going out — so
+    # none of it may create the privileged account.
+    await _initiate_and_deliver(
         client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
-    await _obtain_code(client, link)
 
     users = (await db_session.execute(select(User))).scalars().all()
     assert len(users) == 0
@@ -162,129 +153,27 @@ async def test_second_initiate_invalidates_previous_challenge(
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
 
-    link1 = await _initiate_and_deliver(client, drain_outbox, email_client)
-    link2 = await _initiate_and_deliver(client, drain_outbox, email_client)
+    challenge_id_1, code_1 = await _initiate_and_deliver(
+        client, drain_outbox, email_client
+    )
+    challenge_id_2, code_2 = await _initiate_and_deliver(
+        client, drain_outbox, email_client
+    )
 
     # One active challenge per user: the second initiate destroyed the first.
     [key] = await redis_keys(redis_client, "email_challenge:*")
-    assert key == f"email_challenge:{link2.challenge_id}"
+    assert key == f"email_challenge:{challenge_id_2}"
     stale = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link1.challenge_id, "token": link1.token},
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": challenge_id_1, "code": code_1},
     )
     assert stale.status_code == 401
     assert stale.json()["code"] == "EMAIL_CHALLENGE_INVALID"
 
-    # The newest link still completes the full sign-in.
-    code = await _obtain_code(client, link2)
+    # The newest code still completes the full sign-in.
     ok = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link2.challenge_id, "code": code},
-    )
-    assert ok.status_code == 200, ok.text
-
-
-# ================================
-# ---------- Verify link ---------
-# ================================
-
-
-async def test_verify_link_returns_code_and_challenge_survives(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    redis_client: Redis,
-    email_client: FakeEmailClient,
-    drain_outbox: OutboxDrain,
-) -> None:
-    await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-
-    response = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-
-    assert response.status_code == 200, response.text
-    assert re.fullmatch(r"\d{6}", response.json()["code"])
-    # The challenge survives for the verify-code step, but the link is spent.
-    assert await redis_keys(redis_client, "email_challenge:*")
-    replay = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-    assert replay.status_code == 401
-    assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-
-async def test_verify_link_rejects_bad_token(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    email_client: FakeEmailClient,
-    drain_outbox: OutboxDrain,
-) -> None:
-    await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-
-    response = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": "not-the-token"},
-    )
-
-    assert response.status_code == 401
-    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-
-async def test_verify_link_rejects_unknown_challenge(client: AsyncClient) -> None:
-    response = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={
-            "challengeId": "00000000-0000-0000-0000-000000000000",
-            "token": "any-token",
-        },
-    )
-
-    assert response.status_code == 401
-    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-
-async def test_verify_link_before_delivery_is_rejected(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    await create_user(db_session, email=CASHIER_EMAIL)
-    # No drain: the challenge exists but no token has been minted yet.
-    challenge_id = await _initiate(client)
-
-    response = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": challenge_id, "token": "any-token"},
-    )
-
-    assert response.status_code == 401
-    assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-
-async def test_verify_link_is_single_use(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    email_client: FakeEmailClient,
-    drain_outbox: OutboxDrain,
-) -> None:
-    await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
-
-    # A second click of the same link is rejected outright.
-    replay = await client.post(
-        "/api/auth/email-challenges/verify-link",
-        json={"challengeId": link.challenge_id, "token": link.token},
-    )
-    assert replay.status_code == 401
-    assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
-
-    # The code from the first (and only) verification still signs in.
-    ok = await client.post(
-        "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id_2, "code": code_2},
     )
     assert ok.status_code == 200, ok.text
 
@@ -302,12 +191,11 @@ async def test_verify_code_signs_in_and_consumes(
     drain_outbox: OutboxDrain,
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
+    challenge_id, code = await _initiate_and_deliver(client, drain_outbox, email_client)
 
     response = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
 
     assert response.status_code == 200, response.text
@@ -327,10 +215,42 @@ async def test_verify_code_signs_in_and_consumes(
     # Single use: replaying the same code fails.
     replay = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
     assert replay.status_code == 401
     assert replay.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+
+
+async def test_verify_code_before_delivery_is_rejected(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    await create_user(db_session, email=CASHIER_EMAIL)
+    # No drain: the challenge exists but no code has been minted yet.
+    challenge_id = await _initiate(client)
+
+    # Guesses before delivery hit the `code_hash is None` branch, which
+    # raises before `count_code_attempt` runs — MAX_CODE_ATTEMPTS of them
+    # must burn neither the challenge nor the guess budget.
+    for _ in range(5):
+        response = await client.post(
+            "/api/auth/email-challenges/verify-code",
+            json={"challengeId": challenge_id, "code": "000000"},
+        )
+        assert response.status_code == 401
+        assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
+
+    # Once delivered, the emailed code still signs in — counted attempts
+    # would have exhausted the budget above and killed the challenge.
+    assert await drain_outbox() == 1
+    code = email_client.latest_code(to=CASHIER_EMAIL)
+    ok = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": challenge_id, "code": code},
+    )
+    assert ok.status_code == 200, ok.text
 
 
 async def test_verify_code_bootstraps_owner(
@@ -341,14 +261,13 @@ async def test_verify_code_bootstraps_owner(
 ) -> None:
     # No users exist: the owner account is created here, at the first sign-in
     # that proves control of the mailbox — not when the challenge started.
-    link = await _initiate_and_deliver(
+    challenge_id, code = await _initiate_and_deliver(
         client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
-    code = await _obtain_code(client, link)
 
     response = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
 
     assert response.status_code == 200, response.text
@@ -367,13 +286,12 @@ async def test_verify_code_does_not_duplicate_the_owner(
 ) -> None:
     owner_email = settings.bootstrap.OWNER_EMAIL
     for _ in range(2):
-        link = await _initiate_and_deliver(
+        challenge_id, code = await _initiate_and_deliver(
             client, drain_outbox, email_client, email=owner_email
         )
-        code = await _obtain_code(client, link)
         response = await client.post(
             "/api/auth/email-challenges/verify-code",
-            json={"challengeId": link.challenge_id, "code": code},
+            json={"challengeId": challenge_id, "code": code},
         )
         assert response.status_code == 200, response.text
 
@@ -395,7 +313,7 @@ async def test_start_login_for_a_superseded_owner_address_is_a_decoy(
 
     Ownership moves to another admin and the bootstrap account is deleted.
     That address can no longer claim ownership, and the flow says so up front
-    rather than emailing a link whose sign-in is guaranteed to fail — so it
+    rather than emailing a code whose sign-in is guaranteed to fail — so it
     becomes indistinguishable from any unknown address.
     """
     heir = await create_user(db_session, email="heir@test.com", role=UserRole.ADMIN)
@@ -448,13 +366,12 @@ async def test_verify_code_reclaims_ownership_when_no_owner_exists(
     """
     await create_user(db_session, email=CASHIER_EMAIL)
 
-    link = await _initiate_and_deliver(
+    challenge_id, code = await _initiate_and_deliver(
         client, drain_outbox, email_client, email=settings.bootstrap.OWNER_EMAIL
     )
-    code = await _obtain_code(client, link)
     response = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
 
     assert response.status_code == 200, response.text
@@ -474,15 +391,14 @@ async def test_verify_code_wrong_code_is_capped(
     drain_outbox: OutboxDrain,
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
+    challenge_id, code = await _initiate_and_deliver(client, drain_outbox, email_client)
     wrong_code = "000000" if code != "000000" else "000001"
 
     # Four wrong guesses each fail but leave the challenge alive.
     for _ in range(4):
         response = await client.post(
             "/api/auth/email-challenges/verify-code",
-            json={"challengeId": link.challenge_id, "code": wrong_code},
+            json={"challengeId": challenge_id, "code": wrong_code},
         )
         assert response.status_code == 401
         assert response.json()["code"] == "EMAIL_CHALLENGE_INVALID"
@@ -491,7 +407,7 @@ async def test_verify_code_wrong_code_is_capped(
     # The fifth exhausts the cap and destroys the challenge outright.
     fifth = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": wrong_code},
+        json={"challengeId": challenge_id, "code": wrong_code},
     )
     assert fifth.status_code == 401
     assert await redis_keys(redis_client, "email_challenge:*") == []
@@ -500,7 +416,7 @@ async def test_verify_code_wrong_code_is_capped(
     # Even the correct code is dead now.
     final = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
     assert final.status_code == 401
 
@@ -513,8 +429,7 @@ async def test_verify_code_attempt_cap_holds_under_concurrency(
     drain_outbox: OutboxDrain,
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
+    challenge_id, code = await _initiate_and_deliver(client, drain_outbox, email_client)
     wrong_code = "000000" if code != "000000" else "000001"
 
     # Ten wrong guesses race in parallel. The attempt counter is a
@@ -525,7 +440,7 @@ async def test_verify_code_attempt_cap_holds_under_concurrency(
         *(
             client.post(
                 "/api/auth/email-challenges/verify-code",
-                json={"challengeId": link.challenge_id, "code": wrong_code},
+                json={"challengeId": challenge_id, "code": wrong_code},
             )
             for _ in range(10)
         )
@@ -541,7 +456,7 @@ async def test_verify_code_attempt_cap_holds_under_concurrency(
     # Even the correct code is dead now.
     final = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
     assert final.status_code == 401
     assert final.json()["code"] == "EMAIL_CHALLENGE_INVALID"
@@ -556,9 +471,8 @@ async def test_verify_code_after_user_deleted_is_rejected(
     drain_outbox: OutboxDrain,
 ) -> None:
     user = await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
-    # The account vanishes between link delivery and code submission.
+    challenge_id, code = await _initiate_and_deliver(client, drain_outbox, email_client)
+    # The account vanishes between code delivery and code submission.
     deleted = await admin_client.delete(
         f"/api/users/{user.id}", headers=csrf_headers(admin_client)
     )
@@ -567,7 +481,7 @@ async def test_verify_code_after_user_deleted_is_rejected(
 
     response = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
 
     assert response.status_code == 401
@@ -585,8 +499,7 @@ async def test_verify_code_expired_challenge_is_rejected(
     drain_outbox: OutboxDrain,
 ) -> None:
     await create_user(db_session, email=CASHIER_EMAIL)
-    link = await _initiate_and_deliver(client, drain_outbox, email_client)
-    code = await _obtain_code(client, link)
+    challenge_id, code = await _initiate_and_deliver(client, drain_outbox, email_client)
     # Expiry is enforced by the Redis TTL, so an expired challenge IS a missing
     # key; deleting the key is exactly what expiry looks like to the service.
     [key] = await redis_keys(redis_client, "email_challenge:*")
@@ -594,7 +507,7 @@ async def test_verify_code_expired_challenge_is_rejected(
 
     response = await client.post(
         "/api/auth/email-challenges/verify-code",
-        json={"challengeId": link.challenge_id, "code": code},
+        json={"challengeId": challenge_id, "code": code},
     )
 
     assert response.status_code == 401
@@ -624,7 +537,7 @@ async def test_send_failure_is_recorded_for_retry(
     assert email_client.sent == []
     async with db_sessionmaker() as db:
         stmt = select(OutboxMessage).where(
-            OutboxMessage.type == "auth.send_login_link_email",
+            OutboxMessage.type == "auth.send_login_code_email",
             OutboxMessage.completed_at.is_(None),
         )
         message = (await db.execute(stmt)).scalar_one()
@@ -632,6 +545,59 @@ async def test_send_failure_is_recorded_for_retry(
     assert message.attempts == 1
     assert message.max_attempts == 5
     assert message.last_error == "RuntimeError: provider down"
+
+
+async def test_retry_re_mints_code(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    redis_client: Redis,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    """A retried send re-mints the code, so the emailed one is always live.
+
+    The hash is written to the challenge BEFORE the send: a failed send
+    leaves a minted-but-never-emailed hash behind, and the retry must
+    overwrite it rather than email a code that no longer matches anything.
+    """
+    await create_user(db_session, email=CASHIER_EMAIL)
+    email_client.fail_with = RuntimeError("provider down")
+
+    challenge_id = await _initiate(client)
+    assert await drain_outbox() == 1
+    assert email_client.sent == []
+    raw = await redis_client.get(f"email_challenge:{challenge_id}")
+    assert raw is not None
+    first_hash = json.loads(str(raw))["code_hash"]
+    assert first_hash is not None
+
+    # Clear the failure and rewind the row's backoff: the failed attempt
+    # pushed available_at into the future, which would otherwise stop the
+    # drain from re-claiming the message.
+    email_client.fail_with = None
+    async with db_sessionmaker() as db:
+        await db.execute(
+            update(OutboxMessage)
+            .where(OutboxMessage.type == "auth.send_login_code_email")
+            .values(available_at=func.now())
+        )
+        await db.commit()
+    assert await drain_outbox() == 1
+
+    # The retry minted a fresh code (new stored hash), and the code that was
+    # finally emailed is the live one.
+    raw = await redis_client.get(f"email_challenge:{challenge_id}")
+    assert raw is not None
+    second_hash = json.loads(str(raw))["code_hash"]
+    assert second_hash is not None
+    assert second_hash != first_hash
+    code = email_client.latest_code(to=CASHIER_EMAIL)
+    ok = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": challenge_id, "code": code},
+    )
+    assert ok.status_code == 200, ok.text
 
 
 # ================================
@@ -669,19 +635,12 @@ async def test_every_challenge_response_holds_the_time_floor(
     # Verification: a bogus challenge is the fastest possible rejection —
     # a straight Redis miss — and must still hold the floor.
     bogus = "00000000-0000-0000-0000-000000000000"
-    for path, payload in (
-        (
-            "/api/auth/email-challenges/verify-link",
-            {"challengeId": bogus, "token": "t"},
-        ),
-        (
-            "/api/auth/email-challenges/verify-code",
-            {"challengeId": bogus, "code": "000000"},
-        ),
-    ):
-        status, took = await elapsed(path, payload)
-        assert status == 401
-        assert took >= 0.08, f"{path} returned in {took * 1000:.1f}ms"
+    status, took = await elapsed(
+        "/api/auth/email-challenges/verify-code",
+        {"challengeId": bogus, "code": "000000"},
+    )
+    assert status == 401
+    assert took >= 0.08, f"verify-code returned in {took * 1000:.1f}ms"
 
 
 async def test_commit_lands_inside_the_floor_before_the_response(

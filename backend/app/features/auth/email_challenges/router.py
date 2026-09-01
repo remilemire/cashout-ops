@@ -19,20 +19,16 @@ from .dependencies import (
     rate_limit_initiate_email,
     rate_limit_initiate_ip,
     rate_limit_verify_code_ip,
-    rate_limit_verify_link_challenge,
-    rate_limit_verify_link_ip,
 )
 from .schemas import (
     EmailChallengeStart,
     EmailChallengeStartOut,
     EmailChallengeVerifyCode,
-    EmailChallengeVerifyLink,
-    EmailChallengeVerifyLinkOut,
 )
 
 # No auth or CSRF dependencies: these routes run before any session exists.
 # Rate limits are attached per route via the feature's guard dependencies;
-# see .dependencies for why each flow pairs per-identifier and per-IP caps.
+# see .dependencies for how the per-email and per-IP caps divide the work.
 #
 # Every response is padded to CHALLENGE_TIME_FLOOR_MS by the router-wide
 # `challenge_time_floor` dependency, so response timing cannot reveal whether
@@ -74,43 +70,17 @@ async def start_login(
     db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> EmailChallengeStartOut:
-    """Start a passwordless login by emailing a sign-in link.
+    """Start a passwordless login by emailing a 6-digit sign-in code.
 
     Always returns 202 with a challengeId; whether an email was actually sent
     is never revealed (an unknown address gets an indistinguishable decoy).
-    For a real account the link is emailed once the request commits, via the
+    For a real account the code is emailed once the request commits, via the
     transactional outbox.
     """
     challenge_id = await email_challenges_service.initiate(
         db, redis, email=payload.email
     )
     return EmailChallengeStartOut(challenge_id=challenge_id)
-
-
-@router.post(
-    "/verify-link",
-    response_model=EmailChallengeVerifyLinkOut,
-    responses=error_responses(
-        "EMAIL_CHALLENGE_INVALID", "VALIDATION_FAILED", "RATE_LIMITED"
-    ),
-    dependencies=[
-        Depends(rate_limit_verify_link_challenge),
-        Depends(rate_limit_verify_link_ip),
-    ],
-)
-async def verify_link(
-    payload: EmailChallengeVerifyLink,
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> EmailChallengeVerifyLinkOut:
-    """Verify the emailed link and return the one-time code to display.
-
-    Single-use — a second click of the emailed link fails — while the
-    challenge survives; sign-in completes via `/email-challenges/verify-code`.
-    """
-    code = await email_challenges_service.consume_link(
-        redis, challenge_id=payload.challenge_id, token=payload.token
-    )
-    return EmailChallengeVerifyLinkOut(code=code)
 
 
 # No per-challenge dependency here: the per-challenge budget is the atomic

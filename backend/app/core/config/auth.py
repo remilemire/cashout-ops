@@ -12,8 +12,8 @@ class AuthSettings(SettingsGroup):
     model_config = SettingsConfigDict(env_prefix="AUTH_")
 
     SESSION_TTL_DAYS: int = 7
-    # Email challenges. A sign-in link is emailed on login; the challenge (and
-    # with it the link and its one-time code) expires this long after initiation.
+    # Email challenges. A one-time sign-in code is emailed on login; the
+    # challenge (and with it the code) expires this long after initiation.
     CHALLENGE_TTL_MINUTES: int = 15
     # Minimum duration of every email-challenge response. Real and decoy flows
     # do different amounts of work; padding both to a shared floor keeps

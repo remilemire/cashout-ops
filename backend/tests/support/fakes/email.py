@@ -15,12 +15,6 @@ class SentEmail:
     html: str
 
 
-@dataclass(frozen=True)
-class LoginLink:
-    challenge_id: str
-    token: str
-
-
 class FakeEmailClient(EmailClient):
     """`EmailClient` that records sent messages instead of delivering them.
 
@@ -37,21 +31,20 @@ class FakeEmailClient(EmailClient):
             raise self.fail_with
         self.sent.append(SentEmail(to=to, subject=subject, html=html))
 
-    def latest_link(self, *, to: str | None = None) -> LoginLink:
-        """The sign-in link parameters from the most recent matching email.
+    def latest_code(self, *, to: str | None = None) -> str:
+        """The 6-digit sign-in code from the most recent matching email.
 
-        The service emails a magic link carrying the challenge id and token,
-        which is the only channel a test can learn the token from (Redis
-        stores only its hash).
+        The outbox handler emails the code, which is the only channel a test
+        can learn it from (Redis stores only its hash). The TTL rendered in
+        the body is 2 digits, so a 6-digit match is unambiguous.
         """
         for email in reversed(self.sent):
             if to is not None and email.to != to:
                 continue
-            challenge = re.search(r"challenge=([0-9a-f-]{36})", email.html)
-            token = re.search(r"token=([A-Za-z0-9_-]+)", email.html)
-            if challenge is not None and token is not None:
-                return LoginLink(challenge_id=challenge.group(1), token=token.group(1))
-        raise AssertionError(f"no sign-in link emailed (to={to!r})")
+            code = re.search(r"\b\d{6}\b", email.html)
+            if code is not None:
+                return code.group(0)
+        raise AssertionError(f"no sign-in code emailed (to={to!r})")
 
 
-__all__ = ["FakeEmailClient", "LoginLink", "SentEmail"]
+__all__ = ["FakeEmailClient", "SentEmail"]

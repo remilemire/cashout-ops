@@ -1,4 +1,4 @@
-<!-- backend/app/features/auth/email_challenges/templates/login_link.html -->
+<!-- backend/app/features/auth/email_challenges/templates/login_code.html -->
 
 <table
   role="presentation"
@@ -67,34 +67,19 @@
                 color: #291f18;
               "
             >
-              Click the button below to get your one-time sign-in code, then
-              enter it in the tab where you started signing in.
-            </p>
-            <p style="margin: 0 0 20px">
-              <a
-                href="{{link}}"
-                style="
-                  background-color: #964d09;
-                  border-radius: 8px;
-                  color: #ffffff;
-                  display: inline-block;
-                  font-size: 15px;
-                  font-weight: 600;
-                  padding: 12px 20px;
-                  text-decoration: none;
-                "
-                >Get my sign-in code</a
-              >
+              Enter this code in the tab where you started signing in.
             </p>
             <p
               style="
                 margin: 0 0 20px;
-                font-size: 13px;
-                line-height: 1.5;
-                color: #6e645a;
+                font-size: 32px;
+                font-weight: 700;
+                letter-spacing: 0.25em;
+                font-variant-numeric: tabular-nums;
+                color: #291f18;
               "
             >
-              Or copy this link: {{link}}
+              {{code}}
             </p>
             <p
               style="
@@ -104,7 +89,7 @@
                 color: #6e645a;
               "
             >
-              The link expires in {{ttl_minutes}} minutes. If you didn't request
+              The code expires in {{ttl_minutes}} minutes. If you didn't request
               it, you can ignore this email.
             </p>
           </td>

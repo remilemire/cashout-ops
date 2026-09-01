@@ -14,7 +14,7 @@ class AppSettings(SettingsGroup):
     model_config = SettingsConfigDict(env_prefix="APP_")
 
     ENV: Literal["prod", "dev"] = "prod"
-    # Public base URL of the SPA, used to build emailed sign-in links. The dev
+    # Public base URL of the SPA, used to build OAuth redirect URIs. The dev
     # default targets the Vite server; production must set its real origin.
     BASE_URL: str = "http://localhost:5173"
 

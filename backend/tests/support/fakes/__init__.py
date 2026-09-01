@@ -10,7 +10,7 @@ SDK-shaped fakes for the provider adapter unit tests live in ``.sdk``.
 """
 
 from .ai import FakeAIClient
-from .email import FakeEmailClient, LoginLink, SentEmail
+from .email import FakeEmailClient, SentEmail
 from .oauth import FakeOAuthClient
 from .storage import FakeDocumentStorage
 
@@ -19,6 +19,5 @@ __all__ = [
     "FakeDocumentStorage",
     "FakeEmailClient",
     "FakeOAuthClient",
-    "LoginLink",
     "SentEmail",
 ]

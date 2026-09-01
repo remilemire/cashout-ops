@@ -32,7 +32,7 @@ The repository is the source of truth. Inspect existing implementations and near
 * `backend/app/features/cashout/extraction/` is a leaf sub-feature beside the others: cashout-specific document processing, extraction schemas, processor registration, and the `get_cashout_document_processor` dependency.
 * `backend/app/api/__init__.py` mounts feature routers under `/api`.
 * `frontend/src/api/` contains the fetch client, CSRF handling, the shared error contract, and typed API contracts.
-* `frontend/src/auth/` contains authentication state, guards, and the passwordless login pages (email entry, sign-in link landing, code entry).
+* `frontend/src/auth/` contains authentication state, guards, and the passwordless login pages (email entry, code entry).
 * `frontend/src/features/cashout/` contains the cashier submission workflow.
 * `frontend/src/features/admin/` contains the admin submission, cashout-data, and user-management workflows.
 * `frontend/src/components/` contains shared UI primitives (`ui.tsx`) alongside the dialog and confirm-dialog components.
@@ -109,7 +109,7 @@ Routers should not:
 * Contain application workflows.
 * Contain database business logic.
 * Perform AI extraction directly.
-* Send login-link emails directly.
+* Send login-code emails directly.
 * Duplicate logic that belongs in a service.
 
 ### Services
@@ -162,7 +162,7 @@ Do not move request-bound authorization checks into services merely to make a ro
 
 Deferred work runs through the transactional outbox (`backend/app/infrastructure/outbox/`): `enqueue` persists a message inside the caller's transaction, and dispatcher workers started by the app lifespan deliver it through the owning feature's registered handler (`features/<feature>/outbox.py`).
 
-* AI extraction and login-link email delivery both run through the outbox.
+* AI extraction and login-code email delivery both run through the outbox.
 * Do not introduce another deferred-work mechanism without explicit instruction.
 * Do not send emails or start AI extraction before the required database transaction has committed.
 * Keep HTTP routers unaware of the low-level delivery mechanism.

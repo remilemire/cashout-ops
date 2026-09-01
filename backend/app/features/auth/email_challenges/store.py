@@ -50,7 +50,7 @@ async def save(
 
     `email_hash` is passed in rather than derived from `challenge.email`
     because hashing belongs to the service; the address stays in the value,
-    where it is needed to email the link and resolve the account.
+    where it is needed to email the code and resolve the account.
     """
     ttl = timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES)
     await redis.set(_challenge_key(challenge_id), challenge.model_dump_json(), ex=ttl)

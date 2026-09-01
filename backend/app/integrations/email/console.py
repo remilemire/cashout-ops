@@ -12,7 +12,7 @@ class ConsoleEmailClient:
 
     The development/default stand-in when no `RESEND_API_KEY` is configured, so
     the app boots and the passwordless sign-in flow works end to end locally —
-    the link lands in the server logs. Swap in `ResendEmailClient` for real
+    the code lands in the server logs. Swap in `ResendEmailClient` for real
     delivery.
     """
 
