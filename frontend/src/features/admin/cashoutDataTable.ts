@@ -1,6 +1,6 @@
 // frontend/src/features/admin/cashoutDataTable.ts
 
-import type { CashoutDataRow } from "@/api/types";
+import type { CashoutDataRow, User } from "@/api/types";
 
 /**
  * The money columns of the admin cashout data table, in display order. Each
@@ -60,4 +60,62 @@ export function columnTotals(
     cashOwedToHouse: sumMoney(rows.map((row) => row.cashOwedToHouse)),
     cashOwedToEmployee: sumMoney(rows.map((row) => row.cashOwedToEmployee)),
   };
+}
+
+/**
+ * The table as spreadsheet rows: a header, one row per data row, and the
+ * totals row last. Amounts are bare numbers ("24.00", no "$") so spreadsheets
+ * treat them as numbers, and a blank stands for "not tipped out", mirroring
+ * the table's "—". The date is the raw YYYY-MM-DD, which spreadsheets parse
+ * reliably, and the submission id is the full id rather than the table's
+ * 8-character slice.
+ */
+export function csvRows(rows: readonly CashoutDataRow[]): string[][] {
+  const totals = columnTotals(rows);
+  return [
+    [
+      "Employee",
+      "Date",
+      "Submission",
+      ...MONEY_COLUMNS.map((column) => column.label),
+    ],
+    ...rows.map((row) => [
+      row.submission.employee.fullName,
+      row.submission.businessDate,
+      row.submissionId,
+      ...MONEY_COLUMNS.map((column) => row[column.key] ?? ""),
+    ]),
+    [
+      "Total",
+      "",
+      "",
+      ...MONEY_COLUMNS.map((column) => totals[column.key] ?? ""),
+    ],
+  ];
+}
+
+/** "Zoë O'Brien" -> "zo-o-brien": lowercase, non-alphanumeric runs to "-". */
+function slug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * The export's file name: "cashout-data" plus the filters in effect, e.g.
+ * "cashout-data-2026-08-10-ada-lovelace.csv". The name describes what was
+ * exported, so the export date is deliberately not part of it.
+ */
+export function csvFileName(filters: {
+  date: string;
+  employee: User | null;
+}): string {
+  const parts = ["cashout-data"];
+  if (filters.date !== "") parts.push(filters.date);
+  if (filters.employee != null) {
+    const name = slug(filters.employee.fullName);
+    if (name !== "") parts.push(name);
+  }
+  return `${parts.join("-")}.csv`;
 }

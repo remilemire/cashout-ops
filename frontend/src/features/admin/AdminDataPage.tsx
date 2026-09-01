@@ -1,7 +1,7 @@
 // frontend/src/features/admin/AdminDataPage.tsx
 
 import { useQuery } from "@tanstack/react-query";
-import { Database, SearchX } from "lucide-react";
+import { Database, Download, Printer, SearchX } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -16,9 +16,22 @@ import {
   PageHeader,
   SkeletonList,
 } from "@/components/ui";
+import { downloadCsv } from "@/lib/csv";
 import { formatDate } from "@/lib/format";
 
-import { MONEY_COLUMNS, columnTotals } from "./cashoutDataTable";
+import {
+  MONEY_COLUMNS,
+  columnTotals,
+  csvFileName,
+  csvRows,
+} from "./cashoutDataTable";
+
+// Cell classes, with the print tightening in one place: the nine-column
+// table has to fit a portrait page. On screen nothing changes.
+const HEADER_CELL = "px-4 py-2.5 font-medium print:px-2";
+const MONEY_HEADER_CELL = `${HEADER_CELL} text-right`;
+const CELL = "px-4 py-3 print:px-2 print:py-1.5";
+const MONEY_CELL = `${CELL} text-right tabular-nums`;
 
 /**
  * A tipout column is null for a department that was not tipped out, so the
@@ -64,16 +77,58 @@ export function AdminDataPage() {
 
   const totals = columnTotals(filteredRows);
 
+  const selectedEmployee =
+    employees.find((employee) => employee.id === employeeFilter) ?? null;
+
   function clearFilters() {
     setDateFilter("");
     setEmployeeFilter("");
   }
+
+  // The export is what is on screen: the filtered rows, named after the
+  // filters that produced them.
+  function exportCsv() {
+    downloadCsv(
+      csvFileName({ date: dateFilter, employee: selectedEmployee }),
+      csvRows(filteredRows),
+    );
+  }
+
+  // Export and print mirror the table branch below: nothing to offer while
+  // loading or for a dataset with no rows at all, and nothing to act on when
+  // the filters match no row.
+  const hasData = !dataQuery.isLoading && rows.length > 0;
+  const nothingMatches = filteredRows.length === 0;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Cashout data"
         subtitle="Reconciled totals from completed cashouts."
+        action={
+          hasData && (
+            <div className="flex gap-2 print:hidden">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCsv}
+                disabled={nothingMatches}
+              >
+                <Download className="size-4" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.print()}
+                disabled={nothingMatches}
+              >
+                <Printer className="size-4" />
+                Print
+              </Button>
+            </div>
+          )
+        }
       />
       <ErrorBanner error={dataQuery.error} />
 
@@ -87,7 +142,7 @@ export function AdminDataPage() {
         />
       ) : (
         <>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3 print:hidden">
             <label className="block w-44">
               <span className="mb-1 block text-sm font-medium">Date</span>
               <Input
@@ -125,18 +180,18 @@ export function AdminDataPage() {
               }
             />
           ) : (
-            <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-230 text-sm">
+            <Card
+              padded={false}
+              className="overflow-x-auto print:overflow-visible print:rounded-none print:border-0 print:shadow-none"
+            >
+              <table className="w-full min-w-230 text-sm print:min-w-0 print:text-xs">
                 <thead>
                   <tr className="border-line text-ink-muted border-b text-left text-xs">
-                    <th className="px-4 py-2.5 font-medium">Employee</th>
-                    <th className="px-4 py-2.5 font-medium">Date</th>
-                    <th className="px-4 py-2.5 font-medium">Submission</th>
+                    <th className={HEADER_CELL}>Employee</th>
+                    <th className={HEADER_CELL}>Date</th>
+                    <th className={HEADER_CELL}>Submission</th>
                     {MONEY_COLUMNS.map((column) => (
-                      <th
-                        key={column.key}
-                        className="px-4 py-2.5 text-right font-medium"
-                      >
+                      <th key={column.key} className={MONEY_HEADER_CELL}>
                         {column.label}
                       </th>
                     ))}
@@ -148,13 +203,13 @@ export function AdminDataPage() {
                       key={row.id}
                       className="border-line border-b last:border-0"
                     >
-                      <td className="px-4 py-3">
+                      <td className={CELL}>
                         {row.submission.employee.fullName}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className={CELL}>
                         {formatDate(row.submission.businessDate)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className={CELL}>
                         <Link
                           to={`/admin/submissions/${row.submissionId}`}
                           className="text-accent-strong font-medium hover:underline"
@@ -163,10 +218,7 @@ export function AdminDataPage() {
                         </Link>
                       </td>
                       {MONEY_COLUMNS.map((column) => (
-                        <td
-                          key={column.key}
-                          className="px-4 py-3 text-right tabular-nums"
-                        >
+                        <td key={column.key} className={MONEY_CELL}>
                           {money(row[column.key])}
                         </td>
                       ))}
@@ -176,15 +228,12 @@ export function AdminDataPage() {
                 <tfoot>
                   {/* Totals of the rows on screen, so they follow the filters. */}
                   <tr className="border-line border-t-2 font-semibold">
-                    <th scope="row" className="px-4 py-3 text-left">
+                    <th scope="row" className={`${CELL} text-left`}>
                       Total
                     </th>
                     <td colSpan={2} />
                     {MONEY_COLUMNS.map((column) => (
-                      <td
-                        key={column.key}
-                        className="px-4 py-3 text-right tabular-nums"
-                      >
+                      <td key={column.key} className={MONEY_CELL}>
                         {money(totals[column.key])}
                       </td>
                     ))}

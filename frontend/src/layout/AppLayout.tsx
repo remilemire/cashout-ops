@@ -80,8 +80,8 @@ export function AppLayout() {
   // min-w-80 (320px) − px-4 gutters = the cards' 288px min-width: smaller
   // viewports scroll horizontally as one unit instead of crushing.
   return (
-    <div className="min-h-dvh min-w-80 pb-24 md:pb-0">
-      <header className="border-line bg-surface/90 sticky top-0 z-10 border-b backdrop-blur">
+    <div className="min-h-dvh min-w-80 pb-24 md:pb-0 print:pb-0">
+      <header className="border-line bg-surface/90 sticky top-0 z-10 border-b backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
           <span className="truncate font-semibold tracking-tight">
             <span className="text-accent-strong">Whiskey District</span>{" "}
@@ -127,11 +127,11 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-4 md:py-6">
+      <main className="mx-auto max-w-5xl px-4 py-4 md:py-6 print:max-w-none print:px-0 print:py-0">
         <Outlet />
       </main>
 
-      <nav className="border-line bg-surface/95 fixed inset-x-0 bottom-0 z-10 flex border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+      <nav className="border-line bg-surface/95 fixed inset-x-0 bottom-0 z-10 flex border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden print:hidden">
         {links.map((link) => (
           <NavLink key={link.to} to={link.to} className={navLinkClass}>
             <link.icon className="size-5" />

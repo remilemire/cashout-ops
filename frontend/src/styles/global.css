@@ -24,19 +24,22 @@
   --on-accent: oklch(0.99 0.01 85);
 }
 
-.dark {
-  color-scheme: dark;
+/* Screen only: print always uses the light palette above, not light ink on white paper. */
+@media screen {
+  .dark {
+    color-scheme: dark;
 
-  --bg: oklch(0.19 0.012 60);
-  --surface: oklch(0.235 0.012 60);
-  --surface-2: oklch(0.28 0.012 60);
-  --line: oklch(0.33 0.012 60);
-  --ink: oklch(0.93 0.01 85);
-  --ink-muted: oklch(0.67 0.015 75);
+    --bg: oklch(0.19 0.012 60);
+    --surface: oklch(0.235 0.012 60);
+    --surface-2: oklch(0.28 0.012 60);
+    --line: oklch(0.33 0.012 60);
+    --ink: oklch(0.93 0.01 85);
+    --ink-muted: oklch(0.67 0.015 75);
 
-  --accent: oklch(0.75 0.13 70);
-  --accent-strong: oklch(0.8 0.12 75);
-  --on-accent: oklch(0.22 0.04 60);
+    --accent: oklch(0.75 0.13 70);
+    --accent-strong: oklch(0.8 0.12 75);
+    --on-accent: oklch(0.22 0.04 60);
+  }
 }
 
 @theme inline {

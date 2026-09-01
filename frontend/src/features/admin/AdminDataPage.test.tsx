@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cashoutApi } from "@/api/cashout";
 import type { CashoutDataRow, User } from "@/api/types";
+import { downloadCsv } from "@/lib/csv";
 import { formatDate } from "@/lib/format";
 
 import { AdminDataPage } from "./AdminDataPage";
@@ -22,7 +23,12 @@ vi.mock("@/api/cashout", async (importOriginal) => {
   };
 });
 
+// The download's own tests cover the blob/anchor mechanics; here it is just
+// the call the page makes.
+vi.mock("@/lib/csv", () => ({ downloadCsv: vi.fn() }));
+
 const listDataMock = vi.mocked(cashoutApi.listData);
+const downloadCsvMock = vi.mocked(downloadCsv);
 
 const ada: User = {
   id: "user-ada",
@@ -78,14 +84,42 @@ function makeRow(
 
 // Ada appears on two days and shares one day with Grace, so each filter
 // (and their combination) narrows to a different subset.
+const adaAug10 = makeRow("row-1", ada, "2026-08-10");
 const rows: CashoutDataRow[] = [
-  makeRow("row-1", ada, "2026-08-10"),
+  adaAug10,
   makeRow("row-2", grace, "2026-08-11"),
   makeRow("row-3", ada, "2026-08-11"),
 ];
 
 const AUG_10 = formatDate("2026-08-10");
 const AUG_11 = formatDate("2026-08-11");
+
+const CSV_HEADER = [
+  "Employee",
+  "Date",
+  "Submission",
+  "Kitchen tipout",
+  "Bar tipout",
+  "Expo tipout",
+  "Host tipout",
+  "Owed to house",
+  "Owed to employee",
+];
+
+/** The CSV line for a fixture row: raw date and full id, blanks for null. */
+function csvLine(row: CashoutDataRow): string[] {
+  return [
+    row.submission.employee.fullName,
+    row.submission.businessDate,
+    row.submissionId,
+    "24.00",
+    "",
+    "",
+    "",
+    "",
+    "6.00",
+  ];
+}
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -113,6 +147,7 @@ function totalsRow(): HTMLTableRowElement {
 beforeEach(() => {
   listDataMock.mockReset();
   listDataMock.mockResolvedValue(rows);
+  downloadCsvMock.mockReset();
 });
 
 describe("AdminDataPage", () => {
@@ -188,6 +223,81 @@ describe("AdminDataPage", () => {
     expect(totals.getByRole("cell", { name: "$24.00" })).toBeDefined();
     expect(totals.getByRole("cell", { name: "$6.00" })).toBeDefined();
     expect(totals.queryByRole("cell", { name: "$72.00" })).toBeNull();
+  });
+
+  it("exports the visible rows as CSV", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+
+    expect(downloadCsvMock).toHaveBeenCalledOnce();
+    expect(downloadCsvMock).toHaveBeenCalledWith("cashout-data.csv", [
+      CSV_HEADER,
+      ...rows.map(csvLine),
+      ["Total", "", "", "72.00", "", "", "", "", "18.00"],
+    ]);
+  });
+
+  it("names the export after the filters and exports only the matching rows", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-10" },
+    });
+    fireEvent.change(screen.getByLabelText("Employee"), {
+      target: { value: ada.id },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+
+    expect(downloadCsvMock).toHaveBeenCalledOnce();
+    expect(downloadCsvMock).toHaveBeenCalledWith(
+      "cashout-data-2026-08-10-ada-lovelace.csv",
+      [
+        CSV_HEADER,
+        csvLine(adaAug10),
+        ["Total", "", "", "24.00", "", "", "", "", "6.00"],
+      ],
+    );
+  });
+
+  it("prints the page", async () => {
+    // jsdom's window.print is a not-implemented stub.
+    const printSpy = vi.spyOn(window, "print").mockImplementation(() => {});
+    try {
+      renderPage();
+      await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Print" }));
+
+      expect(printSpy).toHaveBeenCalledOnce();
+    } finally {
+      printSpy.mockRestore();
+    }
+  });
+
+  it("disables export and print when no rows match", async () => {
+    renderPage();
+    await screen.findAllByRole("cell", { name: "Ada Lovelace" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-01-01" },
+    });
+
+    const exportButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Export CSV",
+    });
+    const printButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Print",
+    });
+    expect(exportButton.disabled).toBe(true);
+    expect(printButton.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(exportButton.disabled).toBe(false);
+    expect(printButton.disabled).toBe(false);
   });
 
   it("keeps the submission links intact", async () => {
@@ -266,7 +376,10 @@ describe("AdminDataPage", () => {
     renderPage();
 
     expect(await screen.findByText("No cashout data yet")).toBeDefined();
-    // No filter bar when there is nothing to filter.
+    // No filter bar when there is nothing to filter, and nothing to export
+    // or print either.
     expect(screen.queryByLabelText("Date")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Print" })).toBeNull();
   });
 });
