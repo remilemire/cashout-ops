@@ -6,7 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-uv sync
+# --active so Render uses the correct venv
+uv sync --active
 
 cd ../frontend
 
