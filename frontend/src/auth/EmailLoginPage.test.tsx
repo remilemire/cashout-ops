@@ -80,10 +80,7 @@ async function startChallenge(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function typeCode(user: ReturnType<typeof userEvent.setup>) {
-  const inputs = screen.getAllByLabelText(/^Digit \d$/);
-  for (const [index, digit] of [..."123456"].entries()) {
-    await user.type(inputs[index]!, digit);
-  }
+  await user.type(screen.getByLabelText("Sign-in code"), "123456");
 }
 
 beforeEach(() => {
@@ -112,7 +109,7 @@ describe("EmailLoginPage", () => {
       email: "cashier@test.com",
     });
     expect(screen.getByText("cashier@test.com")).toBeDefined();
-    expect(screen.getAllByLabelText(/^Digit \d$/)).toHaveLength(6);
+    expect(screen.getByLabelText("Sign-in code")).toBeDefined();
   });
 
   it("verifies a full code automatically and signs in", async () => {
