@@ -5,6 +5,7 @@ import { AlertTriangle, Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import { isNotFound } from "@/api/client";
 import type { CashoutDocumentAnalysis, FieldIssue } from "@/api/types";
 import { Button, ConfidenceMeter, ErrorBanner } from "@/components/ui";
 import { cx } from "@/lib/cx";
@@ -83,6 +84,15 @@ export function VerificationForm({
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
       });
+    },
+    // The analysis (or its document or submission) was deleted elsewhere:
+    // refresh the detail so the dead form disappears instead of failing.
+    onError: (error) => {
+      if (isNotFound(error)) {
+        void queryClient.invalidateQueries({
+          queryKey: cashoutKeys.submission(submissionId),
+        });
+      }
     },
   });
 

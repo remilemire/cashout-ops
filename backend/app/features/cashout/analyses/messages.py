@@ -34,6 +34,11 @@ _ANALYSIS_ERROR_MESSAGES: dict[str, str] = {
     DocumentAIErrorCode.UNSUPPORTED_FILE_TYPE.value: (
         "This file type isn't supported."
     ),
+    # Retrying cannot help here: the stored bytes themselves are gone.
+    DocumentAIErrorCode.MISSING_DOCUMENT.value: (
+        "The stored file for this document is missing. Remove the document "
+        "and upload it again."
+    ),
 }
 
 _DEFAULT_ANALYSIS_ERROR_MESSAGE = "Analysis failed unexpectedly. Please try again."

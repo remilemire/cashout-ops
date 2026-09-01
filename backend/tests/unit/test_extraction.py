@@ -477,6 +477,32 @@ def test_every_ai_error_code_maps_to_a_document_code() -> None:
     assert set(AI_ERROR_CODES) == set(AIErrorCode)
 
 
+async def test_read_raises_missing_document_when_stored_bytes_are_gone() -> None:
+    # A document row can outlive its stored bytes (the backing store lost
+    # them, or a soft-deleted submission's file was cleaned out of band). The
+    # storage failure is re-raised under the document vocabulary before any AI
+    # call, so callers persist it like every other analysis failure.
+    client, ai, _ = await _build_document_client()
+    gone = DocumentRef(storage_key="gone-key", content_type=DocumentContentType.PDF)
+
+    with pytest.raises(DocumentAIError) as exc_info:
+        await client.process(gone, _BareRecord)
+
+    assert exc_info.value.code is DocumentAIErrorCode.MISSING_DOCUMENT
+    assert ai.calls == []
+
+
+def test_every_document_code_has_a_curated_analysis_message() -> None:
+    # Every persistable failure code must map to its own user-facing message:
+    # falling through to the generic default would tell the cashier to "try
+    # again" even for failures a retry can never fix (e.g. missing bytes).
+    from app.features.cashout.analyses.messages import analysis_error_message
+
+    default = analysis_error_message(None)
+    for code in DocumentAIErrorCode:
+        assert analysis_error_message(code.value) != default, code
+
+
 # ================================
 # ---------- Field types ---------
 # ================================

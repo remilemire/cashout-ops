@@ -10,8 +10,9 @@ from app.integrations.ai import AIAnalysisError, AIErrorCode
 
 # The document-analysis failure modes callers may persist. Most re-specialize
 # a provider-neutral AIErrorCode into document vocabulary (the mapping below);
-# UNCLASSIFIABLE_DOCUMENT is this layer's own — the AI call itself succeeded
-# and placed the document as none of the allowed types.
+# UNCLASSIFIABLE_DOCUMENT and MISSING_DOCUMENT are this layer's own — the
+# former when the AI call succeeded but placed the document as none of the
+# allowed types, the latter when the stored bytes are gone before any AI call.
 class DocumentAIErrorCode(StrEnum):
     SERVICE_UNAVAILABLE = "service_unavailable"
     DOCUMENT_REJECTED = "document_rejected"
@@ -19,6 +20,7 @@ class DocumentAIErrorCode(StrEnum):
     OUTPUT_LIMIT_REACHED = "output_limit_reached"
     UNSUPPORTED_FILE_TYPE = "unsupported_file_type"
     UNCLASSIFIABLE_DOCUMENT = "unclassifiable_document"
+    MISSING_DOCUMENT = "missing_document"
 
 
 # Exhaustive over AIErrorCode (unit-test-enforced): every AI failure the

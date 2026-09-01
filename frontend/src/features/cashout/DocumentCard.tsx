@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import { isNotFound } from "@/api/client";
 import {
   CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
@@ -49,13 +50,17 @@ export function DocumentCard({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [thumbnailBroken, setThumbnailBroken] = useState(false);
   const [classification, setClassification] =
     useState<CashoutDocumentClassification>(
       CASHOUT_DOCUMENT_CLASSIFICATIONS[0]!,
     );
   const initial = document.analysis;
 
-  // Poll the analysis while the AI extraction runs in the background.
+  // Poll the analysis while the AI extraction runs in the background. A 404
+  // means the analysis (or its document or submission) was deleted elsewhere:
+  // the resource is gone for good, so polling stops rather than retrying a
+  // dead reference forever.
   const analysisQuery = useQuery({
     queryKey: cashoutKeys.analysis(initial?.id ?? "missing"),
     queryFn: () => cashoutApi.getAnalysis(initial!.id),
@@ -63,7 +68,10 @@ export function DocumentCard({
     initialData: initial ?? undefined,
     staleTime: Infinity,
     refetchInterval: (query) =>
-      query.state.data?.status === "extracting" ? 1500 : false,
+      query.state.data?.status === "extracting" &&
+      !isNotFound(query.state.error)
+        ? 1500
+        : false,
   });
   const analysis = analysisQuery.data ?? initial;
 
@@ -79,6 +87,27 @@ export function DocumentCard({
     }
   }, [liveStatus, detailStatus, queryClient, submissionId]);
 
+  // A dead analysis means the card itself is stale: refresh the detail so the
+  // removed document disappears (or the page reports the whole cashout gone).
+  const analysisGone = isNotFound(analysisQuery.error);
+  useEffect(() => {
+    if (analysisGone) {
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    }
+  }, [analysisGone, queryClient, submissionId]);
+
+  // Same for a 404 out of any action on the card: the document, analysis, or
+  // submission was deleted elsewhere, so refresh instead of leaving stale UI.
+  const refreshIfGone = (error: unknown) => {
+    if (isNotFound(error)) {
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+    }
+  };
+
   const retry = useMutation({
     mutationFn: () => cashoutApi.extractDocument(document.id),
     onSuccess: (updated) => {
@@ -87,6 +116,7 @@ export function DocumentCard({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   // Replace a document whose extraction failed with a better shot of it
@@ -113,6 +143,7 @@ export function DocumentCard({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   // The user corrects a misclassification: the backend re-extracts as the
@@ -126,6 +157,7 @@ export function DocumentCard({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   // The user types the details in instead of the AI: the backend records the
@@ -140,6 +172,7 @@ export function DocumentCard({
       });
       setManualOpen(false);
     },
+    onError: refreshIfGone,
   });
 
   // "Edit" on a verified analysis: sends it back to needs-verification (the
@@ -152,6 +185,7 @@ export function DocumentCard({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   const remove = useMutation({
@@ -168,6 +202,7 @@ export function DocumentCard({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   const isImage = document.contentType.startsWith("image/");
@@ -188,12 +223,15 @@ export function DocumentCard({
             title="View original"
             className="border-line bg-surface-2 block size-14 shrink-0 overflow-hidden rounded-lg border"
           >
-            {isImage ? (
+            {isImage && !thumbnailBroken ? (
               <img
                 src={contentUrl}
                 alt={document.originalFilename}
                 loading="lazy"
                 className="size-full object-cover"
+                // The stored file can be gone even though the document row
+                // survives; fall back to the file icon over a broken image.
+                onError={() => setThumbnailBroken(true)}
               />
             ) : (
               <span className="text-ink-muted grid size-full place-items-center">

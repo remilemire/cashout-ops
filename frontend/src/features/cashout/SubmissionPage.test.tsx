@@ -408,6 +408,37 @@ describe("SubmissionPage", () => {
     ).toBeDefined();
   });
 
+  it("shows a not-found state when the cashout no longer exists", async () => {
+    // Deleted meanwhile (another tab, or an admin): the page reports the
+    // death and offers a way back rather than a bare failure banner.
+    mockViewer(employee);
+    getSubmissionMock.mockRejectedValue(
+      new ApiError(404, {
+        kind: "NOT_FOUND",
+        code: "SUBMISSION_NOT_FOUND",
+        message: "Cashout submission not found.",
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Cashout not found")).toBeDefined();
+    expect(screen.getByRole("link", { name: /My cashouts/ })).toBeDefined();
+  });
+
+  it("points an admin's not-found state at all submissions", async () => {
+    getSubmissionMock.mockRejectedValue(
+      new ApiError(404, {
+        kind: "NOT_FOUND",
+        code: "SUBMISSION_NOT_FOUND",
+        message: "Cashout submission not found.",
+      }),
+    );
+    renderPage(); // beforeEach signs the admin in
+
+    expect(await screen.findByText("Cashout not found")).toBeDefined();
+    expect(screen.getByRole("link", { name: /All submissions/ })).toBeDefined();
+  });
+
   it("shows the error banner when unsubmitting fails", async () => {
     unsubmitSubmissionMock.mockRejectedValue(
       new ApiError(409, {

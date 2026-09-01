@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import { ApiError } from "@/api/client";
+import { ApiError, isNotFound } from "@/api/client";
 import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
 import type {
   ErrorCode,
@@ -48,6 +48,18 @@ export function SubmissionPage() {
     enabled: submissionId !== "",
   });
 
+  // A 404 from any action means the cashout (or a document on it) was deleted
+  // elsewhere — another tab, or an admin. Refetch so the page reports the
+  // death instead of keeping stale, unactionable state.
+  const refreshIfGone = (error: unknown) => {
+    if (isNotFound(error)) {
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    }
+  };
+
   const upload = useMutation({
     mutationFn: (file: File) => cashoutApi.uploadDocument(submissionId, file),
     onSuccess: (analysis) => {
@@ -56,6 +68,7 @@ export function SubmissionPage() {
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
+    onError: refreshIfGone,
   });
 
   const manualUpload = useMutation({
@@ -68,6 +81,7 @@ export function SubmissionPage() {
       });
       setManualOpen(false);
     },
+    onError: refreshIfGone,
   });
 
   const complete = useMutation({
@@ -81,6 +95,7 @@ export function SubmissionPage() {
       // The completed banner renders at the top; the button sits at the bottom.
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
+    onError: refreshIfGone,
   });
 
   const cancel = useMutation({
@@ -88,6 +103,16 @@ export function SubmissionPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
       navigate("/cashouts");
+    },
+    // Already gone (deleted elsewhere): the outcome the user wanted, so land
+    // where a successful cancel lands rather than surfacing a failure.
+    onError: (error) => {
+      if (isNotFound(error)) {
+        void queryClient.invalidateQueries({
+          queryKey: cashoutKeys.submissions,
+        });
+        navigate("/cashouts");
+      }
     },
   });
 
@@ -99,10 +124,33 @@ export function SubmissionPage() {
       });
       void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
     },
+    onError: refreshIfGone,
   });
 
   const submission = detailQuery.data;
+  const isAdminUser = user != null && isAdminRole(user.role);
   if (detailQuery.isLoading) return <FullScreenSpinner />;
+  // Checked before the cached data: a cashout deleted while on this page
+  // leaves stale data behind, and every action on it would fail.
+  if (isNotFound(detailQuery.error)) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <EmptyState
+          title="Cashout not found"
+          hint="This cashout no longer exists — it may have been cancelled."
+          action={
+            <Link
+              to={isAdminUser ? "/admin/submissions" : "/cashouts"}
+              className="text-accent-strong inline-flex items-center gap-1 text-sm hover:underline"
+            >
+              <ArrowLeft className="size-4" />
+              {isAdminUser ? "All submissions" : "My cashouts"}
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
   if (!submission) return <ErrorBanner error={detailQuery.error} />;
 
   // The employee and any admin have the same powers on a submission; the

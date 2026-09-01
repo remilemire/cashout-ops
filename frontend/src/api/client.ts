@@ -31,6 +31,15 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Whether the failure says the resource no longer exists — deleted meanwhile
+ * by another tab, another user, or an admin. Callers use it to retire dead
+ * references (stop polling, refresh the page) instead of surfacing a retry.
+ */
+export function isNotFound(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 404;
+}
+
 const FALLBACK_BODY: ErrorResponse = {
   kind: "INTERNAL",
   code: "INTERNAL",

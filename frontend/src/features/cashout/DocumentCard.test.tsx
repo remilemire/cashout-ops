@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -12,6 +13,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cashoutApi } from "@/api/cashout";
+import { ApiError } from "@/api/client";
 import type { CashoutDocument, CashoutDocumentAnalysis } from "@/api/types";
 
 import { DocumentCard } from "./DocumentCard";
@@ -112,15 +114,18 @@ function renderCard(
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <DocumentCard
-        document={document}
-        submissionId="submission-1"
-        editable={editable}
-      />
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <DocumentCard
+          document={document}
+          submissionId="submission-1"
+          editable={editable}
+        />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 beforeEach(() => {
@@ -456,5 +461,79 @@ describe("DocumentCard", () => {
     expect(
       screen.queryByRole("button", { name: "Correct document type" }),
     ).toBeNull();
+  });
+
+  it("stops polling and refreshes the page when the analysis is gone", async () => {
+    // The document (and its analysis) was deleted elsewhere mid-extraction —
+    // another tab, or an admin. The 404 is permanent: polling the dead
+    // reference must stop, and the detail refresh removes the card.
+    vi.useFakeTimers();
+    try {
+      const extractingAnalysis: CashoutDocumentAnalysis = {
+        ...analysis,
+        status: "extracting",
+        classification: null,
+        extractedDataJson: null,
+        verifiedDataJson: null,
+      };
+      getAnalysisMock.mockRejectedValue(
+        new ApiError(404, {
+          kind: "NOT_FOUND",
+          code: "ANALYSIS_NOT_FOUND",
+          message: "Cashout document analysis not found.",
+        }),
+      );
+      const { queryClient } = renderCard(true, {
+        ...cashoutDocument,
+        analysis: extractingAnalysis,
+      });
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+      await act(() => vi.advanceTimersByTimeAsync(1500));
+      expect(getAnalysisMock).toHaveBeenCalledOnce();
+
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+      expect(getAnalysisMock).toHaveBeenCalledOnce();
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["cashout", "submission", "submission-1"],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes the page when removing an already-removed document", async () => {
+    deleteDocumentMock.mockRejectedValue(
+      new ApiError(404, {
+        kind: "NOT_FOUND",
+        code: "DOCUMENT_NOT_FOUND",
+        message: "Cashout document not found.",
+      }),
+    );
+    const { queryClient } = renderCard(true);
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove document" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove document?" });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Remove document" }),
+    );
+
+    // The refresh drops the dead card instead of leaving it with a failure.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["cashout", "submission", "submission-1"],
+      }),
+    );
+  });
+
+  it("falls back to the file icon when the image preview fails to load", () => {
+    // The stored file can be gone even though the document row survives; the
+    // thumbnail must not render as a broken image.
+    renderCard(false, { ...cashoutDocument, contentType: "image/jpeg" });
+
+    fireEvent.error(screen.getByAltText("receipt.pdf"));
+
+    expect(screen.queryByAltText("receipt.pdf")).toBeNull();
   });
 });

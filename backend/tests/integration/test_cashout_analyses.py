@@ -21,7 +21,8 @@ from tests.support.cashout import (
     upload_reconcilable_documents,
     verify_analysis,
 )
-from tests.support.fakes import FakeAIClient
+from tests.support.documents import SAMPLE_PDF_UPLOAD
+from tests.support.fakes import FakeAIClient, FakeDocumentStorage
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 
@@ -320,6 +321,70 @@ async def test_failed_extraction_and_retry(
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
     assert analysis["errorCode"] is None
+
+
+async def test_extraction_with_missing_file_fails_as_missing_document(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
+) -> None:
+    from app.document_ai import DocumentAIErrorCode
+    from app.features.cashout.analyses.messages import analysis_error_message
+
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/documents",
+        files={"file": SAMPLE_PDF_UPLOAD},
+        headers=csrf_headers(cashier_client),
+    )
+    assert created.status_code == 201, created.text
+
+    # The stored bytes vanish before the outbox delivers the extraction: the
+    # analysis fails under its own code — no AI call, and not the generic
+    # "try again" message a retry could never satisfy.
+    storage.objects.clear()
+    await drain_outbox()
+
+    analysis = await poll_analysis(cashier_client, created.json()["id"])
+    assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
+    missing = DocumentAIErrorCode.MISSING_DOCUMENT.value
+    assert analysis["errorCode"] == missing
+    assert analysis["errorMessage"] == analysis_error_message(missing)
+    assert ai_client.calls == []
+
+
+async def test_extraction_skipped_when_submission_cancelled_before_dispatch(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/documents",
+        files={"file": SAMPLE_PDF_UPLOAD},
+        headers=csrf_headers(cashier_client),
+    )
+    assert created.status_code == 201, created.text
+
+    # Cancelling a cashout that holds documents soft-deletes it; the enqueued
+    # extraction still dispatches, but must not burn an AI call analyzing a
+    # cashout nothing can reach anymore.
+    cancelled = await cashier_client.delete(
+        f"/api/cashout/submissions/{submission_id}",
+        headers=csrf_headers(cashier_client),
+    )
+    assert cancelled.status_code == 204
+    await drain_outbox()
+
+    assert ai_client.calls == []
+    # Every read path resolves the submission first, so the analysis is gone
+    # from the API's point of view.
+    polled = await cashier_client.get(f"/api/cashout/analyses/{created.json()['id']}")
+    assert polled.status_code == 404
+    assert polled.json()["code"] == "SUBMISSION_NOT_FOUND"
 
 
 async def test_retry_extraction_from_needs_verification(

@@ -41,6 +41,28 @@ async def test_document_content_served_to_owner_and_admin(
     assert admin.status_code == 200
 
 
+async def test_document_content_with_missing_file_is_not_found(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The row can outlive its stored bytes (the backing store lost them). To
+    # the viewer the document is gone: a 404 under the shared contract, not an
+    # uncaught storage error surfacing as a 500.
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client)
+    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    storage.objects.clear()
+
+    response = await cashier_client.get(
+        f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "DOCUMENT_NOT_FOUND"
+
+
 async def test_delete_document_from_processing_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,

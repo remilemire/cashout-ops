@@ -192,6 +192,15 @@ async def run_extraction(
                 # Deleted between the request committing and this job running;
                 # the cascade removed its analysis too — nothing to update.
                 return
+            submission = await repository.get_live_submission(
+                db, submission_id=document.cashout_submission_id
+            )
+            if submission is None:
+                # The submission was cancelled (soft-deleted) after the
+                # extraction was enqueued. The document and its analysis
+                # survive but nothing can reach them anymore, so skip the AI
+                # call rather than analyzing a dead cashout.
+                return
             await _apply_extraction(
                 db,
                 document=document,

@@ -11,10 +11,10 @@ from app.integrations.ai import (
     ResponseModelT,
     compose_instructions,
 )
-from app.integrations.storage import DocumentStorageClient
+from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
 from app.lib.documents import DocumentContent
 
-from .errors import DocumentAIError, DocumentUnclassifiableError
+from .errors import DocumentAIError, DocumentAIErrorCode, DocumentUnclassifiableError
 from .hints import (
     ClassificationHint,
     collect_field_hints,
@@ -66,8 +66,9 @@ class DocumentAIClient:
     fixed-shape object, while an extraction scales with the schema.
 
     Both operations raise DocumentAIError: AI-layer failures are re-raised
-    under this layer's document vocabulary, and a classification the model
-    resolves to none of the allowed types raises DocumentUnclassifiableError.
+    under this layer's document vocabulary, a stored document whose bytes are
+    gone raises MISSING_DOCUMENT, and a classification the model resolves to
+    none of the allowed types raises DocumentUnclassifiableError.
     """
 
     def __init__(
@@ -152,7 +153,15 @@ class DocumentAIClient:
             raise DocumentAIError.from_ai_error(exc) from exc
 
     async def _read(self, document: DocumentRef) -> DocumentContent:
-        data = await self._storage.read(document.storage_key)
+        try:
+            data = await self._storage.read(document.storage_key)
+        except DocumentNotFoundError as exc:
+            # The referenced bytes are gone (lost or deleted out of band):
+            # re-raised under this layer's vocabulary so callers persist it
+            # like any other document failure instead of crashing.
+            raise DocumentAIError(
+                DocumentAIErrorCode.MISSING_DOCUMENT, str(exc)
+            ) from exc
         return DocumentContent(data=data, content_type=document.content_type)
 
 

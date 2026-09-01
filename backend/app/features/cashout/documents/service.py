@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -14,11 +15,13 @@ from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.model import User
-from app.integrations.storage import DocumentStorageClient
+from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
 
 from . import repository
 from .model import CashoutDocument
 from .types import DocumentUpload
+
+logger = logging.getLogger(__name__)
 
 
 async def upload_document(
@@ -99,7 +102,19 @@ async def get_document_content(
     submission = await _get_submission(db, document.cashout_submission_id)
     ensure_can_view(submission, user)
 
-    return document, await storage.read(document.storage_key)
+    try:
+        data = await storage.read(document.storage_key)
+    except DocumentNotFoundError as exc:
+        # The row survived but its stored bytes did not (lost or deleted out
+        # of band). To the viewer the document is gone; the mismatch itself is
+        # an operational signal, so it goes to the logs.
+        logger.warning(
+            "Stored file missing for document %s (key %s)",
+            document.id,
+            document.storage_key,
+        )
+        raise AppError("DOCUMENT_NOT_FOUND", "The stored file is missing.") from exc
+    return document, data
 
 
 async def _get_document(db: AsyncSession, document_id: UUID) -> CashoutDocument:

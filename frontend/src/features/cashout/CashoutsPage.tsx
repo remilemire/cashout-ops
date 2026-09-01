@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
+import { isNotFound } from "@/api/client";
 import type { CashoutSubmissionListItem } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -39,6 +40,14 @@ export function CashoutsPage() {
     mutationFn: (id: string) => cashoutApi.cancelSubmission(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    },
+    // Already gone (deleted elsewhere): refresh so the dead row disappears.
+    onError: (error) => {
+      if (isNotFound(error)) {
+        void queryClient.invalidateQueries({
+          queryKey: cashoutKeys.submissions,
+        });
+      }
     },
   });
 
