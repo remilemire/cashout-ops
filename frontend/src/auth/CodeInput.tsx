@@ -81,7 +81,12 @@ export function CodeInput({
               focused && index === activeIndex && "ring-accent/50 ring-2",
             )}
           >
-            {code[index] ?? ""}
+            {code[index] ??
+              // The real caret is invisible along with its input, so the
+              // empty active box blinks a simulated one.
+              (focused && !disabled && index === activeIndex && (
+                <span className="animate-caret-blink bg-ink h-6 w-px" />
+              ))}
           </div>
         ))}
       </div>

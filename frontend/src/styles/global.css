@@ -55,6 +55,16 @@
   --color-warning: oklch(0.68 0.15 75);
   --color-danger: oklch(0.6 0.19 25);
   --color-info: oklch(0.6 0.13 250);
+
+  /* Simulated text caret for inputs whose native caret is hidden
+   * (e.g. the invisible input behind CodeInput's boxes). */
+  --animate-caret-blink: caret-blink 1.1s steps(1) infinite;
+
+  @keyframes caret-blink {
+    50% {
+      opacity: 0;
+    }
+  }
 }
 
 /*
