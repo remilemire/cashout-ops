@@ -328,6 +328,132 @@ def test_upgrade_head_recalculates_cash_balance_with_tipouts(
         engine.dispose()
 
 
+def test_upgrade_head_recalculates_cashouts_with_house_favouring_rounding(
+    migrated_url: str,
+) -> None:
+    """Existing rows adopt per-department ceiling rather than nearest-cent."""
+    _upgrade(migrated_url, "a34f9c2d71be")
+
+    old_total_tipout = """
+        CASE WHEN 'bar'::tipout_department = ANY(tipout_departments)
+            THEN drink_net_sales * bar_tipout_rate ELSE 0 END
+        + CASE WHEN 'kitchen'::tipout_department = ANY(tipout_departments)
+            THEN food_net_sales * kitchen_tipout_rate ELSE 0 END
+        + CASE WHEN 'expo'::tipout_department = ANY(tipout_departments)
+            THEN total_net_sales * expo_tipout_rate ELSE 0 END
+        + CASE WHEN 'host'::tipout_department = ANY(tipout_departments)
+            THEN total_net_sales * host_tipout_rate ELSE 0 END
+    """
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            # The initial migration is kept current for fresh installs. Put
+            # all six generated expressions back into the exact state an
+            # already-applied database has before the new revision reaches it.
+            conn.execute(
+                text(
+                    f"""
+                    ALTER TABLE cashout_data
+                        DROP COLUMN cash_owed_to_employee,
+                        DROP COLUMN cash_owed_to_house,
+                        DROP COLUMN host_tipout,
+                        DROP COLUMN expo_tipout,
+                        DROP COLUMN kitchen_tipout,
+                        DROP COLUMN bar_tipout;
+                    ALTER TABLE cashout_data ADD COLUMN bar_tipout
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE WHEN 'bar'::tipout_department
+                                = ANY(tipout_departments)
+                            THEN drink_net_sales * bar_tipout_rate ELSE NULL END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN kitchen_tipout
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE WHEN 'kitchen'::tipout_department
+                                = ANY(tipout_departments)
+                            THEN food_net_sales * kitchen_tipout_rate ELSE NULL END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN expo_tipout
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE WHEN 'expo'::tipout_department
+                                = ANY(tipout_departments)
+                            THEN total_net_sales * expo_tipout_rate ELSE NULL END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN host_tipout
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE WHEN 'host'::tipout_department
+                                = ANY(tipout_departments)
+                            THEN total_net_sales * host_tipout_rate ELSE NULL END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN cash_owed_to_house
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE
+                                WHEN cash_payment_total - card_tip_total
+                                    + ({old_total_tipout}) > 0
+                                THEN cash_payment_total - card_tip_total
+                                    + ({old_total_tipout})
+                                ELSE NULL
+                            END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN cash_owed_to_employee
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE
+                                WHEN cash_payment_total - card_tip_total
+                                    + ({old_total_tipout}) < 0
+                                THEN -(cash_payment_total - card_tip_total
+                                    + ({old_total_tipout}))
+                                ELSE NULL
+                            END
+                        ) STORED;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_data
+                        (id, submission_id, food_net_sales, drink_net_sales,
+                         total_net_sales, card_payment_total,
+                         cash_payment_total, card_tip_total,
+                         tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate,
+                         host_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            800.01, 100.01, 1200.00, 1234.56, 150.00, 180.00,
+                            ARRAY['bar', 'kitchen']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        def generated_values() -> tuple[str | None, ...]:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT bar_tipout, kitchen_tipout, cash_owed_to_house,"
+                        " cash_owed_to_employee FROM cashout_data"
+                    )
+                ).one()
+            return tuple(None if value is None else str(value) for value in row)
+
+        assert generated_values() == ("5.00", "24.00", None, "1.00")
+
+        _upgrade(migrated_url, "head")
+
+        assert generated_values() == ("5.01", "24.01", None, "0.98")
+    finally:
+        engine.dispose()
+
+
 def test_upgrade_head_dedups_live_cashout_days(migrated_url: str) -> None:
     """Same-day live duplicates are soft-deleted before the day becomes unique.
 

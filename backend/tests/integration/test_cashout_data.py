@@ -57,6 +57,35 @@ async def _try_complete(client: AsyncClient, submission_id: str) -> dict[str, An
     return body
 
 
+async def _complete_with_touchbistro_overrides(
+    client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain: OutboxDrain,
+    *,
+    overrides: dict[str, str],
+    tipout_departments: list[TipoutDepartment],
+) -> str:
+    submission_id = await create_submission(client)
+    touchbistro, summary = await upload_reconcilable_documents(
+        client,
+        submission_id,
+        ai_client=ai_client,
+        drain=drain,
+    )
+    await verify_analysis(
+        client,
+        touchbistro["id"],
+        {"verifiedData": {**TOUCHBISTRO_EXTRACTED, **overrides}},
+    )
+    await verify_analysis(client, summary["id"])
+    await complete_submission(
+        client,
+        submission_id,
+        tipout_departments=tipout_departments,
+    )
+    return submission_id
+
+
 async def test_data_table_is_admin_only(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
@@ -191,6 +220,60 @@ async def test_completion_takes_its_figures_from_the_touchbistro_report(
     # tipouts reverses the balance, so the employee owes the remaining 14.00.
     assert row["cashOwedToHouse"] == "14.00"
     assert row["cashOwedToEmployee"] is None
+
+
+async def test_fractional_tipout_and_house_balance_round_up(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 800.01 * 3.75% is 30.000375. The source figure remains exactly what the
+    # report said, while the calculated tipout becomes 30.01. Against the
+    # 30.00 card-tip deficit, that leaves one cent due to the house.
+    monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0375"))
+    await _complete_with_touchbistro_overrides(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        overrides={"food_net_sales": "800.01"},
+        tipout_departments=[TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["foodNetSales"] == "800.01"
+    assert row["kitchenTipout"] == "30.01"
+    assert row["cashOwedToHouse"] == "0.01"
+    assert row["cashOwedToEmployee"] is None
+
+
+async def test_each_department_rounds_before_the_final_balance(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Bar is 5.0005 and kitchen is 24.0003. Rounding each line produces 29.02;
+    # rounding their unrounded 29.0008 total only once would produce 29.01.
+    await _complete_with_touchbistro_overrides(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        overrides={
+            "food_net_sales": "800.01",
+            "drink_net_sales": "100.01",
+        },
+        tipout_departments=[TipoutDepartment.BAR, TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["barTipout"] == "5.01"
+    assert row["kitchenTipout"] == "24.01"
+    assert row["cashOwedToHouse"] is None
+    assert row["cashOwedToEmployee"] == "0.98"
 
 
 async def test_tipouts_reduce_cash_owed_to_employee(

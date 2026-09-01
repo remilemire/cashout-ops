@@ -18,34 +18,50 @@ if TYPE_CHECKING:
     from app.features.cashout.submissions.model import CashoutSubmission
 
 
+def _round_for_house_sql(expression: str) -> str:
+    """Round a signed dollar expression to cents in the house's favour."""
+    return f"(ceil(({expression}) * 100) / 100)"
+
+
+_BAR_TIPOUT_SQL = _round_for_house_sql("drink_net_sales * bar_tipout_rate")
+_KITCHEN_TIPOUT_SQL = _round_for_house_sql("food_net_sales * kitchen_tipout_rate")
+_EXPO_TIPOUT_SQL = _round_for_house_sql("total_net_sales * expo_tipout_rate")
+_HOST_TIPOUT_SQL = _round_for_house_sql("total_net_sales * host_tipout_rate")
+
 _TOTAL_TIPOUT_SQL = """
     (
         CASE
             WHEN 'bar'::tipout_department = ANY(tipout_departments)
-            THEN drink_net_sales * bar_tipout_rate
+            THEN {bar_tipout}
             ELSE 0
         END
         + CASE
             WHEN 'kitchen'::tipout_department = ANY(tipout_departments)
-            THEN food_net_sales * kitchen_tipout_rate
+            THEN {kitchen_tipout}
             ELSE 0
         END
         + CASE
             WHEN 'expo'::tipout_department = ANY(tipout_departments)
-            THEN total_net_sales * expo_tipout_rate
+            THEN {expo_tipout}
             ELSE 0
         END
         + CASE
             WHEN 'host'::tipout_department = ANY(tipout_departments)
-            THEN total_net_sales * host_tipout_rate
+            THEN {host_tipout}
             ELSE 0
         END
     )
-"""
+""".format(
+    bar_tipout=_BAR_TIPOUT_SQL,
+    kitchen_tipout=_KITCHEN_TIPOUT_SQL,
+    expo_tipout=_EXPO_TIPOUT_SQL,
+    host_tipout=_HOST_TIPOUT_SQL,
+)
 
-_CASH_DUE_TO_HOUSE_SQL = f"""
+_UNROUNDED_CASH_DUE_TO_HOUSE_SQL = f"""
     (cash_payment_total - card_tip_total + {_TOTAL_TIPOUT_SQL})
 """
+_CASH_DUE_TO_HOUSE_SQL = _round_for_house_sql(_UNROUNDED_CASH_DUE_TO_HOUSE_SQL)
 
 
 class CashoutData(Base):
@@ -100,10 +116,10 @@ class CashoutData(Base):
     # Calculated values
     bar_tipout: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
                 WHEN 'bar'::tipout_department = ANY(tipout_departments)
-                THEN drink_net_sales * bar_tipout_rate
+                THEN {_BAR_TIPOUT_SQL}
                 ELSE NULL
             END
         """),
@@ -111,10 +127,10 @@ class CashoutData(Base):
     )
     kitchen_tipout: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
                 WHEN 'kitchen'::tipout_department = ANY(tipout_departments)
-                THEN food_net_sales * kitchen_tipout_rate
+                THEN {_KITCHEN_TIPOUT_SQL}
                 ELSE NULL
             END
         """),
@@ -122,10 +138,10 @@ class CashoutData(Base):
     )
     expo_tipout: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
                 WHEN 'expo'::tipout_department = ANY(tipout_departments)
-                THEN total_net_sales * expo_tipout_rate
+                THEN {_EXPO_TIPOUT_SQL}
                 ELSE NULL
             END
         """),
@@ -133,10 +149,10 @@ class CashoutData(Base):
     )
     host_tipout: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
                 WHEN 'host'::tipout_department = ANY(tipout_departments)
-                THEN total_net_sales * host_tipout_rate
+                THEN {_HOST_TIPOUT_SQL}
                 ELSE NULL
             END
         """),
