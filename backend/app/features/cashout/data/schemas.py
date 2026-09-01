@@ -40,8 +40,8 @@ class CashoutDataOut(BaseOut):
     expo_tipout: Decimal | None = None
     host_tipout: Decimal | None = None
 
-    # At most one side is set: whichever way the cash/card-tip balance fell
-    # (neither, on the exact tie).
+    # At most one side is set: whichever way the cash/card-tip balance falls
+    # after adding the selected tipouts (neither, on the exact tie).
     cash_owed_to_house: Decimal | None = None
     cash_owed_to_employee: Decimal | None = None
 

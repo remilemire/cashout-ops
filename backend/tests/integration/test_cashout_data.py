@@ -187,9 +187,95 @@ async def test_completion_takes_its_figures_from_the_touchbistro_report(
     assert row["expoTipout"] is None
     assert row["hostTipout"] is None
 
-    # Card tips (180.00) exceed cash taken (150.00), so the house owes.
-    assert row["cashOwedToEmployee"] == "30.00"
+    # Before tipouts, the house would owe 30.00. The selected 44.00 of
+    # tipouts reverses the balance, so the employee owes the remaining 14.00.
+    assert row["cashOwedToHouse"] == "14.00"
+    assert row["cashOwedToEmployee"] is None
+
+
+async def test_tipouts_reduce_cash_owed_to_employee(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Card tips exceed cash by 30.00, but the selected kitchen tipout consumes
+    # 24.00 of that amount before the house owes the remaining 6.00.
+    await _complete_a_cashout(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        tipout_departments=[TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["kitchenTipout"] == "24.00"
     assert row["cashOwedToHouse"] is None
+    assert row["cashOwedToEmployee"] == "6.00"
+
+
+async def test_tipouts_increase_cash_owed_to_house(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    submission_id = await create_submission(cashier_client)
+    touchbistro, summary = await upload_reconcilable_documents(
+        cashier_client,
+        submission_id,
+        ai_client=ai_client,
+        drain=drain_outbox,
+    )
+    await verify_analysis(
+        cashier_client,
+        touchbistro["id"],
+        {
+            "verifiedData": {
+                **TOUCHBISTRO_EXTRACTED,
+                "cash_payment_total": "200.00",
+            }
+        },
+    )
+    await verify_analysis(cashier_client, summary["id"])
+    await complete_submission(
+        cashier_client,
+        submission_id,
+        tipout_departments=[TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    # Cash exceeds card tips by 20.00; the 24.00 kitchen tipout is also due to
+    # the house, producing a 44.00 final balance.
+    assert row["kitchenTipout"] == "24.00"
+    assert row["cashOwedToHouse"] == "44.00"
+    assert row["cashOwedToEmployee"] is None
+
+
+async def test_cash_balance_is_empty_when_tipouts_make_an_exact_tie(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A 3.75% kitchen rate makes the tipout exactly 30.00, cancelling the
+    # 30.00 that the house would otherwise owe the employee.
+    monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0375"))
+    await _complete_a_cashout(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        tipout_departments=[TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["kitchenTipout"] == "30.00"
+    assert row["cashOwedToHouse"] is None
+    assert row["cashOwedToEmployee"] is None
 
 
 async def test_complete_without_a_touchbistro_report_conflicts(

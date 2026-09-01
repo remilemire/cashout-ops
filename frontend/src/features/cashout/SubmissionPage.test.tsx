@@ -110,7 +110,7 @@ const completedSubmission: CashoutSubmissionDetail = {
     expoTipout: null,
     hostTipout: null,
     cashOwedToHouse: null,
-    cashOwedToEmployee: "30.00",
+    cashOwedToEmployee: "6.00",
     submissionId: "completed-submission",
   },
 };

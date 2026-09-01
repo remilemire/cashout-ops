@@ -263,8 +263,8 @@ export interface CashoutData {
   hostTipout: string | null;
 
   /**
-   * At most one side is set: whichever way the cash/card-tip balance fell
-   * (neither, on the exact tie).
+   * At most one side is set: whichever way the cash/card-tip balance falls
+   * after adding the selected tipouts (neither, on the exact tie).
    */
   cashOwedToHouse: string | null;
   cashOwedToEmployee: string | null;

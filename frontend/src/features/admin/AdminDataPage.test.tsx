@@ -64,7 +64,7 @@ function makeRow(
     expoTipout: null,
     hostTipout: null,
     cashOwedToHouse: null,
-    cashOwedToEmployee: "30.00",
+    cashOwedToEmployee: "6.00",
     // Distinct within the first 8 characters: the table shows a #-prefixed
     // 8-character slice as the link text.
     submissionId: `${id}-0000-0000`,

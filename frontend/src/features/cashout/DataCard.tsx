@@ -46,7 +46,7 @@ export function DataCard({ data }: { data: CashoutData }) {
     { label: "Host", value: data.hostTipout },
   ].filter((tipout) => tipout.value != null);
 
-  // At most one side is set: whichever way the cash/card-tip balance fell.
+  // At most one side is set: the final cash balance after tipouts decides it.
   const balance =
     data.cashOwedToHouse != null
       ? { label: "Cash owed to house", value: data.cashOwedToHouse }

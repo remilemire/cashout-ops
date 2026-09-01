@@ -241,6 +241,93 @@ def test_upgrade_head_reopens_unreconciled_cashouts(migrated_url: str) -> None:
         engine.dispose()
 
 
+def test_upgrade_head_recalculates_cash_balance_with_tipouts(
+    migrated_url: str,
+) -> None:
+    """Existing reconciled rows adopt the tipout-aware cash balance."""
+    _upgrade(migrated_url, "d2b8a4e91c05")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            # The initial migration is kept current for fresh installs, so
+            # recreate the generated expressions an already-applied database
+            # has immediately before this new revision reaches it.
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE cashout_data
+                        DROP COLUMN cash_owed_to_house,
+                        DROP COLUMN cash_owed_to_employee;
+                    ALTER TABLE cashout_data ADD COLUMN cash_owed_to_house
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE
+                                WHEN cash_payment_total > card_tip_total
+                                THEN cash_payment_total - card_tip_total
+                                ELSE NULL
+                            END
+                        ) STORED;
+                    ALTER TABLE cashout_data ADD COLUMN cash_owed_to_employee
+                        numeric(12, 2) GENERATED ALWAYS AS (
+                            CASE
+                                WHEN card_tip_total > cash_payment_total
+                                THEN card_tip_total - cash_payment_total
+                                ELSE NULL
+                            END
+                        ) STORED;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_data
+                        (id, submission_id, food_net_sales, drink_net_sales,
+                         total_net_sales, card_payment_total,
+                         cash_payment_total, card_tip_total,
+                         tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate,
+                         host_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            800.00, 400.00, 1200.00, 1234.56, 150.00, 180.00,
+                            ARRAY['kitchen', 'bar']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        with engine.connect() as conn:
+            before = conn.execute(
+                text(
+                    "SELECT cash_owed_to_house, cash_owed_to_employee FROM cashout_data"
+                )
+            ).one()
+        assert before == (None, 30)
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            after = conn.execute(
+                text(
+                    "SELECT cash_owed_to_house, cash_owed_to_employee FROM cashout_data"
+                )
+            ).one()
+        # The 20.00 bar and 24.00 kitchen tipouts turn a 30.00 employee
+        # receivable into 14.00 owed to the house.
+        assert after == (14, None)
+    finally:
+        engine.dispose()
+
+
 def test_upgrade_head_dedups_live_cashout_days(migrated_url: str) -> None:
     """Same-day live duplicates are soft-deleted before the day becomes unique.
 

@@ -18,6 +18,36 @@ if TYPE_CHECKING:
     from app.features.cashout.submissions.model import CashoutSubmission
 
 
+_TOTAL_TIPOUT_SQL = """
+    (
+        CASE
+            WHEN 'bar'::tipout_department = ANY(tipout_departments)
+            THEN drink_net_sales * bar_tipout_rate
+            ELSE 0
+        END
+        + CASE
+            WHEN 'kitchen'::tipout_department = ANY(tipout_departments)
+            THEN food_net_sales * kitchen_tipout_rate
+            ELSE 0
+        END
+        + CASE
+            WHEN 'expo'::tipout_department = ANY(tipout_departments)
+            THEN total_net_sales * expo_tipout_rate
+            ELSE 0
+        END
+        + CASE
+            WHEN 'host'::tipout_department = ANY(tipout_departments)
+            THEN total_net_sales * host_tipout_rate
+            ELSE 0
+        END
+    )
+"""
+
+_CASH_DUE_TO_HOUSE_SQL = f"""
+    (cash_payment_total - card_tip_total + {_TOTAL_TIPOUT_SQL})
+"""
+
+
 class CashoutData(Base):
     """The reconciled result of a completed cashout.
 
@@ -115,10 +145,10 @@ class CashoutData(Base):
 
     cash_owed_to_house: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
-                WHEN cash_payment_total > card_tip_total
-                THEN cash_payment_total - card_tip_total
+                WHEN {_CASH_DUE_TO_HOUSE_SQL} > 0
+                THEN {_CASH_DUE_TO_HOUSE_SQL}
                 ELSE NULL
             END
         """),
@@ -127,10 +157,10 @@ class CashoutData(Base):
 
     cash_owed_to_employee: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        Computed("""
+        Computed(f"""
             CASE
-                WHEN card_tip_total > cash_payment_total
-                THEN card_tip_total - cash_payment_total
+                WHEN {_CASH_DUE_TO_HOUSE_SQL} < 0
+                THEN -{_CASH_DUE_TO_HOUSE_SQL}
                 ELSE NULL
             END
         """),
