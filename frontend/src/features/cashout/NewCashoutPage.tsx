@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import type { ManualDocumentInput } from "@/api/types";
+import type { CashoutSubmission, ManualDocumentInput } from "@/api/types";
 import { PageHeader, TextField } from "@/components/ui";
 import { formatDateTime, localISODate } from "@/lib/format";
 
@@ -17,7 +17,7 @@ import { SubmissionStatusBadge } from "./status";
 export function NewCashoutPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [submission, setSubmission] = useState<CashoutSubmission | null>(null);
   const [startedAt] = useState(() => new Date().toISOString());
   const [manualOpen, setManualOpen] = useState(false);
   // The day the cashout is for, as a local YYYY-MM-DD string. Defaults to
@@ -27,18 +27,24 @@ export function NewCashoutPage() {
   const [businessDate, setBusinessDate] = useState(today);
 
   // The submission is created lazily with the first document, so an abandoned
-  // page leaves nothing behind; a failed first upload reuses the created id.
+  // page leaves nothing behind. A failed first upload reuses the created one,
+  // re-dated first if the day was changed in the meantime.
   const ensureSubmissionId = async (): Promise<string> => {
-    if (submissionId !== null) return submissionId;
-    const submission = await cashoutApi.createSubmission({
-      // A cleared date input falls back to today.
-      businessDate: businessDate || today,
-    });
-    setSubmissionId(submission.id);
-    void queryClient.invalidateQueries({
-      queryKey: cashoutKeys.submissions,
-    });
-    return submission.id;
+    // A cleared date input falls back to today.
+    const targetDate = businessDate || today;
+    if (submission !== null && submission.businessDate === targetDate) {
+      return submission.id;
+    }
+    const saved =
+      submission === null
+        ? await cashoutApi.createSubmission({ businessDate: targetDate })
+        : await cashoutApi.updateSubmission(submission.id, {
+            businessDate: targetDate,
+          });
+    setSubmission(saved);
+    // The cashier's list shows each cashout's day.
+    void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    return saved.id;
   };
 
   const initialUpload = useMutation({
@@ -97,14 +103,11 @@ export function NewCashoutPage() {
         }
       />
 
-      {/* The chosen day is fixed at creation, which the first upload
-          triggers — once the submission exists the control locks. */}
       <div className="w-44">
         <TextField
           label="Cashout for"
           type="date"
           value={businessDate}
-          disabled={submissionId !== null}
           onChange={(event) => setBusinessDate(event.target.value)}
         />
       </div>

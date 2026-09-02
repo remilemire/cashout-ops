@@ -21,6 +21,7 @@ from .schemas import (
     CashoutSubmissionDetailOut,
     CashoutSubmissionListOut,
     CashoutSubmissionOut,
+    CashoutSubmissionUpdate,
 )
 
 router = APIRouter()
@@ -53,6 +54,35 @@ async def create_submission(
         db,
         user_id=current_user.id,
         business_date=payload.business_date if payload is not None else None,
+    )
+    return CashoutSubmissionOut.model_validate(submission)
+
+
+@router.patch(
+    "/submissions/{submission_id}",
+    response_model=CashoutSubmissionOut,
+    responses=error_responses(
+        "SUBMISSION_NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "SUBMISSION_DUPLICATE_DAY",
+        "VALIDATION_FAILED",
+    ),
+)
+async def update_submission(
+    submission_id: SubmissionId,
+    payload: CashoutSubmissionUpdate,
+    db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CashoutSubmissionOut:
+    """Change the day a cashout is for, while it is still `PROCESSING`.
+
+    The submission's employee or an admin may re-date it right up to
+    completion; a completed cashout is read-only until an admin unsubmits
+    it. One live cashout per business day still applies, so moving onto a
+    day that already has one conflicts.
+    """
+    submission = await submissions_service.update_submission(
+        db, payload=payload, submission_id=submission_id, user=current_user
     )
     return CashoutSubmissionOut.model_validate(submission)
 

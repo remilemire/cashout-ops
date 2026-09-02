@@ -68,7 +68,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
 - Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
-- Cashout domain (create/list/delete submission — at most one live cashout per employee per business day, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
+- Cashout domain (create/list/re-date/delete submission — at most one live cashout per employee per business day, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
 - Cross-document reconciliation on completion: the server summaries' grand totals and transaction counts must add up to the TouchBistro report's card payments and card orders, or completion fails naming what disagrees
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - React 19 SPA: auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (drag-and-drop upload → poll extraction → correct → verify → complete), and admin submissions/data/users views
@@ -330,6 +330,7 @@ Implemented under the `/api` prefix:
 | GET    | `/api/cashout/submissions`                    | session         | 200     | List submissions, newest first — your own as a cashier, everyone's as an admin. |
 | GET    | `/api/cashout/submissions/{id}`               | submitter or admin | 200  | Submission detail with documents (analyses embedded) + data. |
 | DELETE | `/api/cashout/submissions/{id}`               | submitter + CSRF | 204    | Delete a submission unless reconciled cashout data exists.  |
+| PATCH  | `/api/cashout/submissions/{id}`               | submitter + CSRF | 200    | Change the business day of a `PROCESSING` cashout (a second live cashout for the new day conflicts); a completed cashout is read-only until unsubmitted. |
 | POST   | `/api/cashout/submissions/{id}/complete`      | submitter + CSRF | 200    | Reconcile the verified analyses → `COMPLETED`.              |
 | POST   | `/api/cashout/submissions/{id}/unsubmit`      | admin + CSRF     | 200    | Reopen a completed cashout: drops its reconciled data, back to `PROCESSING` (analyses stay verified). |
 | POST   | `/api/cashout/submissions/{id}/documents`     | submitter + CSRF | 201    | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |

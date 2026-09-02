@@ -11,6 +11,7 @@ import type {
   CreateSubmissionInput,
   ExtractDocumentInput,
   ManualDocumentInput,
+  UpdateSubmissionInput,
   VerifyAnalysisInput,
 } from "./types";
 
@@ -22,6 +23,12 @@ export const cashoutApi = {
       method: "POST",
       // A plain "for today" cashout sends no body at all.
       ...(input !== undefined && { json: input }),
+    }),
+  /** Move a processing cashout to another business day. */
+  updateSubmission: (id: string, input: UpdateSubmissionInput) =>
+    api<CashoutSubmission>(`/cashout/submissions/${id}`, {
+      method: "PATCH",
+      json: input,
     }),
   getSubmission: (id: string) =>
     api<CashoutSubmissionDetail>(`/cashout/submissions/${id}`),

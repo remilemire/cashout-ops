@@ -303,6 +303,19 @@ async def unsubmit_submission(
     return response.json()
 
 
+async def update_business_date(
+    client: AsyncClient, submission_id: str, *, business_date: str
+) -> dict[str, Any]:
+    """Move a cashout to another day (YYYY-MM-DD); asserts success."""
+    response = await client.patch(
+        f"/api/cashout/submissions/{submission_id}",
+        json={"businessDate": business_date},
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 __all__ = [
     "MANUAL_ENTRY_DATA",
     "SERVER_SUMMARY_EXTRACTED",
@@ -320,6 +333,7 @@ __all__ = [
     "touchbistro_manual_entry_body",
     "unsubmit_submission",
     "unverify_analysis",
+    "update_business_date",
     "upload_document",
     "upload_manual_document",
     "upload_reconcilable_documents",

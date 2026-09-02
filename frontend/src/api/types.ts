@@ -297,6 +297,11 @@ export interface CreateSubmissionInput {
   businessDate?: string;
 }
 
+export interface UpdateSubmissionInput {
+  /** The day the cashout is for (YYYY-MM-DD). */
+  businessDate: string;
+}
+
 export interface CompleteSubmissionInput {
   /** The departments this cashout tips out to; the rest are left untipped. */
   tipoutDepartments: TipoutDepartment[];

@@ -25,6 +25,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
     cashoutApi: {
       ...actual.cashoutApi,
       createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
       uploadDocument: vi.fn(),
       uploadManualDocument: vi.fn(),
     },
@@ -50,6 +51,7 @@ vi.mock("@/components/dialog", () => ({
 }));
 
 const createSubmissionMock = vi.mocked(cashoutApi.createSubmission);
+const updateSubmissionMock = vi.mocked(cashoutApi.updateSubmission);
 const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
 const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
 
@@ -130,9 +132,20 @@ function renderPage() {
 
 beforeEach(() => {
   createSubmissionMock.mockReset();
+  updateSubmissionMock.mockReset();
   uploadDocumentMock.mockReset();
   uploadManualDocumentMock.mockReset();
-  createSubmissionMock.mockResolvedValue(submission);
+  // Echo the requested day: a retry compares the created submission's day
+  // against the picker, and the fixture's fixed day would otherwise differ
+  // from today and trigger a spurious re-date.
+  createSubmissionMock.mockImplementation(async (input) => ({
+    ...submission,
+    businessDate: input?.businessDate ?? localToday(),
+  }));
+  updateSubmissionMock.mockImplementation(async (_id, input) => ({
+    ...submission,
+    businessDate: input.businessDate,
+  }));
   uploadDocumentMock.mockResolvedValue(analysis);
   uploadManualDocumentMock.mockResolvedValue({
     ...analysis,
@@ -214,7 +227,59 @@ describe("NewCashoutPage", () => {
     expect(await screen.findByText("Cashout detail")).toBeDefined();
 
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
+    expect(updateSubmissionMock).not.toHaveBeenCalled();
     expect(uploadDocumentMock).toHaveBeenCalledTimes(2);
+    expect(uploadDocumentMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
+  });
+
+  it("keeps the date editable after a failed first upload", async () => {
+    // The submission exists now, but its day stays open until completion.
+    uploadDocumentMock.mockRejectedValueOnce(
+      new ApiError(500, {
+        kind: "INTERNAL",
+        code: "INTERNAL",
+        message: "Upload failed.",
+      }),
+    );
+    renderPage();
+
+    fireEvent.drop(screen.getByLabelText("Upload a document"), {
+      dataTransfer: { files: [pdf] },
+    });
+    expect(await screen.findByText("Upload failed.")).toBeDefined();
+
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Cashout for"),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("re-dates the created submission when the day changes before the retry", async () => {
+    uploadDocumentMock.mockRejectedValueOnce(
+      new ApiError(500, {
+        kind: "INTERNAL",
+        code: "INTERNAL",
+        message: "Upload failed.",
+      }),
+    );
+    renderPage();
+
+    fireEvent.drop(screen.getByLabelText("Upload a document"), {
+      dataTransfer: { files: [pdf] },
+    });
+    expect(await screen.findByText("Upload failed.")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("Cashout for"), {
+      target: { value: "2026-08-20" },
+    });
+    fireEvent.drop(screen.getByLabelText("Upload a document"), {
+      dataTransfer: { files: [pdf] },
+    });
+    expect(await screen.findByText("Cashout detail")).toBeDefined();
+
+    expect(createSubmissionMock).toHaveBeenCalledTimes(1);
+    expect(updateSubmissionMock).toHaveBeenCalledWith("submission-1", {
+      businessDate: "2026-08-20",
+    });
     expect(uploadDocumentMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
   });
 

@@ -26,6 +26,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
     cashoutApi: {
       ...actual.cashoutApi,
       getSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
       unsubmitSubmission: vi.fn(),
       completeSubmission: vi.fn(),
       uploadManualDocument: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock("@/components/dialog", () => ({
 }));
 
 const getSubmissionMock = vi.mocked(cashoutApi.getSubmission);
+const updateSubmissionMock = vi.mocked(cashoutApi.updateSubmission);
 const unsubmitSubmissionMock = vi.mocked(cashoutApi.unsubmitSubmission);
 const completeSubmissionMock = vi.mocked(cashoutApi.completeSubmission);
 const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
@@ -185,12 +187,17 @@ function mockViewer(user: User) {
 
 beforeEach(() => {
   getSubmissionMock.mockReset();
+  updateSubmissionMock.mockReset();
   unsubmitSubmissionMock.mockReset();
   completeSubmissionMock.mockReset();
   uploadManualDocumentMock.mockReset();
   useAuthMock.mockReset();
   scrollToMock.mockClear();
   getSubmissionMock.mockResolvedValue(completedSubmission);
+  updateSubmissionMock.mockResolvedValue({
+    ...verifiedSubmission,
+    businessDate: "2026-07-14",
+  });
   unsubmitSubmissionMock.mockResolvedValue({
     ...completedSubmission,
     status: "processing",
@@ -459,5 +466,116 @@ describe("SubmissionPage", () => {
     expect(
       await screen.findByText("Only a completed cashout can be unsubmitted."),
     ).toBeDefined();
+  });
+
+  it("lets the cashier change the business date while processing", async () => {
+    mockViewer(employee);
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    renderPage();
+
+    const field = await screen.findByLabelText<HTMLInputElement>("Cashout for");
+    expect(field).toHaveProperty("disabled", false);
+    expect(field).toHaveProperty("value", "2026-07-15");
+    // Saving is explicit, and only offered once the day actually differs.
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+
+    fireEvent.change(field, { target: { value: "2026-07-14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(updateSubmissionMock).toHaveBeenCalledWith(
+        "completed-submission",
+        { businessDate: "2026-07-14" },
+      ),
+    );
+    // The saved day is re-read rather than trusted from the response.
+    await waitFor(() => expect(getSubmissionMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("locks the business date on a completed cashout", async () => {
+    mockViewer(employee);
+    renderPage(); // completed submission
+
+    const field = await screen.findByLabelText<HTMLInputElement>("Cashout for");
+    expect(field).toHaveProperty("disabled", true);
+    expect(field).toHaveProperty("value", "2026-07-15");
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+
+    fireEvent.change(field, { target: { value: "2026-07-14" } });
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("unlocks the business date after an unsubmit", async () => {
+    // beforeEach signs the admin in — only an admin can unsubmit.
+    getSubmissionMock
+      .mockResolvedValueOnce(completedSubmission)
+      .mockResolvedValue({
+        ...completedSubmission,
+        status: "processing",
+        completedByUserId: null,
+        data: null,
+      });
+    renderPage();
+
+    expect(
+      await screen.findByLabelText<HTMLInputElement>("Cashout for"),
+    ).toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unsubmit" }));
+    const dialog = screen.getByRole("dialog", { name: "Unsubmit cashout?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unsubmit" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLInputElement>("Cashout for"),
+      ).toHaveProperty("disabled", false),
+    );
+  });
+
+  it("shows the duplicate-day conflict when the new date is taken", async () => {
+    mockViewer(employee);
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    updateSubmissionMock.mockRejectedValueOnce(
+      new ApiError(409, {
+        kind: "CONFLICT",
+        code: "SUBMISSION_DUPLICATE_DAY",
+        message: "A cashout for this day already exists.",
+      }),
+    );
+    renderPage();
+
+    const field = await screen.findByLabelText<HTMLInputElement>("Cashout for");
+    fireEvent.change(field, { target: { value: "2026-07-14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("A cashout for this day already exists."),
+    ).toBeDefined();
+    // The rejected draft stays put so the cashier can pick another day.
+    expect(field).toHaveProperty("value", "2026-07-14");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDefined();
+
+    // Discarding the draft takes the stale conflict with it.
+    fireEvent.click(screen.getByRole("button", { name: "Revert" }));
+    expect(field).toHaveProperty("value", "2026-07-15");
+    await waitFor(() =>
+      expect(
+        screen.queryByText("A cashout for this day already exists."),
+      ).toBeNull(),
+    );
+  });
+
+  it("reverts the draft", async () => {
+    mockViewer(employee);
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    renderPage();
+
+    const field = await screen.findByLabelText<HTMLInputElement>("Cashout for");
+    fireEvent.change(field, { target: { value: "2026-07-14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Revert" }));
+
+    expect(field).toHaveProperty("value", "2026-07-15");
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(updateSubmissionMock).not.toHaveBeenCalled();
   });
 });

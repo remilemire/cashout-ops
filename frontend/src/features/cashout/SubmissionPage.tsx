@@ -23,9 +23,10 @@ import {
   ErrorBanner,
   FullScreenSpinner,
   PageHeader,
+  TextField,
 } from "@/components/ui";
 import { cx } from "@/lib/cx";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 import { DataCard } from "./DataCard";
 import { DocumentCard } from "./DocumentCard";
@@ -127,6 +128,19 @@ export function SubmissionPage() {
     onError: refreshIfGone,
   });
 
+  const updateDate = useMutation({
+    mutationFn: (businessDate: string) =>
+      cashoutApi.updateSubmission(submissionId, { businessDate }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: cashoutKeys.submission(submissionId),
+      });
+      // The cashier's list renders "For {date}".
+      void queryClient.invalidateQueries({ queryKey: cashoutKeys.submissions });
+    },
+    onError: refreshIfGone,
+  });
+
   const submission = detailQuery.data;
   const isAdminUser = user != null && isAdminRole(user.role);
   if (detailQuery.isLoading) return <FullScreenSpinner />;
@@ -211,8 +225,8 @@ export function SubmissionPage() {
         title={`Cashout — ${formatDateTime(submission.submittedAt)}`}
         subtitle={
           isAdminView
-            ? `For ${formatDate(submission.businessDate)} · Submitted by ${submission.employee.fullName} (${submission.employee.email})`
-            : `For ${formatDate(submission.businessDate)}`
+            ? `Submitted by ${submission.employee.fullName} (${submission.employee.email})`
+            : undefined
         }
         action={
           <div className="flex items-center gap-2">
@@ -224,6 +238,18 @@ export function SubmissionPage() {
             <SubmissionStatusBadge status={submission.status} />
           </div>
         }
+      />
+
+      <BusinessDateField
+        // Keyed by the saved day so the draft resets whenever it changes —
+        // after a save, an unsubmit, or a refetch — but survives a failed save.
+        key={submission.businessDate}
+        value={submission.businessDate}
+        editable={editable}
+        pending={updateDate.isPending}
+        error={updateDate.error}
+        onSave={(businessDate) => updateDate.mutate(businessDate)}
+        onRevert={() => updateDate.reset()}
       />
 
       {submission.status === "completed" && (
@@ -446,5 +472,72 @@ function CompletePrompt({
       <ErrorBanner error={error} />
       {hint != null && <p className="text-ink-muted text-xs">{hint}</p>}
     </Card>
+  );
+}
+
+/**
+ * The same "Cashout for" control as the new-cashout page, live until the
+ * cashout is completed (an unsubmit reopens it). Saving is explicit rather
+ * than on change: a date input emits intermediate values while a year is
+ * typed, and each one would otherwise become a request.
+ */
+function BusinessDateField({
+  value,
+  editable,
+  pending,
+  error,
+  onSave,
+  onRevert,
+}: {
+  /** The saved day (YYYY-MM-DD). */
+  value: string;
+  editable: boolean;
+  pending: boolean;
+  error: unknown;
+  onSave: (businessDate: string) => void;
+  /** The draft was discarded; a stale save error should go with it. */
+  onRevert: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const dirty = draft !== "" && draft !== value;
+  const revert = () => {
+    setDraft(value);
+    onRevert();
+  };
+
+  return (
+    <div className="space-y-2">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (dirty) onSave(draft);
+        }}
+      >
+        <div className="w-44">
+          <TextField
+            label="Cashout for"
+            type="date"
+            value={draft}
+            disabled={!editable}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") revert();
+            }}
+          />
+        </div>
+        {editable && dirty && (
+          <>
+            <Button type="submit" size="sm" loading={pending}>
+              Save
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={revert}>
+              Revert
+            </Button>
+          </>
+        )}
+      </form>
+      <ErrorBanner error={error} />
+    </div>
   );
 }

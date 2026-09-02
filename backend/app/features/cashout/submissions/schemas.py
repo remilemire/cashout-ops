@@ -44,6 +44,11 @@ class CashoutSubmissionCreate(BaseIn):
     business_date: date | None = None
 
 
+class CashoutSubmissionUpdate(BaseIn):
+    # Required: unlike creation there is no "today" default to fall back on.
+    business_date: date
+
+
 class CashoutSubmissionComplete(BaseIn):
     tipout_departments: set[TipoutDepartment]
 
@@ -53,5 +58,6 @@ __all__ = [
     "CashoutSubmissionDetailOut",
     "CashoutSubmissionListOut",
     "CashoutSubmissionOut",
+    "CashoutSubmissionUpdate",
     "CashoutSubmissionComplete",
 ]

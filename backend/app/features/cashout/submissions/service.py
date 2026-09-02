@@ -18,7 +18,7 @@ from app.integrations.storage import DocumentStorageClient
 
 from . import repository
 from .model import CashoutSubmission
-from .schemas import CashoutSubmissionComplete
+from .schemas import CashoutSubmissionComplete, CashoutSubmissionUpdate
 from .types import CashoutSubmissionStatus
 
 
@@ -40,6 +40,37 @@ async def create_submission(
         business_date=business_date if business_date is not None else date.today(),
     )
     await repository.add_submission(db, submission)
+
+    return submission
+
+
+async def update_submission(
+    db: AsyncSession,
+    *,
+    payload: CashoutSubmissionUpdate,
+    submission_id: UUID,
+    user: User,
+) -> CashoutSubmission:
+    """Move a cashout to another business day.
+
+    Editable for as long as the cashout is PROCESSING — an unsubmit reopens
+    it — by its employee or an admin. At most one live cashout per employee
+    per day still holds: the partial unique index rejects an occupied day
+    when the request's transaction commits, and the integrity translator
+    turns it into SUBMISSION_DUPLICATE_DAY (the session is function-scoped,
+    so that commit still answers the request). Re-saving the same day is a
+    no-op.
+    """
+    submission = await _get_submission_for_actor(
+        db, submission_id=submission_id, actor=user
+    )
+    if submission.status is not CashoutSubmissionStatus.PROCESSING:
+        raise AppError(
+            "SUBMISSION_COMPLETED",
+            "A completed cashout's business date cannot be changed.",
+        )
+
+    submission.business_date = payload.business_date
 
     return submission
 
@@ -204,6 +235,7 @@ async def _get_submission_for_actor(
 
 __all__ = [
     "create_submission",
+    "update_submission",
     "delete_submission",
     "get_submission",
     "list_submissions",

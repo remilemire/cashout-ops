@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -23,6 +23,7 @@ from tests.support.cashout import (
     prepare_completable_submission,
     unsubmit_submission,
     unverify_analysis,
+    update_business_date,
     upload_document,
     upload_reconcilable_documents,
     verify_analysis,
@@ -444,6 +445,251 @@ async def test_create_submission_without_body_defaults_business_date(
     detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     assert detail.status_code == 200, detail.text
     assert detail.json()["businessDate"] == date.today().isoformat()
+
+
+# ================================
+# -------- Business date ---------
+# ================================
+
+
+async def test_update_business_date_after_upload(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The first upload used to lock the day. A cashier who picked the wrong
+    # day can now fix it with documents already in.
+    configure_server_summary(ai_client)
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+
+    updated = await update_business_date(
+        cashier_client, submission_id, business_date="2026-08-28"
+    )
+
+    assert updated["businessDate"] == "2026-08-28"
+    assert updated["status"] == CashoutSubmissionStatus.PROCESSING.value
+    # Stored, not merely echoed: detail and list both read the new day.
+    detail = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["businessDate"] == "2026-08-28"
+    (listed,) = (await cashier_client.get("/api/cashout/submissions")).json()
+    assert listed["id"] == submission_id
+    assert listed["businessDate"] == "2026-08-28"
+
+
+async def test_admin_updates_another_users_business_date(
+    cashier_client: AsyncClient, admin_client: AsyncClient
+) -> None:
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+
+    updated = await update_business_date(
+        admin_client, submission_id, business_date="2026-08-28"
+    )
+
+    assert updated["businessDate"] == "2026-08-28"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["businessDate"] == "2026-08-28"
+
+
+async def test_update_business_date_requires_employee_or_admin(
+    cashier_client: AsyncClient, make_client: ClientFactory
+) -> None:
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+
+    # Plain staff cannot re-date someone else's cashout.
+    other = await make_client(email="other@test.com")
+    response = await other.patch(
+        f"/api/cashout/submissions/{submission_id}",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(other),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["businessDate"] == "2026-08-27"
+
+
+async def test_update_business_date_on_completed_conflicts(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Completion locks the cashout, business date included: the reconciled
+    # data row reads its day through the submission, so it must not shift
+    # underneath the admin data table.
+    submission_id = await prepare_completable_submission(
+        cashier_client,
+        ai_client=ai_client,
+        drain=drain_outbox,
+        business_date="2026-08-27",
+    )
+    await complete_submission(cashier_client, submission_id)
+
+    response = await cashier_client.patch(
+        f"/api/cashout/submissions/{submission_id}",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_COMPLETED"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["businessDate"] == "2026-08-27"
+    assert detail["status"] == CashoutSubmissionStatus.COMPLETED.value
+
+
+async def test_update_business_date_to_occupied_day_conflicts(
+    cashier_client: AsyncClient,
+) -> None:
+    # One live cashout per business day holds for moves too: the partial
+    # unique index that rejects a duplicate creation rejects the UPDATE when
+    # the request commits, and surfaces as the same clean 409.
+    first = await create_submission(cashier_client, business_date="2026-08-27")
+    await create_submission(cashier_client, business_date="2026-08-28")
+
+    response = await cashier_client.patch(
+        f"/api/cashout/submissions/{first}",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SUBMISSION_DUPLICATE_DAY"
+    detail = (await cashier_client.get(f"/api/cashout/submissions/{first}")).json()
+    assert detail["businessDate"] == "2026-08-27"
+
+
+async def test_update_business_date_vacates_the_old_day(
+    cashier_client: AsyncClient,
+) -> None:
+    # Moving a cashout off a day frees it for a new one.
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+    await update_business_date(
+        cashier_client, submission_id, business_date="2026-08-28"
+    )
+
+    replacement = await create_submission(cashier_client, business_date="2026-08-27")
+
+    assert replacement != submission_id
+
+
+async def test_update_business_date_to_same_day_is_noop(
+    cashier_client: AsyncClient,
+) -> None:
+    # Re-saving the current day must not trip the unique index on itself.
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+
+    updated = await update_business_date(
+        cashier_client, submission_id, business_date="2026-08-27"
+    )
+
+    assert updated["businessDate"] == "2026-08-27"
+    assert updated["status"] == CashoutSubmissionStatus.PROCESSING.value
+
+
+async def test_unsubmit_restores_business_date_editing(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Editability keys on PROCESSING, which an unsubmit restores: the date is
+    # locked while completed, open again afterwards, and the re-completed
+    # data row reports the corrected day.
+    submission_id = await prepare_completable_submission(
+        cashier_client,
+        ai_client=ai_client,
+        drain=drain_outbox,
+        business_date="2026-08-27",
+    )
+    await complete_submission(cashier_client, submission_id)
+
+    locked = await cashier_client.patch(
+        f"/api/cashout/submissions/{submission_id}",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+    assert locked.status_code == 409
+    assert locked.json()["code"] == "SUBMISSION_COMPLETED"
+
+    await unsubmit_submission(admin_client, submission_id)
+    updated = await update_business_date(
+        cashier_client, submission_id, business_date="2026-08-28"
+    )
+    assert updated["businessDate"] == "2026-08-28"
+
+    await complete_submission(cashier_client, submission_id)
+    rows = (await admin_client.get("/api/cashout/data")).json()
+    (row,) = [r for r in rows if r["submission"]["id"] == submission_id]
+    assert row["submission"]["businessDate"] == "2026-08-28"
+
+
+async def test_update_business_date_rejects_missing_null_or_malformed(
+    cashier_client: AsyncClient,
+) -> None:
+    # Unlike creation there is no "today" to fall back on: the body must name
+    # the day.
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+
+    for body in ({}, {"businessDate": None}, {"businessDate": "not-a-date"}):
+        response = await cashier_client.patch(
+            f"/api/cashout/submissions/{submission_id}",
+            json=body,
+            headers=csrf_headers(cashier_client),
+        )
+
+        assert response.status_code == 422, response.text
+        payload = response.json()
+        assert payload["code"] == "VALIDATION_FAILED"
+        assert [issue["path"] for issue in payload["issues"]] == [["businessDate"]]
+
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["businessDate"] == "2026-08-27"
+
+
+async def test_update_business_date_rejects_other_fields(
+    cashier_client: AsyncClient,
+) -> None:
+    submission_id = await create_submission(cashier_client, business_date="2026-08-27")
+
+    response = await cashier_client.patch(
+        f"/api/cashout/submissions/{submission_id}",
+        json={"businessDate": "2026-08-28", "status": "completed"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    # BaseIn forbids extras: the endpoint re-dates and nothing else — in
+    # particular it cannot complete the cashout.
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_FAILED"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
+    assert detail["businessDate"] == "2026-08-27"
+
+
+async def test_update_unknown_submission_not_found(
+    cashier_client: AsyncClient,
+) -> None:
+    response = await cashier_client.patch(
+        f"/api/cashout/submissions/{uuid4()}",
+        json={"businessDate": "2026-08-28"},
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "SUBMISSION_NOT_FOUND"
 
 
 async def test_complete_requires_every_analysis_verified(
