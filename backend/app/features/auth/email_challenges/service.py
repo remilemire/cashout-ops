@@ -35,16 +35,19 @@ if TYPE_CHECKING:
 MAX_CODE_ATTEMPTS = 5
 
 
-def _pointer_hash(email: str) -> str:
-    """The address as it is keyed in Redis: digested, keeping it out of key names.
+def email_key(email: str) -> str:
+    """The address as it is keyed in Redis: lowercased, then digested.
 
-    Not a confidentiality measure — an address is low-entropy enough to
-    recover from its digest, and the challenge value holds the plaintext
-    anyway. It keeps addresses out of the surfaces that expose key names but
-    not values (SCAN, MONITOR, the slowlog, per-key metrics).
+    The single normalization rule for address-keyed Redis state, used by the
+    challenge pointer here and by the per-email rate limiter in
+    `dependencies.py`. Both must agree: were the lowercasing to drift between
+    them, casing variants of one address would silently split across two
+    rate-limit buckets instead of sharing one.
 
-    Lowercased before hashing, matching the per-email rate limiter, so casing
-    variants of one address share a pointer.
+    Digesting is not a confidentiality measure — an address is low-entropy
+    enough to recover from its digest, and the challenge value holds the
+    plaintext anyway. It keeps addresses out of the surfaces that expose key
+    names but not values (SCAN, MONITOR, the slowlog, per-key metrics).
     """
     return hash_identifier(email.lower())
 
@@ -75,7 +78,7 @@ async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
     # request, which is acceptable — worst case a rolled-back initiate
     # destroyed a previous challenge the user had already abandoned by
     # re-initiating.
-    email_hash = _pointer_hash(email)
+    email_hash = email_key(email)
     previous_challenge_id = await store.find_challenge_id_for_email(
         redis, email_hash=email_hash
     )
@@ -132,7 +135,7 @@ async def consume_code(
             await store.delete(redis, challenge_id=challenge_id)
             await store.clear_email_pointer(
                 redis,
-                email_hash=_pointer_hash(challenge.email),
+                email_hash=email_key(challenge.email),
                 challenge_id=challenge_id,
             )
         raise AppError("EMAIL_CHALLENGE_INVALID")
@@ -142,7 +145,7 @@ async def consume_code(
     if not await store.delete(redis, challenge_id=challenge_id):
         raise AppError("EMAIL_CHALLENGE_INVALID")
     await store.clear_email_pointer(
-        redis, email_hash=_pointer_hash(challenge.email), challenge_id=challenge_id
+        redis, email_hash=email_key(challenge.email), challenge_id=challenge_id
     )
 
     user = await accounts.resolve(db, email=challenge.email)
@@ -156,4 +159,4 @@ async def consume_code(
     return user
 
 
-__all__ = ["initiate", "consume_code"]
+__all__ = ["email_key", "initiate", "consume_code"]

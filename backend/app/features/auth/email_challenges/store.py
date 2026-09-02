@@ -11,9 +11,10 @@
   initiation find and destroy the address's previous challenge. Keyed by
   address rather than user id so it also covers the bootstrap owner address
   before its account exists, and by the address's digest to keep addresses
-  out of key names (the service digests, as it does for the rate limiter).
-  That is not confidentiality — the challenge value under the adjacent
-  key holds the plaintext address, which is what the code is emailed to.
+  out of key names (`service.email_key` owns that rule, and the per-email
+  rate limiter keys on the same helper). That is not confidentiality — the
+  challenge value under the adjacent key holds the plaintext address, which
+  is what the code is emailed to.
 - ``email_challenge_attempts:{challenge_id}`` is a server-atomic counter of
   code attempts with the same TTL; keeping it outside the challenge JSON is
   what makes the guess cap hold under concurrent requests.
@@ -51,8 +52,8 @@ async def save(
     """Store the challenge and point its address at it.
 
     `email_hash` is passed in rather than derived from `challenge.email`
-    because hashing belongs to the service; the address stays in the value,
-    where it is needed to email the code and resolve the account.
+    because `service.email_key` owns that rule; the address stays in the
+    value, where it is needed to email the code and resolve the account.
     """
     ttl = timedelta(minutes=settings.auth.CHALLENGE_TTL_MINUTES)
     await redis.set(_challenge_key(challenge_id), challenge.model_dump_json(), ex=ttl)

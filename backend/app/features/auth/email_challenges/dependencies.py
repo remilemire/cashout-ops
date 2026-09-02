@@ -24,11 +24,11 @@ from fastapi import Depends, Request
 from app.core.config import settings
 from app.infrastructure.redis import Redis
 from app.infrastructure.redis.dependencies import get_redis
-from app.security.crypto import hash_identifier
 from app.security.rate_limit import client_ip, enforce
 from app.security.time_floor import time_floor
 
 from .schemas import EmailChallengeStart
+from .service import email_key
 
 _HOUR = timedelta(hours=1)
 
@@ -57,14 +57,14 @@ async def rate_limit_initiate_email(
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> None:
     """Cap challenge initiations per email address."""
-    # Keyed on the digested, lowercased address BEFORE any user lookup, so
-    # real and unknown emails 429 identically (no enumeration signal). The
-    # digest keeps the address out of key names rather than concealing it;
-    # see `hash_identifier`.
+    # Keyed BEFORE any user lookup, so real and unknown emails 429 identically
+    # (no enumeration signal). `email_key` is shared with the challenge
+    # pointer so one address cannot end up spread over two buckets by a
+    # normalization difference.
     await enforce(
         redis,
         scope="auth_initiate_email",
-        identifier=hash_identifier(payload.email.lower()),
+        identifier=email_key(payload.email),
         limit=settings.rate_limit.INITIATE_EMAIL_PER_HOUR,
         window=_HOUR,
     )

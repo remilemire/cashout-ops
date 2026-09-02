@@ -71,8 +71,8 @@ async def test_initiate_per_email_is_limited_with_retry_after(
     assert retry_after.isdigit()
     assert 0 < int(retry_after) <= 3600
 
-    # The counter key exists, holds only the address's hash — never the raw
-    # email (no PII in Redis keys) — and expires with the window.
+    # The counter key exists, holds only the address's digest — never the raw
+    # email, keeping addresses out of key names — and expires with the window.
     [key] = await redis_keys(redis_client, "rate_limit:auth_initiate_email:*")
     assert all(CASHIER_EMAIL not in k for k in await redis_keys(redis_client, "*"))
     ttl = int(await redis_client.ttl(key))
@@ -80,6 +80,31 @@ async def test_initiate_per_email_is_limited_with_retry_after(
 
     # The limit is keyed per email: a different address still initiates.
     await _initiate(client, email="someone-else@test.com")
+
+
+async def test_initiate_per_email_limit_ignores_address_casing(
+    client: AsyncClient,
+    redis_client: Redis,
+) -> None:
+    # `service.email_key` lowercases before digesting, and the limiter keys on
+    # that same helper, so casing variants of one address spend a single
+    # budget. Were the two to normalize differently, varying the case would
+    # multiply the allowance. No user row is needed: the limiter runs before
+    # any lookup.
+    variants = ["nobody@test.com", "NOBODY@test.com", "NoBody@test.com"]
+
+    for i in range(settings.rate_limit.INITIATE_EMAIL_PER_HOUR):
+        await _initiate(client, email=variants[i % len(variants)])
+
+    # One bucket, not three.
+    assert len(await redis_keys(redis_client, "rate_limit:auth_initiate_email:*")) == 1
+
+    response = await client.post(
+        "/api/auth/email-challenges", json={"email": "NOBODY@TEST.COM"}
+    )
+
+    assert response.status_code == 429, response.text
+    assert response.json()["code"] == RATE_LIMITED_CODE
 
 
 async def test_initiate_limit_is_enumeration_safe(client: AsyncClient) -> None:
