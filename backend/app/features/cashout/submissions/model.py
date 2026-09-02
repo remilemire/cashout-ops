@@ -102,8 +102,15 @@ class CashoutSubmission(Base):
         foreign_keys="CashoutSubmission.employee_user_id"
     )
 
+    # Upload order, oldest first, so every consumer sees a stable list: with
+    # no ORDER BY, Postgres returns the rows in physical order, which an
+    # update to a row can change — and the cashier's document cards reshuffle
+    # under them. The id breaks a tie between two documents written in the
+    # same transaction, so the order is total.
     documents: Mapped[list[CashoutDocument]] = relationship(
-        back_populates="cashout_submission", cascade="all, delete-orphan"
+        back_populates="cashout_submission",
+        cascade="all, delete-orphan",
+        order_by="(CashoutDocument.created_at, CashoutDocument.id)",
     )
     data: Mapped[CashoutData | None] = relationship(
         back_populates="submission", passive_deletes="all"

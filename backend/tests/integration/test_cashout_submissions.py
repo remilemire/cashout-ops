@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 from httpx import AsyncClient
@@ -45,6 +45,33 @@ async def test_list_submissions_scoped_by_role(
 
     admin_list = (await admin_client.get("/api/cashout/submissions")).json()
     assert {s["id"] for s in admin_list} == {mine, theirs}
+
+
+async def test_submission_detail_lists_documents_oldest_first(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+    db_session: AsyncSession,
+) -> None:
+    submission_id = await create_submission(cashier_client)
+    first, second = await upload_reconcilable_documents(
+        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
+    )
+
+    # Backdate the second upload, so creation order is the reverse of
+    # insertion order and only a real ORDER BY can tell them apart.
+    document = await db_session.get(CashoutDocument, UUID(second["cashoutDocumentId"]))
+    assert document is not None
+    document.created_at = datetime(2026, 7, 1, tzinfo=UTC)
+    await db_session.commit()
+
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert [document["id"] for document in detail["documents"]] == [
+        second["cashoutDocumentId"],
+        first["cashoutDocumentId"],
+    ]
 
 
 async def test_delete_empty_processing_submission(

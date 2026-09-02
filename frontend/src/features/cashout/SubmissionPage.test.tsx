@@ -381,6 +381,37 @@ describe("SubmissionPage", () => {
     );
   });
 
+  it("renders the document cards oldest-first, whatever order they arrive in", async () => {
+    // A re-extracted or re-verified document can come back in a different
+    // position; the cards must not reshuffle under the cashier.
+    const first = verifiedSubmission.documents[0]!;
+    const second = {
+      ...first,
+      id: "document-2",
+      createdAt: "2026-07-16T03:00:00Z",
+      originalFilename: "server-summary.pdf",
+      analysis: {
+        ...first.analysis!,
+        id: "analysis-2",
+        cashoutDocumentId: "document-2",
+      },
+    };
+    getSubmissionMock.mockResolvedValue({
+      ...verifiedSubmission,
+      documents: [second, first],
+    });
+    renderPage();
+
+    await screen.findByText(first.originalFilename);
+    const filenames = screen
+      .getAllByText(/\.pdf$/)
+      .map((element) => element.textContent);
+    expect(filenames).toEqual([
+      first.originalFilename,
+      second.originalFilename,
+    ]);
+  });
+
   it("hides manual entry on a completed cashout", async () => {
     renderPage(); // completed submission: no upload zone at all
 

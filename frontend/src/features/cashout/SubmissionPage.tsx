@@ -9,6 +9,7 @@ import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { ApiError, isNotFound } from "@/api/client";
 import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
 import type {
+  CashoutDocument,
   ErrorCode,
   ManualDocumentInput,
   TipoutDepartment,
@@ -179,7 +180,7 @@ export function SubmissionPage() {
   // Only an admin can reopen a completed cashout — never the employee alone.
   const canUnsubmit =
     user != null && isAdminRole(user.role) && submission.status === "completed";
-  const documents = submission.documents;
+  const documents = inUploadOrder(submission.documents);
   const verifiedCount = documents.filter(
     (doc) => doc.analysis?.status === "verified",
   ).length;
@@ -341,6 +342,21 @@ export function SubmissionPage() {
         Completing it again will regenerate the data.
       </ConfirmDialog>
     </div>
+  );
+}
+
+/**
+ * The documents oldest-first. The detail payload carries them in no
+ * guaranteed order, and a document whose analysis was just re-extracted or
+ * verified can come back in a different position — which reshuffles the cards
+ * under the cashier mid-verification. Ids break a tie between two documents
+ * created in the same instant, so the order is total.
+ */
+function inUploadOrder(documents: CashoutDocument[]): CashoutDocument[] {
+  return [...documents].sort(
+    (a, b) =>
+      Date.parse(a.createdAt) - Date.parse(b.createdAt) ||
+      a.id.localeCompare(b.id),
   );
 }
 
