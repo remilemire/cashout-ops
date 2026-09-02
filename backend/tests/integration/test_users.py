@@ -112,6 +112,32 @@ async def test_create_user_duplicate_email_conflicts(
     assert response.json()["code"] == "EMAIL_TAKEN"
 
 
+async def test_create_user_normalizes_email_casing(
+    admin_client: AsyncClient,
+) -> None:
+    # Mailboxes are case-insensitive: the address is stored folded, so the
+    # casing an admin happens to type never becomes a second account.
+    created = await admin_client.post(
+        "/api/users",
+        json={"email": "Mixed.Case@Test.com", "fullName": "Mixed Case"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert created.status_code == 201, created.text
+    assert created.json()["email"] == "mixed.case@test.com"
+
+    # A different casing of the same mailbox is the same account, not a free
+    # second one — the unique index sees one folded string.
+    response = await admin_client.post(
+        "/api/users",
+        json={"email": "MIXED.CASE@test.com", "fullName": "Twin"},
+        headers=csrf_headers(admin_client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "EMAIL_TAKEN"
+
+
 async def test_create_user_requires_admin(cashier_client: AsyncClient) -> None:
     response = await cashier_client.post(
         "/api/users",

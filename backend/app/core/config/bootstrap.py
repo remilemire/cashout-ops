@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import EmailStr
 from pydantic_settings import SettingsConfigDict
+
+from app.core.schemas import NormalizedEmail
 
 from .base import SettingsGroup
 
@@ -13,7 +14,9 @@ class BootstrapSettings(SettingsGroup):
 
     model_config = SettingsConfigDict(env_prefix="BOOTSTRAP_")
 
-    OWNER_EMAIL: EmailStr = "owner@test.com"
+    # Normalized like every other address, so a deployment that configures
+    # Owner@Example.com still matches the owner's sign-in.
+    OWNER_EMAIL: NormalizedEmail = "owner@test.com"
     # Full name given to the OWNER_EMAIL account when its first proven
     # sign-in bootstraps it as the owner. No registration form supplies one,
     # and an issuer-supplied profile name is deliberately not used, so the

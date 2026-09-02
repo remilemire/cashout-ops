@@ -14,6 +14,7 @@ from app.core.config import (
     AISettings,
     AppSettings,
     AuthSettings,
+    BootstrapSettings,
     EmailSettings,
     Settings,
     StorageSettings,
@@ -213,6 +214,15 @@ def test_google_oauth_credentials_may_both_be_absent() -> None:
     config = AuthSettings(GOOGLE_CLIENT_ID=None, GOOGLE_CLIENT_SECRET=None)
 
     assert config.GOOGLE_CLIENT_ID is None
+
+
+def test_the_bootstrap_owner_address_is_normalized() -> None:
+    # The owner is recognized by comparing this value against a signed-in
+    # address, and stored addresses are folded — so a deployment that
+    # configures mixed case must not lock itself out of its own bootstrap.
+    config = BootstrapSettings(OWNER_EMAIL="Owner@Example.COM")
+
+    assert config.OWNER_EMAIL == "owner@example.com"
 
 
 def test_debug_follows_the_environment() -> None:

@@ -47,7 +47,8 @@ async def _initiate_and_deliver(
     """Start a challenge and deliver its code email; (challenge_id, code)."""
     challenge_id = await _initiate(client, email=email)
     await drain_outbox()
-    return challenge_id, email_client.latest_code(to=email)
+    # The recipient is the folded address, whatever casing was posted.
+    return challenge_id, email_client.latest_code(to=email.lower())
 
 
 # ================================
@@ -142,6 +143,35 @@ async def test_start_login_for_owner_is_not_a_decoy(
     assert email.to == settings.bootstrap.OWNER_EMAIL
     [key] = await redis_keys(redis_client, "email_challenge:*")
     assert key == f"email_challenge:{challenge_id}"
+
+
+async def test_start_login_matches_the_account_whatever_the_casing(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email_client: FakeEmailClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    """A casing variant signs in to the account, rather than reading as unknown.
+
+    The user lookup compares stored strings, so before addresses were folded
+    on the way in this took the decoy branch: a neutral 202, no code emailed,
+    and no way for the person to tell why their login never arrived.
+    """
+    await create_user(db_session, email=CASHIER_EMAIL)
+
+    challenge_id, code = await _initiate_and_deliver(
+        client, drain_outbox, email_client, email="CASHIER@Test.com"
+    )
+
+    # A real challenge, not a decoy: the code was emailed to the folded
+    # address, and it completes the sign-in.
+    response = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": challenge_id, "code": code},
+    )
+
+    assert response.status_code == 200, response.text
+    assert (await client.get("/api/users/me")).json()["email"] == CASHIER_EMAIL
 
 
 async def test_second_initiate_invalidates_previous_challenge(

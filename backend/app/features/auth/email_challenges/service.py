@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.schemas import normalize_email
 from app.errors import AppError
 from app.features.auth.shared import accounts
 from app.features.users import service as users_service
@@ -36,20 +37,22 @@ MAX_CODE_ATTEMPTS = 5
 
 
 def email_key(email: str) -> str:
-    """The address as it is keyed in Redis: lowercased, then digested.
+    """The address as it is keyed in Redis: normalized, then digested.
 
-    The single normalization rule for address-keyed Redis state, used by the
-    challenge pointer here and by the per-email rate limiter in
-    `dependencies.py`. Both must agree: were the lowercasing to drift between
-    them, casing variants of one address would silently split across two
-    rate-limit buckets instead of sharing one.
+    Used by the challenge pointer here and by the per-email rate limiter in
+    `dependencies.py`; both must agree, or casing variants of one address
+    would split across two rate-limit buckets instead of sharing one.
+    `normalize_email` is the same rule the users table is keyed on, so the
+    Redis pointer and the account it stands for cannot disagree about which
+    mailbox they mean. It is applied again here rather than assumed, since
+    this helper also runs on an address read back out of Redis.
 
     Digesting is not a confidentiality measure — an address is low-entropy
     enough to recover from its digest, and the challenge value holds the
     plaintext anyway. It keeps addresses out of the surfaces that expose key
     names but not values (SCAN, MONITOR, the slowlog, per-key metrics).
     """
-    return hash_identifier(email.lower())
+    return hash_identifier(normalize_email(email))
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:

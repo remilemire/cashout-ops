@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from pydantic import EmailStr, Field
+from pydantic import Field
 
-from app.core.schemas import BaseIn, BaseOut
+from app.core.schemas import BaseIn, BaseOut, NormalizedEmail
 
 
 class EmailChallengeStart(BaseIn):
-    email: EmailStr
+    # Normalized here, so the address reaches the rate limiter, the user
+    # lookup, and the stored challenge in one agreed form.
+    email: NormalizedEmail
 
 
 class EmailChallengeStartOut(BaseOut):

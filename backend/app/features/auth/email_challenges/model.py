@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+
+from app.core.schemas import NormalizedEmail
 
 
 class StoredEmailChallenge(BaseModel):
@@ -18,7 +20,7 @@ class StoredEmailChallenge(BaseModel):
     counter inside this JSON would be a racy read-modify-write.
     """
 
-    email: EmailStr
+    email: NormalizedEmail
     code_hash: str | None = None
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, PlainSerializer
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, PlainSerializer
 
 from app.lib.casing import snake_to_camel
 
@@ -20,6 +20,28 @@ def _serialize_utc(value: datetime) -> str:
 UtcDateTime = Annotated[
     datetime, PlainSerializer(_serialize_utc, return_type=str, when_used="json")
 ]
+
+
+def normalize_email(email: str) -> str:
+    """An address in the one form the system stores and compares it in.
+
+    Mailboxes are treated as case-insensitive: RFC 5321 leaves the local part
+    case-sensitive in principle, but no provider in practice does, so letting
+    `Foo@x.com` and `foo@x.com` become two accounts is account confusion, not
+    a feature. Pydantic already lowercases the domain; this lowercases the
+    local part too.
+
+    Applied wherever an address enters the system — request bodies, the
+    bootstrap setting, an issuer's verified claim — so nothing downstream has
+    to remember to: the users table holds normalized values, its unique index
+    enforces one account per mailbox, and every `==` lookup compares forms
+    that already agree.
+    """
+    return email.lower()
+
+
+# Use in place of EmailStr on anything that accepts an address from outside.
+NormalizedEmail = Annotated[EmailStr, AfterValidator(normalize_email)]
 
 
 class BaseOut(BaseModel):
@@ -38,4 +60,4 @@ class BaseIn(BaseModel):
     )
 
 
-__all__ = ["UtcDateTime", "BaseOut", "BaseIn"]
+__all__ = ["NormalizedEmail", "UtcDateTime", "BaseOut", "BaseIn", "normalize_email"]

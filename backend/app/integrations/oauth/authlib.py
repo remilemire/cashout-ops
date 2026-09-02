@@ -9,6 +9,8 @@ from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.starlette_client import OAuth, StarletteOAuth2App
 from joserfc.errors import JoseError
 
+from app.core.schemas import normalize_email
+
 from .errors import OAuthExchangeError
 from .issuers import OAuthIssuer
 from .types import OAuthAuthorization, OAuthIdentity, OAuthToken
@@ -116,12 +118,15 @@ class AuthlibOAuthClient:
         if not subject:
             raise OAuthExchangeError(f"The {issuer} ID token is missing 'sub'.")
 
+        # The issuer's claim is normalized at this boundary rather than at its
+        # use sites, so an issuer that echoes the address in the casing the
+        # user typed still resolves to the one local account.
         email = userinfo.get("email")
         name = userinfo.get("name")
         return OAuthIdentity(
             issuer=issuer,
             subject=str(subject),
-            email=str(email) if email is not None else None,
+            email=normalize_email(str(email)) if email is not None else None,
             email_verified=bool(userinfo.get("email_verified", False)),
             name=str(name) if name is not None else None,
         )
