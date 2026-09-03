@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ProgrammingError
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -42,18 +43,22 @@ def migrated_url(postgres_url: str) -> Iterator[str]:
         admin.dispose()
 
 
-def _upgrade(url: str, revision: str) -> None:
+def _alembic(url: str, *args: str) -> None:
     # A subprocess, not the alembic API: env.py calls load_dotenv() and
     # reconfigures logging, neither of which may leak into this process (the
     # hermetic settings tests depend on the environment staying untouched).
     result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", revision],
+        [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND_DIR,
         env={**os.environ, "DATABASE_URL": url},
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _upgrade(url: str, revision: str) -> None:
+    _alembic(url, "upgrade", revision)
 
 
 def _enum_values(url: str, name: str) -> set[str]:
@@ -588,5 +593,138 @@ def test_upgrade_head_stamps_existing_extractions_at_version_one(
             "55555555-5555-5555-5555-555555555555": 1,
             "66666666-6666-6666-6666-666666666666": None,
         }
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_creates_reporting_view(migrated_url: str) -> None:
+    """`upgrade head` publishes the reconciled cashouts to the reporting view.
+
+    `reporting.cashout_data` mirrors the admin "Cashout data" table for the
+    management Google Sheet, whose login role reads it as a member of
+    `reporting_reader` — a role that sees the view and nothing else.
+    """
+    # The last revision before the reporting view.
+    _upgrade(migrated_url, "9d3e5f81a2c4")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-08-10');
+                    INSERT INTO cashout_data
+                        (id, submission_id, food_net_sales, drink_net_sales,
+                         total_net_sales, card_payment_total,
+                         cash_payment_total, card_tip_total,
+                         tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate,
+                         host_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            800.00, 400.00, 1200.00, 1234.56, 150.00, 180.00,
+                            ARRAY['kitchen']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT display_order, employee_name, business_date,"
+                    " kitchen_tipout, bar_tipout, expo_tipout, host_tipout,"
+                    " cash_owed_to_house, cash_owed_to_employee"
+                    " FROM reporting.cashout_data"
+                )
+            ).one()
+        # The sheet's nine columns, by position. The 24.00 kitchen tipout
+        # (3% of 800.00 food) turns the 30.00 cash shortfall into 6.00 owed
+        # to the employee; the business day is the API's ISO text, not a
+        # date, and the money is numbers, not numeric-as-text.
+        assert row == (1, "Cashier", "2026-08-10", 24.0, None, None, None, None, 6.0)
+    finally:
+        engine.dispose()
+
+    # AUTOCOMMIT: the denied statement must not abort a transaction the
+    # other assertions share.
+    reader = create_engine(migrated_url, isolation_level="AUTOCOMMIT")
+    try:
+        with reader.connect() as conn:
+            conn.execute(text("SET ROLE reporting_reader"))
+            assert (
+                conn.execute(
+                    text("SELECT count(*) FROM reporting.cashout_data")
+                ).scalar_one()
+                == 1
+            )
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                conn.execute(text("SELECT * FROM public.cashout_data"))
+    finally:
+        reader.dispose()
+
+
+def test_reporting_view_survives_downgrade_and_reupgrade(
+    migrated_url: str,
+) -> None:
+    """Downgrading removes the view but keeps the role; upgrading again
+    rebuilds the view and its grant around that existing role.
+
+    The role is cluster-wide and carries the sheet's login role as a member,
+    so it must outlive the schema — and the upgrade must cope with finding it
+    already there.
+    """
+    _upgrade(migrated_url, "head")
+    _alembic(migrated_url, "downgrade", "9d3e5f81a2c4")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text("SELECT count(*) FROM pg_views WHERE schemaname = 'reporting'")
+                ).scalar_one()
+                == 0
+            )
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM pg_roles WHERE rolname = 'reporting_reader'"
+                    )
+                ).scalar_one()
+                == 1
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM pg_views"
+                        " WHERE schemaname = 'reporting' AND viewname = 'cashout_data'"
+                    )
+                ).scalar_one()
+                == 1
+            )
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT has_table_privilege('reporting_reader',"
+                        " 'reporting.cashout_data', 'SELECT')"
+                    )
+                ).scalar_one()
+                is True
+            )
     finally:
         engine.dispose()

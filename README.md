@@ -68,6 +68,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
 - Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Read-only reporting view `reporting.cashout_data` (the admin cashout data table, for spreadsheet consumers) and the `reporting_reader` role that may read it, both maintained by the migration chain
 - Cashout domain (create/list/re-date/delete submission — at most one live cashout per employee per business day, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
 - Cross-document reconciliation on completion: the server summaries' grand totals and transaction counts must add up to the TouchBistro report's card payments and card orders, or completion fails naming what disagrees
 - AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
@@ -87,7 +88,7 @@ These are designed but not yet finished in code. Tracked here so the gap between
 
 **Admin flow** — the cashout-data view filters by employee and business day; date-*range* filtering, editing submitted data, and discrepancy investigation are still to come.
 
-**Reporting** — Excel/CSV/PDF/Google Sheets export, plus Power Query consumption of the Postgres data as the live reporting surface for management.
+**Reporting** — the `reporting.cashout_data` view feeds a management Google Sheet today, and the admin data table exports CSV; Excel/PDF export and Power Query consumption of the Postgres data are still to come.
 
 ## Project structure
 
@@ -238,6 +239,14 @@ make backend-migrate                    # uv run alembic upgrade head
 make backend-revision MESSAGE="…"       # autogenerate a new revision
 cd backend && uv run alembic downgrade -1  # revert one
 ```
+
+Migrations also own a reporting surface: `reporting.cashout_data`, a read-only view of the admin cashout data table for spreadsheet consumers (the management Google Sheet), and `reporting_reader`, a `NOLOGIN` role that may read it and nothing else. The sheet's login role is created once by hand as a member of that group:
+
+```sql
+CREATE ROLE cashout_sheet_reader LOGIN PASSWORD '…' IN ROLE reporting_reader;
+```
+
+Postgres refuses to drop a column a view reads, so a migration that rebuilds one of the view's columns drops and recreates the view around the change — [migrations/views.py](backend/migrations/views.py) has the rule.
 
 ## Running the app
 
