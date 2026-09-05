@@ -25,8 +25,9 @@ def _round_for_house_sql(expression: str) -> str:
 
 _BAR_TIPOUT_SQL = _round_for_house_sql("drink_net_sales * bar_tipout_rate")
 _KITCHEN_TIPOUT_SQL = _round_for_house_sql("food_net_sales * kitchen_tipout_rate")
-_EXPO_TIPOUT_SQL = _round_for_house_sql("total_net_sales * expo_tipout_rate")
+_EXPO_TIPOUT_SQL = _round_for_house_sql("food_net_sales * expo_tipout_rate")
 _HOST_TIPOUT_SQL = _round_for_house_sql("total_net_sales * host_tipout_rate")
+_MANAGER_TIPOUT_SQL = _round_for_house_sql("total_net_sales * manager_tipout_rate")
 
 _TOTAL_TIPOUT_SQL = """
     (
@@ -50,12 +51,18 @@ _TOTAL_TIPOUT_SQL = """
             THEN {host_tipout}
             ELSE 0
         END
+        + CASE
+            WHEN 'manager'::tipout_department = ANY(tipout_departments)
+            THEN {manager_tipout}
+            ELSE 0
+        END
     )
 """.format(
     bar_tipout=_BAR_TIPOUT_SQL,
     kitchen_tipout=_KITCHEN_TIPOUT_SQL,
     expo_tipout=_EXPO_TIPOUT_SQL,
     host_tipout=_HOST_TIPOUT_SQL,
+    manager_tipout=_MANAGER_TIPOUT_SQL,
 )
 
 _UNROUNDED_CASH_DUE_TO_HOUSE_SQL = f"""
@@ -104,9 +111,10 @@ class CashoutData(Base):
     cash_payment_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     card_tip_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
-    # User-selected business inputs: which departments this cashout tips
-    # out to. A department left out keeps its tipout column null, so this
-    # list and those columns say the same thing two ways.
+    # Which departments this cashout tips out to: the cashier's selection
+    # plus the manager, which service.reconcile adds to every cashout. A
+    # department left out keeps its tipout column null, so this list and
+    # those columns say the same thing two ways.
     tipout_departments: Mapped[list[TipoutDepartment]] = mapped_column(
         ARRAY(enum_column(TipoutDepartment, "tipout_department")),
         nullable=False,
@@ -158,6 +166,17 @@ class CashoutData(Base):
         """),
         nullable=True,
     )
+    manager_tipout: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        Computed(f"""
+            CASE
+                WHEN 'manager'::tipout_department = ANY(tipout_departments)
+                THEN {_MANAGER_TIPOUT_SQL}
+                ELSE NULL
+            END
+        """),
+        nullable=True,
+    )
 
     cash_owed_to_house: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
@@ -183,7 +202,7 @@ class CashoutData(Base):
         nullable=True,
     )
 
-    # Tipout-rate snapshots: the rates in force when this cashout closed,
+    # Tipout-rate snapshots: the five rates in force when this cashout closed,
     # copied off settings.tipout so a later rate change cannot restate it.
     #
     # Numeric(6, 4), not (12, 2): these are fractions of sales, not amounts, so
@@ -192,5 +211,6 @@ class CashoutData(Base):
     kitchen_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
     expo_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
     host_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    manager_tipout_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
 
     submission: Mapped[CashoutSubmission] = relationship(back_populates="data")

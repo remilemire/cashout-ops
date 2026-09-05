@@ -240,8 +240,10 @@ async def complete_submission(
 ) -> dict[str, Any]:
     """Close out a cashout, tipping out to `tipout_departments`.
 
-    The default picks two of the four so the unselected ones stay NULL, which
-    is what records that they were not tipped out.
+    The default picks two of the four selectable departments so the unselected
+    ones stay NULL, which is what records that they were not tipped out. The
+    manager is not selected here or anywhere: reconciliation adds it to every
+    cashout.
     """
     response = await client.post(
         f"/api/cashout/submissions/{submission_id}/complete",

@@ -13,6 +13,7 @@ export const MONEY_COLUMNS = [
   { key: "barTipout", label: "Bar tipout" },
   { key: "expoTipout", label: "Expo tipout" },
   { key: "hostTipout", label: "Host tipout" },
+  { key: "managerTipout", label: "Manager tipout" },
   { key: "cashOwedToHouse", label: "Owed to house" },
   { key: "cashOwedToEmployee", label: "Owed to employee" },
 ] as const satisfies readonly { key: keyof CashoutDataRow; label: string }[];
@@ -57,6 +58,7 @@ export function columnTotals(
     barTipout: sumMoney(rows.map((row) => row.barTipout)),
     expoTipout: sumMoney(rows.map((row) => row.expoTipout)),
     hostTipout: sumMoney(rows.map((row) => row.hostTipout)),
+    managerTipout: sumMoney(rows.map((row) => row.managerTipout)),
     cashOwedToHouse: sumMoney(rows.map((row) => row.cashOwedToHouse)),
     cashOwedToEmployee: sumMoney(rows.map((row) => row.cashOwedToEmployee)),
   };

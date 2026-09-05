@@ -44,15 +44,17 @@ function makeRow(
     cardPaymentTotal: "1234.56",
     cashPaymentTotal: "150.00",
     cardTipTotal: "180.00",
-    tipoutDepartments: ["kitchen"],
+    tipoutDepartments: ["kitchen", "manager"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",
     expoTipoutRate: "0.0100",
     hostTipoutRate: "0.0100",
+    managerTipoutRate: "0.0100",
     barTipout: null,
     kitchenTipout: null,
     expoTipout: null,
     hostTipout: null,
+    managerTipout: null,
     cashOwedToHouse: null,
     cashOwedToEmployee: null,
     ...money,
@@ -96,8 +98,16 @@ describe("sumMoney", () => {
 describe("columnTotals", () => {
   it("totals every money column, null where no row has a value", () => {
     const rows = [
-      makeRow("row-1", { kitchenTipout: "24.00", cashOwedToEmployee: "6.00" }),
-      makeRow("row-2", { kitchenTipout: "18.10", barTipout: "5.00" }),
+      makeRow("row-1", {
+        kitchenTipout: "24.00",
+        managerTipout: "12.00",
+        cashOwedToEmployee: "6.00",
+      }),
+      makeRow("row-2", {
+        kitchenTipout: "18.10",
+        barTipout: "5.00",
+        managerTipout: "9.50",
+      }),
       makeRow("row-3", {
         kitchenTipout: "0.20",
         barTipout: "2.25",
@@ -110,6 +120,7 @@ describe("columnTotals", () => {
       barTipout: "7.25",
       expoTipout: null,
       hostTipout: null,
+      managerTipout: "21.50",
       cashOwedToHouse: "3.00",
       cashOwedToEmployee: "6.00",
     });
@@ -121,6 +132,7 @@ describe("columnTotals", () => {
       barTipout: null,
       expoTipout: null,
       hostTipout: null,
+      managerTipout: null,
       cashOwedToHouse: null,
       cashOwedToEmployee: null,
     });
@@ -142,13 +154,18 @@ describe("csvRows", () => {
     "Bar tipout",
     "Expo tipout",
     "Host tipout",
+    "Manager tipout",
     "Owed to house",
     "Owed to employee",
   ];
 
   it("lays out header, one row per data row, then the totals", () => {
     const rows = [
-      makeRow("row-1", { kitchenTipout: "24.00", cashOwedToEmployee: "6.00" }),
+      makeRow("row-1", {
+        kitchenTipout: "24.00",
+        managerTipout: "12.00",
+        cashOwedToEmployee: "6.00",
+      }),
       makeRow(
         "row-2",
         { kitchenTipout: "18.10", barTipout: "5.00", cashOwedToHouse: "3.00" },
@@ -168,6 +185,7 @@ describe("csvRows", () => {
         "",
         "",
         "",
+        "12.00",
         "",
         "6.00",
       ],
@@ -179,17 +197,18 @@ describe("csvRows", () => {
         "5.00",
         "",
         "",
+        "",
         "3.00",
         "",
       ],
-      ["Total", "", "", "42.10", "5.00", "", "", "3.00", "6.00"],
+      ["Total", "", "", "42.10", "5.00", "", "", "12.00", "3.00", "6.00"],
     ]);
   });
 
   it("is header plus an all-blank totals row over no rows", () => {
     expect(csvRows([])).toEqual([
       header,
-      ["Total", "", "", "", "", "", "", "", ""],
+      ["Total", "", "", "", "", "", "", "", "", ""],
     ]);
   });
 });

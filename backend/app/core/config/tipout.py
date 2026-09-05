@@ -12,8 +12,11 @@ from .base import SettingsGroup
 class TipoutSettings(SettingsGroup):
     """Per-department tipout rates, as a fraction of the sales they apply to.
 
-    0.05 is 5%. The bar tips out on drink sales, the kitchen on food sales,
-    expo and host on total sales — see the generated columns on `cashout_data`.
+    0.05 is 5%. The bar tips out on drink sales, the kitchen and expo on food
+    sales, host and manager on total sales — see the generated columns on
+    `cashout_data`. The manager tips out on every cashout: the cashier picks
+    the other departments, and reconciliation adds the manager regardless (see
+    features/cashout/data/service.py::reconcile).
 
     These are the rates *currently* in force. Completion copies them onto the
     row it writes, so changing one here only ever affects cashouts closed after
@@ -29,6 +32,9 @@ class TipoutSettings(SettingsGroup):
     KITCHEN_RATE: Decimal = Decimal("0.0300")
     EXPO_RATE: Decimal = Decimal("0.0100")
     HOST_RATE: Decimal = Decimal("0.0100")
+
+    # The specified rate, not a placeholder: 1% of total net sales.
+    MANAGER_RATE: Decimal = Decimal("0.0100")
 
 
 __all__ = ["TipoutSettings"]

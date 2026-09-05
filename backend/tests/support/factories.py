@@ -42,7 +42,9 @@ def build_cashout_data(
 
     The rates are what reconcile snapshots off settings; the source figures
     are the TouchBistro report a reconciled row is built from, and are NOT
-    NULL, so a row cannot be built without them.
+    NULL, so a row cannot be built without them. The default department list
+    is what reconcile writes for a kitchen-only selection: the manager is on
+    every row.
     """
     return CashoutData(
         submission_id=submission_id,
@@ -52,11 +54,13 @@ def build_cashout_data(
         card_payment_total=Decimal("1234.56"),
         cash_payment_total=Decimal("150.00"),
         card_tip_total=Decimal("180.00"),
-        tipout_departments=tipout_departments or [TipoutDepartment.KITCHEN],
+        tipout_departments=tipout_departments
+        or [TipoutDepartment.KITCHEN, TipoutDepartment.MANAGER],
         bar_tipout_rate=Decimal("0.0500"),
         kitchen_tipout_rate=Decimal("0.0300"),
         expo_tipout_rate=Decimal("0.0100"),
         host_tipout_rate=Decimal("0.0100"),
+        manager_tipout_rate=Decimal("0.0100"),
     )
 
 

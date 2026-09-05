@@ -10,7 +10,8 @@ as a member of that group.
 The view is a migration-managed object (see migrations/views.py): Postgres
 refuses to drop a column a view reads, so a later migration that rebuilds one
 of the columns below must drop the view first and recreate it afterwards, via
-`view_defined_in("9b2f6e1d4a73", "cashout_data_view")`.
+`view_defined_in(<revision>, "cashout_data_view")` naming the revision that
+last defined it — this one until b8e1d47c5a92 redefined the view.
 
 Revision ID: 9b2f6e1d4a73
 Revises: 9d3e5f81a2c4

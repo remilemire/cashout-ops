@@ -10,6 +10,9 @@ class TipoutDepartment(StrEnum):
     KITCHEN = "kitchen"
     EXPO = "expo"
     HOST = "host"
+    # Not selectable: reconciliation adds the manager to every cashout (see
+    # data/service.py::reconcile).
+    MANAGER = "manager"
 
 
 __all__ = ["TipoutDepartment"]

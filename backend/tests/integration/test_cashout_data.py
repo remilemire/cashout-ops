@@ -120,7 +120,51 @@ async def test_completion_records_the_selected_tipout_departments(
 
     (row,) = (await admin_client.get("/api/cashout/data")).json()
 
-    assert row["tipoutDepartments"] == ["bar", "expo"]
+    # The selection, sorted, plus the manager reconciliation adds.
+    assert row["tipoutDepartments"] == ["bar", "expo", "manager"]
+
+
+async def test_manager_is_always_tipped_out(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # The cashier picks the other departments; the manager is not a choice.
+    # With nothing selected the manager still tips out — 1% of the 1200.00
+    # total — which is all that reduces the 30.00 the house owes.
+    await _complete_a_cashout(
+        cashier_client, ai_client, drain_outbox, tipout_departments=[]
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["tipoutDepartments"] == ["manager"]
+    assert row["managerTipout"] == "12.00"
+    assert row["barTipout"] is None
+    assert row["kitchenTipout"] is None
+    assert row["expoTipout"] is None
+    assert row["hostTipout"] is None
+    assert row["cashOwedToHouse"] is None
+    assert row["cashOwedToEmployee"] == "18.00"
+
+
+async def test_naming_the_manager_is_accepted_and_not_duplicated(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    await _complete_a_cashout(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        tipout_departments=[TipoutDepartment.MANAGER, TipoutDepartment.KITCHEN],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["tipoutDepartments"] == ["kitchen", "manager"]
 
 
 async def test_completion_snapshots_the_configured_rates(
@@ -132,7 +176,9 @@ async def test_completion_snapshots_the_configured_rates(
 ) -> None:
     # A cashout closes against the rates in force at that moment, so the row
     # keeps its own copy rather than reading the configured value back later.
+    # The manager's rate is configured and snapshotted like the others.
     monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0350"))
+    monkeypatch.setattr(settings.tipout, "MANAGER_RATE", Decimal("0.0150"))
 
     await _complete_a_cashout(
         cashier_client,
@@ -143,12 +189,18 @@ async def test_completion_snapshots_the_configured_rates(
 
     (row,) = (await admin_client.get("/api/cashout/data")).json()
     assert row["kitchenTipoutRate"] == "0.0350"
+    assert row["managerTipoutRate"] == "0.0150"
+    # 1200.00 * 0.0150
+    assert row["managerTipout"] == "18.00"
 
-    # Changing the rate afterwards must not restate the closed cashout.
+    # Changing the rates afterwards must not restate the closed cashout.
     monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.9900"))
+    monkeypatch.setattr(settings.tipout, "MANAGER_RATE", Decimal("0.9900"))
 
     (unchanged,) = (await admin_client.get("/api/cashout/data")).json()
     assert unchanged["kitchenTipoutRate"] == "0.0350"
+    assert unchanged["managerTipoutRate"] == "0.0150"
+    assert unchanged["managerTipout"] == "18.00"
 
 
 async def test_data_rows_carry_their_submission_identity(
@@ -210,15 +262,42 @@ async def test_completion_takes_its_figures_from_the_touchbistro_report(
     assert row["cashPaymentTotal"] == "150.00"
     assert row["cardTipTotal"] == "180.00"
 
-    # 400.00 * 0.0500 and 800.00 * 0.0300; the untipped departments stay null.
+    # 400.00 * 0.0500 and 800.00 * 0.0300; the manager's 1200.00 * 0.0100 is
+    # on every cashout; the unselected departments stay null.
     assert row["barTipout"] == "20.00"
     assert row["kitchenTipout"] == "24.00"
+    assert row["managerTipout"] == "12.00"
     assert row["expoTipout"] is None
     assert row["hostTipout"] is None
 
-    # Before tipouts, the house would owe 30.00. The selected 44.00 of
-    # tipouts reverses the balance, so the employee owes the remaining 14.00.
-    assert row["cashOwedToHouse"] == "14.00"
+    # Before tipouts, the house would owe 30.00. The 56.00 of tipouts
+    # reverses the balance, so the employee owes the remaining 26.00.
+    assert row["cashOwedToHouse"] == "26.00"
+    assert row["cashOwedToEmployee"] is None
+
+
+async def test_expo_tips_out_on_food_sales(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Expo and host share a 1% rate but not a base: expo takes it on the
+    # 800.00 of food, host on the 1200.00 total.
+    await _complete_a_cashout(
+        cashier_client,
+        ai_client,
+        drain_outbox,
+        tipout_departments=[TipoutDepartment.EXPO, TipoutDepartment.HOST],
+    )
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+
+    assert row["expoTipout"] == "8.00"
+    assert row["hostTipout"] == "12.00"
+    assert row["managerTipout"] == "12.00"
+    # 32.00 of tipouts against the 30.00 the house owed: 2.00 due to the house.
+    assert row["cashOwedToHouse"] == "2.00"
     assert row["cashOwedToEmployee"] is None
 
 
@@ -230,8 +309,9 @@ async def test_fractional_tipout_and_house_balance_round_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # 800.01 * 3.75% is 30.000375. The source figure remains exactly what the
-    # report said, while the calculated tipout becomes 30.01. Against the
-    # 30.00 card-tip deficit, that leaves one cent due to the house.
+    # report said, while the calculated tipout becomes 30.01. With the 12.00
+    # manager tipout, that leaves 12.01 due to the house against the 30.00
+    # card-tip deficit — the one cent of rounding included.
     monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0375"))
     await _complete_with_touchbistro_overrides(
         cashier_client,
@@ -245,7 +325,7 @@ async def test_fractional_tipout_and_house_balance_round_up(
 
     assert row["foodNetSales"] == "800.01"
     assert row["kitchenTipout"] == "30.01"
-    assert row["cashOwedToHouse"] == "0.01"
+    assert row["cashOwedToHouse"] == "12.01"
     assert row["cashOwedToEmployee"] is None
 
 
@@ -255,8 +335,9 @@ async def test_each_department_rounds_before_the_final_balance(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Bar is 5.0005 and kitchen is 24.0003. Rounding each line produces 29.02;
-    # rounding their unrounded 29.0008 total only once would produce 29.01.
+    # Bar is 5.0005 and kitchen is 24.0003 (the manager's 12.00 is exact).
+    # Rounding each line produces 41.02 of tipouts and 11.02 due to the house;
+    # rounding the unrounded 41.0008 total only once would produce 11.01.
     await _complete_with_touchbistro_overrides(
         cashier_client,
         ai_client,
@@ -272,8 +353,8 @@ async def test_each_department_rounds_before_the_final_balance(
 
     assert row["barTipout"] == "5.01"
     assert row["kitchenTipout"] == "24.01"
-    assert row["cashOwedToHouse"] is None
-    assert row["cashOwedToEmployee"] == "0.98"
+    assert row["cashOwedToHouse"] == "11.02"
+    assert row["cashOwedToEmployee"] is None
 
 
 async def test_tipouts_reduce_cash_owed_to_employee(
@@ -282,20 +363,21 @@ async def test_tipouts_reduce_cash_owed_to_employee(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # Card tips exceed cash by 30.00, but the selected kitchen tipout consumes
-    # 24.00 of that amount before the house owes the remaining 6.00.
+    # Card tips exceed cash by 30.00, but the 8.00 expo and 12.00 manager
+    # tipouts consume 20.00 of that before the house owes the remaining 10.00.
     await _complete_a_cashout(
         cashier_client,
         ai_client,
         drain_outbox,
-        tipout_departments=[TipoutDepartment.KITCHEN],
+        tipout_departments=[TipoutDepartment.EXPO],
     )
 
     (row,) = (await admin_client.get("/api/cashout/data")).json()
 
-    assert row["kitchenTipout"] == "24.00"
+    assert row["expoTipout"] == "8.00"
+    assert row["managerTipout"] == "12.00"
     assert row["cashOwedToHouse"] is None
-    assert row["cashOwedToEmployee"] == "6.00"
+    assert row["cashOwedToEmployee"] == "10.00"
 
 
 async def test_tipouts_increase_cash_owed_to_house(
@@ -330,10 +412,11 @@ async def test_tipouts_increase_cash_owed_to_house(
 
     (row,) = (await admin_client.get("/api/cashout/data")).json()
 
-    # Cash exceeds card tips by 20.00; the 24.00 kitchen tipout is also due to
-    # the house, producing a 44.00 final balance.
+    # Cash exceeds card tips by 20.00; the 24.00 kitchen and 12.00 manager
+    # tipouts are also due to the house, producing a 56.00 final balance.
     assert row["kitchenTipout"] == "24.00"
-    assert row["cashOwedToHouse"] == "44.00"
+    assert row["managerTipout"] == "12.00"
+    assert row["cashOwedToHouse"] == "56.00"
     assert row["cashOwedToEmployee"] is None
 
 
@@ -344,9 +427,10 @@ async def test_cash_balance_is_empty_when_tipouts_make_an_exact_tie(
     drain_outbox: OutboxDrain,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A 3.75% kitchen rate makes the tipout exactly 30.00, cancelling the
-    # 30.00 that the house would otherwise owe the employee.
-    monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0375"))
+    # A 2.25% kitchen rate makes that tipout exactly 18.00, which with the
+    # 12.00 manager tipout cancels the 30.00 that the house would otherwise
+    # owe the employee.
+    monkeypatch.setattr(settings.tipout, "KITCHEN_RATE", Decimal("0.0225"))
     await _complete_a_cashout(
         cashier_client,
         ai_client,
@@ -356,7 +440,8 @@ async def test_cash_balance_is_empty_when_tipouts_make_an_exact_tie(
 
     (row,) = (await admin_client.get("/api/cashout/data")).json()
 
-    assert row["kitchenTipout"] == "30.00"
+    assert row["kitchenTipout"] == "18.00"
+    assert row["managerTipout"] == "12.00"
     assert row["cashOwedToHouse"] is None
     assert row["cashOwedToEmployee"] is None
 

@@ -50,6 +50,8 @@ class CashoutSubmissionUpdate(BaseIn):
 
 
 class CashoutSubmissionComplete(BaseIn):
+    # The cashier's selection. Reconciliation adds the manager regardless, so
+    # naming it here is allowed but never required.
     tipout_departments: set[TipoutDepartment]
 
 

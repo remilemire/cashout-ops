@@ -219,9 +219,13 @@ export interface CashoutDocument {
   analysis: CashoutDocumentAnalysis | null;
 }
 
-export type TipoutDepartment = "bar" | "kitchen" | "expo" | "host";
+export type TipoutDepartment = "bar" | "kitchen" | "expo" | "host" | "manager";
 
-export const TIPOUT_DEPARTMENTS: TipoutDepartment[] = [
+/**
+ * The departments a cashier can tip out to. The manager is not among them:
+ * the server adds the manager to every completion, so there is no checkbox.
+ */
+export const SELECTABLE_TIPOUT_DEPARTMENTS: TipoutDepartment[] = [
   "bar",
   "kitchen",
   "expo",
@@ -246,7 +250,8 @@ export interface CashoutData {
   cardTipTotal: string;
 
   /**
-   * Which departments this cashout tipped out to, and the rates it closed
+   * Which departments this cashout tipped out to (the cashier's selection
+   * plus the manager, who is on every cashout), and the rates it closed
    * against. The rates are the row's own snapshot, so a later rate change
    * never restates a cashout that has already closed.
    */
@@ -255,16 +260,18 @@ export interface CashoutData {
   kitchenTipoutRate: string;
   expoTipoutRate: string;
   hostTipoutRate: string;
+  managerTipoutRate: string;
 
   /** Null for a department that was not tipped out. */
   barTipout: string | null;
   kitchenTipout: string | null;
   expoTipout: string | null;
   hostTipout: string | null;
+  managerTipout: string | null;
 
   /**
    * At most one side is set: whichever way the cash/card-tip balance falls
-   * after adding the selected tipouts (neither, on the exact tie).
+   * after adding the tipouts (neither, on the exact tie).
    */
   cashOwedToHouse: string | null;
   cashOwedToEmployee: string | null;
@@ -303,7 +310,10 @@ export interface UpdateSubmissionInput {
 }
 
 export interface CompleteSubmissionInput {
-  /** The departments this cashout tips out to; the rest are left untipped. */
+  /**
+   * The cashier's selection; the rest are left untipped. The server adds the
+   * manager to every completion, so naming it is allowed but never needed.
+   */
   tipoutDepartments: TipoutDepartment[];
 }
 

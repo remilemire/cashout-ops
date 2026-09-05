@@ -11,6 +11,7 @@ const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
   kitchen: "Kitchen",
   expo: "Expo",
   host: "Host",
+  manager: "Manager",
 };
 
 /** The reconciled result of a completed cashout. */
@@ -38,12 +39,14 @@ export function DataCard({ data }: { data: CashoutData }) {
     },
   ];
 
-  // Only the departments actually tipped out to; the rest are null by design.
+  // Only the departments actually tipped out to (the manager always is); the
+  // rest are null by design.
   const tipouts: { label: string; value: string | null }[] = [
     { label: "Bar", value: data.barTipout },
     { label: "Kitchen", value: data.kitchenTipout },
     { label: "Expo", value: data.expoTipout },
     { label: "Host", value: data.hostTipout },
+    { label: "Manager", value: data.managerTipout },
   ].filter((tipout) => tipout.value != null);
 
   // At most one side is set: the final cash balance after tipouts decides it.

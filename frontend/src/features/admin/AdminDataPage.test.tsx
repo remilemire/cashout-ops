@@ -60,17 +60,19 @@ function makeRow(
     cardPaymentTotal: "1234.56",
     cashPaymentTotal: "150.00",
     cardTipTotal: "180.00",
-    tipoutDepartments: ["kitchen"],
+    tipoutDepartments: ["kitchen", "manager"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",
     expoTipoutRate: "0.0100",
     hostTipoutRate: "0.0100",
+    managerTipoutRate: "0.0100",
     barTipout: null,
     kitchenTipout: "24.00",
     expoTipout: null,
     hostTipout: null,
-    cashOwedToHouse: null,
-    cashOwedToEmployee: "6.00",
+    managerTipout: "12.00",
+    cashOwedToHouse: "6.00",
+    cashOwedToEmployee: null,
     // Distinct within the first 8 characters: the table shows a #-prefixed
     // 8-character slice as the link text.
     submissionId: `${id}-0000-0000`,
@@ -102,6 +104,7 @@ const CSV_HEADER = [
   "Bar tipout",
   "Expo tipout",
   "Host tipout",
+  "Manager tipout",
   "Owed to house",
   "Owed to employee",
 ];
@@ -116,8 +119,9 @@ function csvLine(row: CashoutDataRow): string[] {
     "",
     "",
     "",
-    "",
+    "12.00",
     "6.00",
+    "",
   ];
 }
 
@@ -168,14 +172,17 @@ describe("AdminDataPage", () => {
     renderPage();
     await screen.findAllByRole("cell", { name: "Ada Lovelace" });
 
-    for (const department of ["Kitchen", "Bar", "Expo", "Host"]) {
+    for (const department of ["Kitchen", "Bar", "Expo", "Host", "Manager"]) {
       expect(
         screen.getByRole("columnheader", { name: `${department} tipout` }),
       ).toBeDefined();
     }
-    // Every fixture row tips out to the kitchen only: the other departments
-    // read "—", not a misleading $0.00.
+    // Every fixture row tips out to the kitchen (and the manager, as every
+    // cashout does): the other departments read "—", not a misleading $0.00.
     expect(screen.getAllByRole("cell", { name: "$24.00" })).toHaveLength(
+      rows.length,
+    );
+    expect(screen.getAllByRole("cell", { name: "$12.00" })).toHaveLength(
       rows.length,
     );
     expect(
@@ -192,9 +199,18 @@ describe("AdminDataPage", () => {
       .map((cell) => cell.textContent);
 
     // The empty cell spans the Date and Submission columns; the sums follow
-    // in column order: kitchen, bar, expo, host, owed to house, owed to
-    // employee. Never-tipped columns read "—", not $0.00.
-    expect(cells).toEqual(["", "$72.00", "—", "—", "—", "—", "$18.00"]);
+    // in column order: kitchen, bar, expo, host, manager, owed to house, owed
+    // to employee. Never-tipped columns read "—", not $0.00.
+    expect(cells).toEqual([
+      "",
+      "$72.00",
+      "—",
+      "—",
+      "—",
+      "$36.00",
+      "$18.00",
+      "—",
+    ]);
   });
 
   it("totals only the rows left by the date filter", async () => {
@@ -235,7 +251,7 @@ describe("AdminDataPage", () => {
     expect(downloadCsvMock).toHaveBeenCalledWith("cashout-data.csv", [
       CSV_HEADER,
       ...rows.map(csvLine),
-      ["Total", "", "", "72.00", "", "", "", "", "18.00"],
+      ["Total", "", "", "72.00", "", "", "", "36.00", "18.00", ""],
     ]);
   });
 
@@ -257,7 +273,7 @@ describe("AdminDataPage", () => {
       [
         CSV_HEADER,
         csvLine(adaAug10),
-        ["Total", "", "", "24.00", "", "", "", "", "6.00"],
+        ["Total", "", "", "24.00", "", "", "", "12.00", "6.00", ""],
       ],
     );
   });

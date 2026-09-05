@@ -25,7 +25,8 @@ class CashoutDataOut(BaseOut):
     cash_payment_total: Decimal
     card_tip_total: Decimal
 
-    # Which departments this cashout tipped out to, and the rates it closed
+    # Which departments this cashout tipped out to (the selection plus the
+    # manager, who tips out on every cashout), and the rates it closed
     # against — kept so the figures below can be explained after the fact,
     # even once the configured rates have moved on.
     tipout_departments: list[TipoutDepartment]
@@ -33,15 +34,17 @@ class CashoutDataOut(BaseOut):
     kitchen_tipout_rate: Decimal
     expo_tipout_rate: Decimal
     host_tipout_rate: Decimal
+    manager_tipout_rate: Decimal
 
     # Database-generated. Null for a department that was not tipped out.
     bar_tipout: Decimal | None = None
     kitchen_tipout: Decimal | None = None
     expo_tipout: Decimal | None = None
     host_tipout: Decimal | None = None
+    manager_tipout: Decimal | None = None
 
     # At most one side is set: whichever way the cash/card-tip balance falls
-    # after adding the selected tipouts (neither, on the exact tie).
+    # after adding the tipouts (neither, on the exact tie).
     cash_owed_to_house: Decimal | None = None
     cash_owed_to_employee: Decimal | None = None
 

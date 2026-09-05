@@ -80,7 +80,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 
 These are designed but not yet finished in code. Tracked here so the gap between what runs today and the intent is explicit.
 
-**Tipout rates** — the per-department rates in `core/config/tipout.py` are placeholders. The real rates must replace them before the app reconciles a real cashout.
+**Tipout rates** — the per-department rates in `core/config/tipout.py` are placeholders, except the manager's 1%, which is the specified rate. The real rates must replace the others before the app reconciles a real cashout.
 
 **Deterministic extraction validation** — the per-document schemas and the cross-document reconciliation rules are implemented; what remains is deterministic post-extraction validation of a single document's values (totals reconcile, amounts non-negative) before they reach reconciliation.
 
@@ -208,8 +208,9 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `OUTBOX_BACKOFF_CAP_SECONDS` | `outbox.BACKOFF_CAP_SECONDS` | no | `900.0`                                        | Ceiling on that exponential backoff.                                                                 |
 | `TIPOUT_BAR_RATE`     | `tipout.BAR_RATE` | no | `0.0500`                                                    | Fraction of **drink** net sales the bar tips out on (`0.05` is 5%). **Placeholder** — see [Planned scope](#planned-scope). Completion snapshots the rate onto the cashout, so a change here only affects cashouts closed afterwards. |
 | `TIPOUT_KITCHEN_RATE` | `tipout.KITCHEN_RATE` | no | `0.0300`                                                | Fraction of **food** net sales the kitchen tips out on. **Placeholder**, snapshotted at completion.   |
-| `TIPOUT_EXPO_RATE`    | `tipout.EXPO_RATE` | no | `0.0100`                                                   | Fraction of **total** net sales expo tips out on. **Placeholder**, snapshotted at completion.         |
+| `TIPOUT_EXPO_RATE`    | `tipout.EXPO_RATE` | no | `0.0100`                                                   | Fraction of **food** net sales expo tips out on. **Placeholder**, snapshotted at completion.          |
 | `TIPOUT_HOST_RATE`    | `tipout.HOST_RATE` | no | `0.0100`                                                   | Fraction of **total** net sales host tips out on. **Placeholder**, snapshotted at completion.         |
+| `TIPOUT_MANAGER_RATE` | `tipout.MANAGER_RATE` | no | `0.0100`                                                | Fraction of **total** net sales the manager tips out on — applied to every cashout, not selected by the cashier. The specified rate (1%), snapshotted at completion. |
 
 The provider is not configured directly: `AI_PROVIDER_MODELS` in [core/ai_models.py](backend/app/core/ai_models.py) lists the models each provider serves, and [core/config/ai.py](backend/app/core/config/ai.py) inverts that map to resolve `settings.ai.PROVIDER` from the configured `AI_MODEL`. Adding a model means adding it to that list.
 
@@ -376,7 +377,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 - **API casing.** Inbound and outbound JSON is `camelCase`; Python is `snake_case`. Conversion is handled by `BaseIn`/`BaseOut` via `alias_generator=snake_to_camel`. `BaseIn` is `extra="forbid"`; unknown fields surface as `EXTRA_FIELD` validation issues.
 - **Enum values.** Every `StrEnum` member's *value* is `lower_snake_case` (`processing`, `needs_verification`, `s3`) while the member name stays `SCREAMING_SNAKE_CASE` — so the value is what appears in JSON, Postgres enum labels, and configuration, and the name is what Python code spells. The exceptions are values an external format dictates: `DocumentContentType` holds MIME types. The provider selectors read from the environment (`EMAIL_PROVIDER`, `STORAGE_PROVIDER`) accept either case, so a deployment configured before this convention still boots.
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
-- **Monetary rounding.** Source-document amounts and configured tipout rates are preserved as reported. Calculated tipouts round each selected department separately upward to cent precision in the house's favour (amounts already on a cent stay unchanged), and the final signed settlement uses the same rule: employee obligations round up while house obligations round toward zero. The generated columns apply this policy consistently to existing and future cashouts.
+- **Monetary rounding.** Source-document amounts and configured tipout rates are preserved as reported. Calculated tipouts round each department separately upward to cent precision in the house's favour (the manager, who tips out on every cashout, included; amounts already on a cent stay unchanged), and the final signed settlement uses the same rule: employee obligations round up while house obligations round toward zero. The generated columns apply this policy consistently to existing and future cashouts.
 - **Python typing.** `pyproject.toml` requires Python 3.13+ and configures Pyright in strict mode (`[tool.pyright] typeCheckingMode = "strict"`). Run `make typecheck` (backend Pyright + frontend `tsc`).
 - **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/React (the Tailwind plugin sorts classes).
 - **Tests.** `make test` runs both suites: Vitest + Testing Library on the frontend, and pytest against a real Postgres and Redis — `TEST_DATABASE_URL` / `TEST_REDIS_URL` if set, otherwise throwaway containers via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
@@ -385,7 +386,7 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 
 The backend domain and AI pipeline are implemented and tested. What's left is tracked in [Planned scope](#planned-scope); the two placeholders carried in code are:
 
-- **Tipout rates are placeholders** — `core/config/tipout.py` ships stand-in rates (`TODO(tipout)`), overridable via the `TIPOUT_*` variables. The real rates must be set before the app reconciles a real cashout.
+- **Tipout rates are placeholders** — `core/config/tipout.py` ships stand-in rates (`TODO(tipout)`) for the four selectable departments, overridable via the `TIPOUT_*` variables; the manager's 1% is the real rate. The others must be set before the app reconciles a real cashout.
 - **No deterministic extraction validation** — `features/cashout/extraction/processor.py` carries a `TODO(document-ai)` for value-level checks (totals reconcile, amounts non-negative) on a single document, ahead of the cross-document reconciliation that already runs at completion.
 
 ## License

@@ -237,11 +237,12 @@ def test_upgrade_head_reopens_unreconciled_cashouts(migrated_url: str) -> None:
                 )
             ).one()
         # Reopened, not erased: the completion on record and the tipout choice
-        # survive, exactly as they do through an unsubmit.
+        # survive, exactly as they do through an unsubmit. The choice gains the
+        # manager on the way, as every snapshot does (b8e1d47c5a92).
         assert status == "processing"
         assert completed_by is None
         assert first_completed_at is not None
-        assert departments == "kitchen"
+        assert departments == "kitchen,manager"
     finally:
         engine.dispose()
 
@@ -255,9 +256,10 @@ def test_upgrade_head_recalculates_cash_balance_with_tipouts(
     engine = create_engine(migrated_url)
     try:
         with engine.begin() as conn:
-            # The initial migration is kept current for fresh installs, so
-            # recreate the generated expressions an already-applied database
-            # has immediately before this new revision reaches it.
+            # The initial migration is kept current for fresh installs (up to
+            # the changes that later revisions can re-apply), so recreate the
+            # generated expressions an already-applied database has
+            # immediately before this new revision reaches it.
             conn.execute(
                 text(
                     """
@@ -326,9 +328,10 @@ def test_upgrade_head_recalculates_cash_balance_with_tipouts(
                     "SELECT cash_owed_to_house, cash_owed_to_employee FROM cashout_data"
                 )
             ).one()
-        # The 20.00 bar and 24.00 kitchen tipouts turn a 30.00 employee
-        # receivable into 14.00 owed to the house.
-        assert after == (14, None)
+        # The 20.00 bar and 24.00 kitchen tipouts — and, since b8e1d47c5a92,
+        # the 12.00 manager tipout on every cashout — turn a 30.00 employee
+        # receivable into 26.00 owed to the house.
+        assert after == (26, None)
     finally:
         engine.dispose()
 
@@ -353,9 +356,10 @@ def test_upgrade_head_recalculates_cashouts_with_house_favouring_rounding(
     engine = create_engine(migrated_url)
     try:
         with engine.begin() as conn:
-            # The initial migration is kept current for fresh installs. Put
-            # all six generated expressions back into the exact state an
-            # already-applied database has before the new revision reaches it.
+            # The initial migration is kept current for fresh installs (up to
+            # the changes that later revisions can re-apply). Put all six
+            # generated expressions back into the exact state an already-applied
+            # database has before the new revision reaches it.
             conn.execute(
                 text(
                     f"""
@@ -454,7 +458,9 @@ def test_upgrade_head_recalculates_cashouts_with_house_favouring_rounding(
 
         _upgrade(migrated_url, "head")
 
-        assert generated_values() == ("5.01", "24.01", None, "0.98")
+        # Per-line rounding (5.01 + 24.01), plus the 12.00 manager tipout that
+        # b8e1d47c5a92 adds to every cashout: 11.02 due to the house.
+        assert generated_values() == ("5.01", "24.01", "11.02", None)
     finally:
         engine.dispose()
 
@@ -649,10 +655,11 @@ def test_upgrade_head_creates_reporting_view(migrated_url: str) -> None:
                 )
             ).one()
         # The sheet's nine columns, by position. The 24.00 kitchen tipout
-        # (3% of 800.00 food) turns the 30.00 cash shortfall into 6.00 owed
-        # to the employee; the business day is the API's ISO text, not a
-        # date, and the money is numbers, not numeric-as-text.
-        assert row == (1, "Cashier", "2026-08-10", 24.0, None, None, None, None, 6.0)
+        # (3% of 800.00 food) and the 12.00 manager tipout every cashout
+        # carries turn the 30.00 cash shortfall into 6.00 owed to the house;
+        # the business day is the API's ISO text, not a date, and the money is
+        # numbers, not numeric-as-text.
+        assert row == (1, "Cashier", "2026-08-10", 24.0, None, None, None, 6.0, None)
     finally:
         engine.dispose()
 
@@ -726,5 +733,142 @@ def test_reporting_view_survives_downgrade_and_reupgrade(
                 ).scalar_one()
                 is True
             )
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
+    """Existing cashouts gain the manager tipout and expo moves to food sales.
+
+    `manager` joins the department enum and every department list (data rows
+    and last-completion snapshots alike), the rate column is backfilled at 1%
+    with no default left behind, the generated columns are recalculated, and
+    the reporting view grows two appended columns without moving the sheet's
+    nine.
+    """
+    # The last revision before the manager department.
+    _upgrade(migrated_url, "9b2f6e1d4a73")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date,
+                         tipout_departments)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01', ARRAY['expo']::tipout_department[]);
+                    INSERT INTO cashout_data
+                        (id, submission_id, food_net_sales, drink_net_sales,
+                         total_net_sales, card_payment_total,
+                         cash_payment_total, card_tip_total,
+                         tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate,
+                         host_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            800.00, 400.00, 1200.00, 1234.56, 150.00, 180.00,
+                            ARRAY['expo']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        def as_strings(row: tuple[object, ...]) -> tuple[str | None, ...]:
+            return tuple(None if value is None else str(value) for value in row)
+
+        with engine.connect() as conn:
+            before = conn.execute(
+                text(
+                    "SELECT expo_tipout, cash_owed_to_house, cash_owed_to_employee"
+                    " FROM cashout_data"
+                )
+            ).one()
+        # Expo on the 1200.00 total: 12.00, leaving 18.00 owed to the employee.
+        assert as_strings(tuple(before)) == ("12.00", None, "18.00")
+
+        _upgrade(migrated_url, "head")
+
+        assert _enum_values(migrated_url, "tipout_department") == {
+            "bar",
+            "kitchen",
+            "expo",
+            "host",
+            "manager",
+        }
+        nullability = _data_nullability(migrated_url)
+        assert nullability["manager_tipout_rate"] is False
+        assert nullability["manager_tipout"] is True
+
+        with engine.connect() as conn:
+            after = conn.execute(
+                text(
+                    "SELECT array_to_string(tipout_departments, ','),"
+                    " expo_tipout, manager_tipout, manager_tipout_rate,"
+                    " cash_owed_to_house, cash_owed_to_employee"
+                    " FROM cashout_data"
+                )
+            ).one()
+            snapshot = conn.execute(
+                text(
+                    "SELECT array_to_string(tipout_departments, ',')"
+                    " FROM cashout_submissions"
+                )
+            ).scalar_one()
+            # table_schema matters: the reporting view is also a `cashout_data`
+            # with a `manager_tipout_rate` column.
+            rate_default = conn.execute(
+                text(
+                    "SELECT column_default FROM information_schema.columns"
+                    " WHERE table_schema = 'public'"
+                    " AND table_name = 'cashout_data'"
+                    " AND column_name = 'manager_tipout_rate'"
+                )
+            ).scalar_one()
+            view_columns = [
+                row[0]
+                for row in conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns"
+                        " WHERE table_schema = 'reporting'"
+                        " AND table_name = 'cashout_data'"
+                        " ORDER BY ordinal_position"
+                    )
+                )
+            ]
+        # Expo on the 800.00 of food: 8.00. The manager, appended to the list
+        # and backfilled at 1%, adds 12.00; 10.00 stays owed to the employee.
+        assert as_strings(tuple(after)) == (
+            "expo,manager",
+            "8.00",
+            "12.00",
+            "0.0100",
+            None,
+            "10.00",
+        )
+        assert snapshot == "expo,manager"
+        # The 1% default only backfilled the existing rows; the application
+        # supplies the rate on every row it writes.
+        assert rate_default is None
+        # The sheet's nine columns stay where they were; the manager's two
+        # are appended after everything else.
+        assert view_columns[:9] == [
+            "employee_name",
+            "business_date",
+            "kitchen_tipout",
+            "bar_tipout",
+            "expo_tipout",
+            "host_tipout",
+            "cash_owed_to_house",
+            "cash_owed_to_employee",
+            "display_order",
+        ]
+        assert view_columns[-2:] == ["manager_tipout", "manager_tipout_rate"]
     finally:
         engine.dispose()

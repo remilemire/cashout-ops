@@ -26,7 +26,7 @@ import {
   csvRows,
 } from "./cashoutDataTable";
 
-// Cell classes, with the print tightening in one place: the nine-column
+// Cell classes, with the print tightening in one place: the ten-column
 // table has to fit a portrait page. On screen nothing changes.
 const HEADER_CELL = "px-4 py-2.5 font-medium print:px-2";
 const MONEY_HEADER_CELL = `${HEADER_CELL} text-right`;

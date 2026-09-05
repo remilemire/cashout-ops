@@ -169,17 +169,17 @@ async def complete_submission(
             raise AppError("SUBMISSION_UNVERIFIED")
         analyses.append(analysis)
 
-    await data_service.reconcile(
+    data = await data_service.reconcile(
         db,
         submission_id=submission.id,
         analyses=analyses,
         tipout_departments=payload.tipout_departments,
     )
     submission.status = CashoutSubmissionStatus.COMPLETED
-    # Snapshot the chosen departments on the submission itself so unsubmit
-    # (which drops the data row) does not lose the choice. Sorted so the
-    # stored order does not depend on set iteration order.
-    submission.tipout_departments = sorted(payload.tipout_departments)
+    # Snapshot the departments the row was reconciled with (the selection
+    # plus the manager, already sorted) on the submission itself, so unsubmit
+    # (which drops the data row) does not lose them.
+    submission.tipout_departments = list(data.tipout_departments)
     # Record the actual actor (the admin when an admin completes); the first
     # completion time is bookkeeping — set once, never overwritten.
     submission.completed_by_user_id = user.id

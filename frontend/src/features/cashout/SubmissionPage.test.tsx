@@ -89,7 +89,7 @@ const completedSubmission: CashoutSubmissionDetail = {
   businessDate: "2026-07-15",
   completedByUserId: employee.id,
   firstCompletedAt: "2026-07-16T02:00:00Z",
-  tipoutDepartments: ["kitchen"],
+  tipoutDepartments: ["kitchen", "manager"],
   updatedAt: "2026-07-16T02:00:00Z",
   employee,
   documents: [],
@@ -102,17 +102,19 @@ const completedSubmission: CashoutSubmissionDetail = {
     cardPaymentTotal: "1234.56",
     cashPaymentTotal: "150.00",
     cardTipTotal: "180.00",
-    tipoutDepartments: ["kitchen"],
+    tipoutDepartments: ["kitchen", "manager"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",
     expoTipoutRate: "0.0100",
     hostTipoutRate: "0.0100",
+    managerTipoutRate: "0.0100",
     barTipout: null,
     kitchenTipout: "24.00",
     expoTipout: null,
     hostTipout: null,
-    cashOwedToHouse: null,
-    cashOwedToEmployee: "6.00",
+    managerTipout: "12.00",
+    cashOwedToHouse: "6.00",
+    cashOwedToEmployee: null,
     submissionId: "completed-submission",
   },
 };
@@ -293,6 +295,35 @@ describe("SubmissionPage", () => {
         false,
       );
     }
+  });
+
+  it("offers no manager checkbox and sends only the cashier's selection", async () => {
+    // The manager is on every completion, added by the server: the snapshot
+    // lists it, but the form neither shows nor sends it.
+    getSubmissionMock.mockResolvedValue({
+      ...verifiedSubmission,
+      tipoutDepartments: ["bar", "kitchen", "manager"],
+    });
+    renderPage();
+
+    expect(
+      await screen.findByLabelText<HTMLInputElement>("Bar"),
+    ).toHaveProperty("checked", true);
+    expect(screen.getByLabelText<HTMLInputElement>("Kitchen")).toHaveProperty(
+      "checked",
+      true,
+    );
+    expect(screen.queryByLabelText("Manager")).toBeNull();
+    expect(
+      screen.getByText(/The manager is tipped out on every cashout/),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
+
+    await waitFor(() => expect(completeSubmissionMock).toHaveBeenCalledOnce());
+    expect(completeSubmissionMock.mock.calls[0]?.[1]).toEqual({
+      tipoutDepartments: ["bar", "kitchen"],
+    });
   });
 
   it("scrolls back to the top when completing succeeds", async () => {

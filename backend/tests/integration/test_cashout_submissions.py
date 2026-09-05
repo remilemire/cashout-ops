@@ -280,21 +280,22 @@ async def test_tipout_snapshot_survives_unsubmit(
         submission_id,
         tipout_departments=(TipoutDepartment.KITCHEN, TipoutDepartment.BAR),
     )
-    # The snapshot is stored sorted, independent of the order submitted.
-    assert completed["tipoutDepartments"] == ["bar", "kitchen"]
+    # The snapshot is the reconciled list: sorted, independent of the order
+    # submitted, with the manager reconciliation adds to every cashout.
+    assert completed["tipoutDepartments"] == ["bar", "kitchen", "manager"]
 
     # Unsubmit drops the data row but keeps the snapshot, so the completion
     # form can start from the previous choice.
     reopened = await unsubmit_submission(admin_client, submission_id)
     assert reopened["status"] == CashoutSubmissionStatus.PROCESSING.value
-    assert reopened["tipoutDepartments"] == ["bar", "kitchen"]
+    assert reopened["tipoutDepartments"] == ["bar", "kitchen", "manager"]
 
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
     assert detail["data"] is None
-    assert detail["tipoutDepartments"] == ["bar", "kitchen"]
+    assert detail["tipoutDepartments"] == ["bar", "kitchen", "manager"]
 
     # Re-completing with a different set overwrites the snapshot.
     recompleted = await complete_submission(
@@ -302,7 +303,7 @@ async def test_tipout_snapshot_survives_unsubmit(
         submission_id,
         tipout_departments=(TipoutDepartment.HOST, TipoutDepartment.EXPO),
     )
-    assert recompleted["tipoutDepartments"] == ["expo", "host"]
+    assert recompleted["tipoutDepartments"] == ["expo", "host", "manager"]
 
 
 async def test_unsubmit_is_admin_only(

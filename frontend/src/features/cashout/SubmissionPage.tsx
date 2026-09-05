@@ -7,7 +7,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { ApiError, isNotFound } from "@/api/client";
-import { isAdminRole, TIPOUT_DEPARTMENTS } from "@/api/types";
+import { isAdminRole, SELECTABLE_TIPOUT_DEPARTMENTS } from "@/api/types";
 import type {
   CashoutDocument,
   ErrorCode,
@@ -292,7 +292,9 @@ export function SubmissionPage() {
       {editable && documents.length > 0 && (
         <CompletePrompt
           allVerified={allVerified}
-          initialSelected={submission.tipoutDepartments ?? []}
+          initialSelected={selectableDepartments(
+            submission.tipoutDepartments ?? [],
+          )}
           pending={complete.isPending}
           error={complete.error}
           onComplete={(departments) => complete.mutate(departments)}
@@ -365,7 +367,21 @@ const DEPARTMENT_LABELS: Record<TipoutDepartment, string> = {
   kitchen: "Kitchen",
   expo: "Expo",
   host: "Host",
+  manager: "Manager",
 };
+
+/**
+ * The cashier's part of a department list. A last-completion snapshot also
+ * names the manager, whom the server adds to every completion; the form
+ * neither shows nor sends that one.
+ */
+function selectableDepartments(
+  departments: TipoutDepartment[],
+): TipoutDepartment[] {
+  return departments.filter((department) =>
+    SELECTABLE_TIPOUT_DEPARTMENTS.includes(department),
+  );
+}
 
 /**
  * What to go and look at when reconciliation refuses the cashout. The banner
@@ -449,10 +465,11 @@ function CompletePrompt({
         <legend className="text-sm font-medium">Tip out to</legend>
         <p className="text-ink-muted text-xs">
           Select every department this shift tips out to. Each one is calculated
-          at the rate in force today.
+          at the rate in force today. The manager is tipped out on every
+          cashout, on top of the departments you select.
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {TIPOUT_DEPARTMENTS.map((department) => {
+          {SELECTABLE_TIPOUT_DEPARTMENTS.map((department) => {
             const checked = selected.includes(department);
             return (
               <label

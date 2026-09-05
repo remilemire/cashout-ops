@@ -29,11 +29,17 @@ async def reconcile(
     documents against each other first — a cashout that does not add up
     raises there and never reaches a row.
 
+    `tipout_departments` is the cashier's selection. The manager tips out on
+    every cashout, so it is added here whatever the selection says — this is
+    the one place that rule lives; a selection that already names the manager
+    is accepted as is.
+
     The rates are copied onto the row rather than read back later: a cashout
     closes against the rates in force at that moment, and editing them
     afterwards must not restate it.
     """
     figures = reconcile_figures(analyses)
+    departments = {*tipout_departments, TipoutDepartment.MANAGER}
 
     rates = settings.tipout
     data = CashoutData(
@@ -45,11 +51,12 @@ async def reconcile(
         cash_payment_total=figures.cash_payment_total,
         card_tip_total=figures.card_tip_total,
         # Sorted so the stored order does not depend on set iteration order.
-        tipout_departments=sorted(tipout_departments),
+        tipout_departments=sorted(departments),
         bar_tipout_rate=rates.BAR_RATE,
         kitchen_tipout_rate=rates.KITCHEN_RATE,
         expo_tipout_rate=rates.EXPO_RATE,
         host_tipout_rate=rates.HOST_RATE,
+        manager_tipout_rate=rates.MANAGER_RATE,
     )
     await repository.add_data(db, data)
     return data
