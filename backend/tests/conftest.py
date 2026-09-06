@@ -32,10 +32,7 @@ os.environ.setdefault("STORAGE_LOCAL_DIR", "storage/documents")
 
 # Replace every group on the live singleton with the hermetic baseline so no
 # test observes a .env value. This must sit below the pins (they keep the
-# import-time construction valid) and above pytest_plugins: the fixture
-# modules import app.* feature modules, at least one of which bakes a settings
-# value at import time (the DOCUMENT_TOO_LARGE message in cashout's
-# documents/errors.py, reached via the cashout error union). Overwriting
+# import-time construction valid) and above pytest_plugins. Overwriting
 # attributes preserves the singleton's identity, so
 # every `from app.core.config import settings` importer sees the baseline.
 from app.core.config import Settings, settings  # noqa: E402

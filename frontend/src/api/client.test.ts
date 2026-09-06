@@ -54,7 +54,7 @@ describe("api client", () => {
       jsonResponse(409, {
         kind: "CONFLICT",
         code: "EMAIL_TAKEN",
-        message: "This email is already in use.",
+        ctx: {},
       }),
     );
 
@@ -68,6 +68,7 @@ describe("api client", () => {
       expect(error.status).toBe(409);
       expect(error.kind).toBe("CONFLICT");
       expect(error.code).toBe("EMAIL_TAKEN");
+      expect(error.ctx).toEqual({});
       expect(error.message).toBe("This email is already in use.");
     });
   });
@@ -78,7 +79,7 @@ describe("api client", () => {
         JSON.stringify({
           kind: "TOO_MANY_REQUESTS",
           code: "RATE_LIMITED",
-          message: "Too many attempts. Please wait a moment and try again.",
+          ctx: { retryAfterSeconds: 120 },
         }),
         {
           status: 429,
@@ -96,6 +97,8 @@ describe("api client", () => {
       status: 429,
       code: "RATE_LIMITED",
       retryAfterSeconds: 120,
+      ctx: { retryAfterSeconds: 120 },
+      message: "Too many attempts. Try again in 120 seconds.",
     });
   });
 
@@ -104,7 +107,7 @@ describe("api client", () => {
       jsonResponse(429, {
         kind: "TOO_MANY_REQUESTS",
         code: "RATE_LIMITED",
-        message: "Too many attempts. Please wait a moment and try again.",
+        ctx: {},
       }),
     );
 
@@ -127,6 +130,45 @@ describe("api client", () => {
     await expect(api("/users/me")).rejects.toMatchObject({
       status: 502,
       code: "INTERNAL",
+    });
+  });
+
+  it("builds field feedback from validation codes and context", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(422, {
+        kind: "VALIDATION",
+        code: "VALIDATION_FAILED",
+        ctx: {},
+        issues: [
+          {
+            code: "greater_than_equal",
+            path: ["items", 0, "amount"],
+            ctx: { ge: 0 },
+          },
+        ],
+      }),
+    );
+
+    const failure = api("/cashout/submissions");
+    await expect(failure).rejects.toBeInstanceOf(ApiError);
+    await failure.catch((error: ApiError) => {
+      expect(error.messageFor("amount")).toBe("Must be at least 0.");
+      expect(error.messageFor("missing")).toBeUndefined();
+    });
+  });
+
+  it("does not use server-supplied wording", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(500, {
+        kind: "INTERNAL",
+        code: "INTERNAL",
+        ctx: {},
+        message: "private diagnostic",
+      }),
+    );
+
+    await expect(api("/users/me")).rejects.toMatchObject({
+      message: "Something went wrong.",
     });
   });
 

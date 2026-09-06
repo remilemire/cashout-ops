@@ -37,7 +37,7 @@ const cashier: User = {
 const challengeInvalid = new ApiError(401, {
   kind: "UNAUTHORIZED",
   code: "EMAIL_CHALLENGE_INVALID",
-  message: "This sign-in code is invalid or has expired.",
+  ctx: {},
 });
 
 const rateLimited = new ApiError(
@@ -45,7 +45,7 @@ const rateLimited = new ApiError(
   {
     kind: "TOO_MANY_REQUESTS",
     code: "RATE_LIMITED",
-    message: "Too many attempts. Please wait a moment and try again.",
+    ctx: {},
   },
   300,
 );
@@ -91,7 +91,7 @@ beforeEach(() => {
     new ApiError(401, {
       kind: "UNAUTHORIZED",
       code: "UNAUTHENTICATED",
-      message: "Authentication required.",
+      ctx: {},
     }),
   );
   startLoginMock.mockResolvedValue({ challengeId: "challenge-1" });

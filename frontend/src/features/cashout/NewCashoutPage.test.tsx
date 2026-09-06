@@ -211,7 +211,7 @@ describe("NewCashoutPage", () => {
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
-        message: "Upload failed.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -219,7 +219,7 @@ describe("NewCashoutPage", () => {
     fireEvent.drop(screen.getByLabelText("Upload a document"), {
       dataTransfer: { files: [pdf] },
     });
-    expect(await screen.findByText("Upload failed.")).toBeDefined();
+    expect(await screen.findByText("Something went wrong.")).toBeDefined();
 
     fireEvent.drop(screen.getByLabelText("Upload a document"), {
       dataTransfer: { files: [pdf] },
@@ -238,7 +238,7 @@ describe("NewCashoutPage", () => {
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
-        message: "Upload failed.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -246,7 +246,7 @@ describe("NewCashoutPage", () => {
     fireEvent.drop(screen.getByLabelText("Upload a document"), {
       dataTransfer: { files: [pdf] },
     });
-    expect(await screen.findByText("Upload failed.")).toBeDefined();
+    expect(await screen.findByText("Something went wrong.")).toBeDefined();
 
     expect(
       screen.getByLabelText<HTMLInputElement>("Cashout for"),
@@ -258,7 +258,7 @@ describe("NewCashoutPage", () => {
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
-        message: "Upload failed.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -266,7 +266,7 @@ describe("NewCashoutPage", () => {
     fireEvent.drop(screen.getByLabelText("Upload a document"), {
       dataTransfer: { files: [pdf] },
     });
-    expect(await screen.findByText("Upload failed.")).toBeDefined();
+    expect(await screen.findByText("Something went wrong.")).toBeDefined();
 
     fireEvent.change(screen.getByLabelText("Cashout for"), {
       target: { value: "2026-08-20" },

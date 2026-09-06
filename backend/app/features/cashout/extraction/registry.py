@@ -112,7 +112,7 @@ def parse_manual_document_data(
     """Validate manually entered document data against its registered schema.
 
     The classification itself is already validated by the request schema (an
-    unrecognized value is an INVALID_OPTION issue on the field), and every
+    unrecognized value is an enum issue on the field), and every
     classification has a schema, so only the field values remain to check.
     Field-level problems raise pydantic's ValidationError, which propagates to
     the app-wide handler for translation into the shared validation contract.

@@ -1,12 +1,14 @@
 // frontend/src/api/client.ts
 
+import { errorMessage, validationMessage } from "./errors";
 import type { ErrorResponse, ValidationIssue } from "./types";
 
-/** A backend error response (`{ kind, code, message, issues }`). */
+/** A backend error response with messages composed by the frontend. */
 export class ApiError extends Error {
   readonly status: number;
   readonly kind: ErrorResponse["kind"];
   readonly code: ErrorResponse["code"];
+  readonly ctx: ErrorResponse["ctx"];
   readonly issues: ValidationIssue[];
   /** Wait hint from a 429's `Retry-After` header, in whole seconds. */
   readonly retryAfterSeconds: number | null;
@@ -16,18 +18,20 @@ export class ApiError extends Error {
     body: ErrorResponse,
     retryAfterSeconds: number | null = null,
   ) {
-    super(body.message);
+    super(errorMessage(body.code, body.ctx));
     this.name = "ApiError";
     this.status = status;
     this.kind = body.kind;
     this.code = body.code;
+    this.ctx = body.ctx;
     this.issues = body.issues ?? [];
     this.retryAfterSeconds = retryAfterSeconds;
   }
 
   /** The validation message for a field, if the backend flagged one. */
   messageFor(field: string): string | undefined {
-    return this.issues.find((issue) => issue.path.at(-1) === field)?.message;
+    const issue = this.issues.find((issue) => issue.path.at(-1) === field);
+    return issue ? validationMessage(issue) : undefined;
   }
 }
 
@@ -43,7 +47,7 @@ export function isNotFound(error: unknown): error is ApiError {
 const FALLBACK_BODY: ErrorResponse = {
   kind: "INTERNAL",
   code: "INTERNAL",
-  message: "Something went wrong.",
+  ctx: {},
 };
 
 /** The backend sends `Retry-After` as integer seconds; anything else is ignored. */

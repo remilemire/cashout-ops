@@ -29,9 +29,11 @@ export type ErrorCode =
   // users
   | "USER_NOT_FOUND"
   | "EMAIL_TAKEN"
+  | "CANNOT_MODIFY_OWN_ADMIN"
   | "CANNOT_MODIFY_OWNER"
   | "CANNOT_DELETE_OWNER"
   | "TRANSFER_TARGET_NOT_ADMIN"
+  | "OWNER_ALREADY_EXISTS"
   // auth
   | "EMAIL_CHALLENGE_INVALID"
   | "INVALID_SESSION"
@@ -62,16 +64,28 @@ export type ErrorCode =
   | "RECONCILE_CARD_TRANSACTION_MISMATCH"
   | "RECONCILE_DOCUMENT_DATA_INVALID";
 
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+/** Public message parameters. Keys use camelCase throughout the API. */
+export type ErrorContext = Record<string, JsonValue>;
+
 export interface ValidationIssue {
+  /** Pydantic error type, e.g. `missing` or `greater_than_equal`. */
   code: string;
   path: (string | number)[];
-  message: string;
+  ctx: ErrorContext;
 }
 
 export interface ErrorResponse {
   kind: ErrorKind;
   code: ErrorCode;
-  message: string;
+  ctx: ErrorContext;
   /** Per-field details; present only when `kind` is "VALIDATION". */
   issues?: ValidationIssue[];
 }

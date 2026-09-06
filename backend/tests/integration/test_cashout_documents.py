@@ -193,6 +193,7 @@ async def test_upload_rejects_oversized_document(
 
     assert response.status_code == 400
     assert response.json()["code"] == "DOCUMENT_TOO_LARGE"
+    assert response.json()["ctx"] == {"maxSizeMb": 1}
     # Rejected before its bytes were written to storage.
     assert len(storage.objects) == stored_before
 

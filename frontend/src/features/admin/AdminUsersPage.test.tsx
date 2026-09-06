@@ -173,7 +173,7 @@ describe("AdminUsersPage add user", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "EMAIL_TAKEN",
-        message: "This email is already in use.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -410,12 +410,12 @@ describe("AdminUsersPage rename", () => {
       new ApiError(422, {
         kind: "VALIDATION",
         code: "VALIDATION_FAILED",
-        message: "Validation failed.",
+        ctx: {},
         issues: [
           {
-            code: "TOO_LONG",
+            code: "string_too_long",
             path: ["fullName"],
-            message: "Must be at most 200 characters.",
+            ctx: { maxLength: 200 },
           },
         ],
       }),
@@ -429,7 +429,7 @@ describe("AdminUsersPage rename", () => {
     );
 
     expect(
-      await screen.findByText("Must be at most 200 characters."),
+      await screen.findByText("Maximum 200 characters allowed."),
     ).toBeDefined();
     // The row stays in edit mode so the name can be corrected.
     expect(screen.getByLabelText("Full name for staff@test.com")).toBeDefined();
@@ -470,7 +470,7 @@ describe("AdminUsersPage delete", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "CONFLICT",
-        message: "The request conflicts with the current state.",
+        ctx: {},
       }),
     );
     renderPage();

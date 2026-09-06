@@ -67,7 +67,7 @@ beforeEach(() => {
     new ApiError(401, {
       kind: "UNAUTHORIZED",
       code: "UNAUTHENTICATED",
-      message: "Authentication required.",
+      ctx: {},
     }),
   );
 });

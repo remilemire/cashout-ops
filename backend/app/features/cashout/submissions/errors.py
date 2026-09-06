@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.errors import ErrorDefinition, ErrorDefinitionList
+from app.core.errors import ErrorKindMap
 
 type ErrorCode = Literal[
     "SUBMISSION_NOT_FOUND",
@@ -16,42 +16,14 @@ type ErrorCode = Literal[
     "SUBMISSION_DUPLICATE_DAY",
 ]
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="SUBMISSION_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Cashout submission not found.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_COMPLETED",
-        kind="CONFLICT",
-        message="This cashout has already been completed.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_NOT_COMPLETED",
-        kind="CONFLICT",
-        message="Only a completed cashout can be unsubmitted.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_EMPTY",
-        kind="CONFLICT",
-        message="Upload at least one document before completing.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_UNVERIFIED",
-        kind="CONFLICT",
-        message="Every document must be verified before completing.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_HAS_DATA",
-        kind="CONFLICT",
-        message="This cashout has reconciled data and cannot be deleted.",
-    ),
-    ErrorDefinition(
-        code="SUBMISSION_DUPLICATE_DAY",
-        kind="CONFLICT",
-        message="A cashout for this day already exists.",
-    ),
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    "SUBMISSION_NOT_FOUND": "NOT_FOUND",
+    "SUBMISSION_COMPLETED": "CONFLICT",
+    "SUBMISSION_NOT_COMPLETED": "CONFLICT",
+    "SUBMISSION_EMPTY": "CONFLICT",
+    "SUBMISSION_UNVERIFIED": "CONFLICT",
+    "SUBMISSION_HAS_DATA": "CONFLICT",
+    "SUBMISSION_DUPLICATE_DAY": "CONFLICT",
+}
 
-__all__ = ["ErrorCode", "error_definition_list"]
+__all__ = ["ErrorCode", "error_kind_map"]

@@ -151,7 +151,7 @@ describe("CashoutsPage", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "CONFLICT",
-        message: "This cashout can no longer be cancelled.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -162,7 +162,7 @@ describe("CashoutsPage", () => {
     // The confirm dialog closed on confirm, so the failure must surface on
     // the page itself.
     expect(
-      await screen.findByText("This cashout can no longer be cancelled."),
+      await screen.findByText("The request conflicts with the current state."),
     ).toBeDefined();
   });
 

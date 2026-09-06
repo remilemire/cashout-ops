@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from app.core.errors import ConstraintCodeMap, ErrorDefinitionList
+from app.core.errors import ConstraintCodeMap, ErrorKindMap
 
 from .analyses.errors import ErrorCode as AnalysisErrorCode
 from .analyses.errors import (
-    error_definition_list as analysis_error_definition_list,
+    error_kind_map as analysis_error_kind_map,
 )
 from .data.errors import ErrorCode as DataErrorCode
-from .data.errors import error_definition_list as data_error_definition_list
+from .data.errors import error_kind_map as data_error_kind_map
 from .documents.errors import ErrorCode as DocumentErrorCode
 from .documents.errors import (
-    error_definition_list as document_error_definition_list,
+    error_kind_map as document_error_kind_map,
 )
 from .submissions.errors import ErrorCode as SubmissionErrorCode
 from .submissions.errors import (
-    error_definition_list as submission_error_definition_list,
+    error_kind_map as submission_error_kind_map,
 )
 
 # Cashout owns no codes directly at the root: every code lives in its
@@ -26,12 +26,12 @@ type ErrorCode = (
     SubmissionErrorCode | DocumentErrorCode | AnalysisErrorCode | DataErrorCode
 )
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    *submission_error_definition_list,
-    *document_error_definition_list,
-    *analysis_error_definition_list,
-    *data_error_definition_list,
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    **submission_error_kind_map,
+    **document_error_kind_map,
+    **analysis_error_kind_map,
+    **data_error_kind_map,
+}
 
 # cashout_data.submission_id is ON DELETE RESTRICT: reconciled data blocks
 # deleting its submission. The (submission, checksum) unique index rejects
@@ -43,4 +43,4 @@ constraint_code_map: ConstraintCodeMap[ErrorCode] = {
     "ix_cashout_submissions_employee_business_date": "SUBMISSION_DUPLICATE_DAY",
 }
 
-__all__ = ["ErrorCode", "constraint_code_map", "error_definition_list"]
+__all__ = ["ErrorCode", "constraint_code_map", "error_kind_map"]

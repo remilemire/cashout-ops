@@ -128,13 +128,13 @@ describe("ManualDocumentDialog", () => {
       error: new ApiError(422, {
         kind: "VALIDATION",
         code: "VALIDATION_FAILED",
-        message: "Validation failed.",
+        ctx: {},
         // The backend camelCases issue paths: grand_total → grandTotal.
         issues: [
           {
-            code: "DECIMAL_TYPE",
+            code: "decimal_parsing",
             path: ["grandTotal"],
-            message: "Enter a valid number.",
+            ctx: {},
           },
         ],
       }),
@@ -142,7 +142,9 @@ describe("ManualDocumentDialog", () => {
 
     expect(screen.getByText("Enter a valid number.")).toBeDefined();
     // Every issue landed on a field, so no general banner repeats it.
-    expect(screen.queryByText("Validation failed.")).toBeNull();
+    expect(
+      screen.queryByText("There was a problem with the submission."),
+    ).toBeNull();
   });
 
   it("banners an error that maps to no field", () => {
@@ -150,12 +152,12 @@ describe("ManualDocumentDialog", () => {
       error: new ApiError(409, {
         kind: "CONFLICT",
         code: "ANALYSIS_VERIFIED",
-        message: "This document is already verified.",
+        ctx: {},
       }),
     });
 
     expect(
-      screen.getByText("This document is already verified."),
+      screen.getByText("This analysis has already been verified."),
     ).toBeDefined();
   });
 

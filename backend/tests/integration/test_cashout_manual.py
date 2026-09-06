@@ -114,7 +114,7 @@ async def test_manual_upload_rejects_an_unrecognized_classification(
     body = response.json()
     assert body["code"] == "VALIDATION_FAILED"
     [issue] = body["issues"]
-    assert issue["code"] == "INVALID_OPTION"
+    assert issue["code"] == "enum"
     assert issue["path"] == ["classification"]
 
     # Rejected before the document was stored.
@@ -149,9 +149,9 @@ async def test_manual_upload_rejects_invalid_data(
     assert body["code"] == "VALIDATION_FAILED"
     issues = {(issue["code"], tuple(issue["path"])) for issue in body["issues"]}
     assert issues == {
-        ("DECIMAL_TYPE", ("grandTotal",)),
-        ("MISSING_FIELD", ("grandTotalTransactionCount",)),
-        ("EXTRA_FIELD", ("tillNumber",)),
+        ("decimal_parsing", ("grandTotal",)),
+        ("missing", ("grandTotalTransactionCount",)),
+        ("extra_forbidden", ("tillNumber",)),
     }
 
     detail = (

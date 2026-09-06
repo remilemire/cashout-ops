@@ -481,7 +481,7 @@ describe("DocumentCard", () => {
         new ApiError(404, {
           kind: "NOT_FOUND",
           code: "ANALYSIS_NOT_FOUND",
-          message: "Cashout document analysis not found.",
+          ctx: {},
         }),
       );
       const { queryClient } = renderCard(true, {
@@ -508,7 +508,7 @@ describe("DocumentCard", () => {
       new ApiError(404, {
         kind: "NOT_FOUND",
         code: "DOCUMENT_NOT_FOUND",
-        message: "Cashout document not found.",
+        ctx: {},
       }),
     );
     const { queryClient } = renderCard(true);

@@ -35,7 +35,6 @@ CASHIER_EMAIL = "cashier@test.com"
 # The catalog body every 429 carries, regardless of which limit fired.
 RATE_LIMITED_KIND = "TOO_MANY_REQUESTS"
 RATE_LIMITED_CODE = "RATE_LIMITED"
-RATE_LIMITED_MESSAGE = "Too many attempts. Please wait a moment and try again."
 
 
 async def _initiate(client: AsyncClient, *, email: str = CASHIER_EMAIL) -> str:
@@ -70,6 +69,7 @@ async def test_initiate_per_email_is_limited_with_retry_after(
     retry_after = response.headers["Retry-After"]
     assert retry_after.isdigit()
     assert 0 < int(retry_after) <= 3600
+    assert body["ctx"] == {"retryAfterSeconds": int(retry_after)}
 
     # The counter key exists, holds only the address's digest — never the raw
     # email, keeping addresses out of key names — and expires with the window.
@@ -121,7 +121,7 @@ async def test_initiate_limit_is_enumeration_safe(client: AsyncClient) -> None:
     assert response.json() == {
         "kind": RATE_LIMITED_KIND,
         "code": RATE_LIMITED_CODE,
-        "message": RATE_LIMITED_MESSAGE,
+        "ctx": {"retryAfterSeconds": int(response.headers["Retry-After"])},
     }
 
 

@@ -460,8 +460,7 @@ describe("SubmissionPage", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "RECONCILE_CARD_PAYMENT_MISMATCH",
-        message:
-          "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -486,7 +485,7 @@ describe("SubmissionPage", () => {
       new ApiError(404, {
         kind: "NOT_FOUND",
         code: "SUBMISSION_NOT_FOUND",
-        message: "Cashout submission not found.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -500,7 +499,7 @@ describe("SubmissionPage", () => {
       new ApiError(404, {
         kind: "NOT_FOUND",
         code: "SUBMISSION_NOT_FOUND",
-        message: "Cashout submission not found.",
+        ctx: {},
       }),
     );
     renderPage(); // beforeEach signs the admin in
@@ -514,7 +513,7 @@ describe("SubmissionPage", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "SUBMISSION_NOT_COMPLETED",
-        message: "Only a completed cashout can be unsubmitted.",
+        ctx: {},
       }),
     );
     renderPage();
@@ -601,7 +600,7 @@ describe("SubmissionPage", () => {
       new ApiError(409, {
         kind: "CONFLICT",
         code: "SUBMISSION_DUPLICATE_DAY",
-        message: "A cashout for this day already exists.",
+        ctx: {},
       }),
     );
     renderPage();

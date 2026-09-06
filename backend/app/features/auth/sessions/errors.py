@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.errors import ErrorDefinition, ErrorDefinitionList
+from app.core.errors import ErrorKindMap
 
 type ErrorCode = Literal["INVALID_SESSION"]
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="INVALID_SESSION",
-        kind="UNAUTHORIZED",
-        message="Invalid or expired session.",
-    )
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    "INVALID_SESSION": "UNAUTHORIZED",
+}
 
-__all__ = ["ErrorCode", "error_definition_list"]
+__all__ = ["ErrorCode", "error_kind_map"]

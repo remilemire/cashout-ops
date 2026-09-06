@@ -62,11 +62,11 @@ describe("ApiError", () => {
     const error = new ApiError(422, {
       kind: "VALIDATION",
       code: "VALIDATION_FAILED",
-      message: "There was a problem with the submission.",
+      ctx: {},
       issues: [
         {
-          code: "TOO_SHORT",
-          message: "Minimum 8 characters required.",
+          code: "string_too_short",
+          ctx: { minLength: 8 },
           path: ["password"],
         },
       ],

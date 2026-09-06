@@ -64,8 +64,8 @@ The longer-term goal is to grow this into a broader internal operations platform
 - CSRF protection via double-submit cookie (`csrf_token` cookie + `X-CSRF-Token` header on mutating requests)
 - Transactional outbox for deferred work (login-code emails, AI extraction): enqueued inside the request transaction, delivered by lifespan-managed dispatcher workers
 - Admin user management: list users, create staff accounts, rename them, promote/demote admins, and delete users — plus a single owner role (bootstrapped account; cannot be demoted or deleted) with owner-to-admin ownership transfer
-- Centralized domain-error hierarchy with consistent JSON error responses and an `IntegrityError` → `ConflictError` translator
-- Pydantic validation errors translated into a stable, UI-friendly contract (`{ type, message, details: [{ field, code, message }] }`)
+- Centralized application errors and database-constraint translation, returning `{ kind, code, ctx }`; the frontend owns message wording
+- Field validation issues carry Pydantic codes, camelCase paths, and safe constraint context (`issues: [{ code, path, ctx }]`); submitted values and private exception details stay out of responses
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
 - Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
 - Read-only reporting view `reporting.cashout_data` (the admin cashout data table, for spreadsheet consumers) and the `reporting_reader` role that may read it, both maintained by the migration chain

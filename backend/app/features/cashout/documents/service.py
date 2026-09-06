@@ -50,7 +50,10 @@ async def upload_document(
     # the single byte of overshoot; it stays as the authoritative check for
     # callers that assembled the payload some other way.
     if len(payload.data) > settings.storage.MAX_DOCUMENT_SIZE_BYTES:
-        raise AppError("DOCUMENT_TOO_LARGE")
+        raise AppError(
+            "DOCUMENT_TOO_LARGE",
+            ctx={"maxSizeMb": settings.storage.MAX_DOCUMENT_SIZE_MB},
+        )
 
     document = CashoutDocument(
         content_type=payload.content_type,

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .catalog import ErrorCode, error_catalog, kind_status_map
-from .schemas import ErrorResponseSchema, ValidationIssueSchema
-from .validation import validation_issue_catalog
+from .catalog import ErrorCode, error_kind_map, kind_status_map
+from .schemas import ErrorResponseSchema
+from .validation import ValidationIssue
 
 
 def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
@@ -18,7 +18,7 @@ def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
     """
     by_status: dict[int, list[ErrorCode]] = {}
     for code in codes:
-        status = kind_status_map[error_catalog[code]["kind"]]
+        status = kind_status_map[error_kind_map[code]]
         by_status.setdefault(status, []).append(code)
 
     return {
@@ -38,18 +38,13 @@ def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
 
 
 def _example_body(code: ErrorCode) -> dict[str, Any]:
-    entry = error_catalog[code]
-    issues = None
-    if entry["kind"] == "VALIDATION":
-        issues = [
-            ValidationIssueSchema(
-                code="MISSING_FIELD",
-                path=["field"],
-                message=validation_issue_catalog["MISSING_FIELD"]["create_message"]({}),
-            )
-        ]
     body = ErrorResponseSchema(
-        kind=entry["kind"], code=code, message=entry["message"], issues=issues
+        kind=error_kind_map[code],
+        code=code,
+        ctx={"retryAfterSeconds": 60} if code == "RATE_LIMITED" else {},
+        issues=[ValidationIssue(code="missing", path=["field"])]
+        if code == "VALIDATION_FAILED"
+        else None,
     )
     return body.model_dump(by_alias=True, exclude_none=True, mode="json")
 

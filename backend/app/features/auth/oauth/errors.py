@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.errors import ErrorDefinition, ErrorDefinitionList
+from app.core.errors import ErrorKindMap
 
 # OAUTH_SIGN_IN_FAILED covers every failure reachable once the browser has
 # left for the issuer (unknown/expired/replayed flow, state mismatch,
@@ -19,17 +19,9 @@ type ErrorCode = Literal[
     "OAUTH_ISSUER_NOT_ENABLED",
 ]
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="OAUTH_SIGN_IN_FAILED",
-        kind="UNAUTHORIZED",
-        message="That sign-in could not be completed. Please try again.",
-    ),
-    ErrorDefinition(
-        code="OAUTH_ISSUER_NOT_ENABLED",
-        kind="NOT_FOUND",
-        message="That sign-in provider is not available.",
-    ),
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    "OAUTH_SIGN_IN_FAILED": "UNAUTHORIZED",
+    "OAUTH_ISSUER_NOT_ENABLED": "NOT_FOUND",
+}
 
-__all__ = ["ErrorCode", "error_definition_list"]
+__all__ = ["ErrorCode", "error_kind_map"]

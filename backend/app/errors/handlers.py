@@ -12,21 +12,15 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .app_error import AppError
-from .catalog import ErrorCode, error_catalog, kind_status_map
+from .catalog import ErrorCode, error_kind_map, kind_status_map
 from .rate_limit import RateLimitedError
-from .schemas import ErrorResponseSchema, ValidationIssueSchema
+from .schemas import ErrorResponseSchema
 from .translators import translate_integrity_error, translate_validation_error
-from .validation import ValidationError, validation_issue_catalog
+from .validation import ValidationError
 
 
 def init_error_handlers(app: FastAPI) -> None:
-    # Every failure mode funnels into `_to_response`: recognized exceptions are
-    # translated to an `AppError` and formatted from the catalog; anything
-    # unrecognized becomes a 500 INTERNAL. The registrations differ only in the
-    # exception type they catch — kept separate so ours override FastAPI's
-    # built-in RequestValidationError / HTTPException handlers and so
-    # recognized errors are resolved on the inner middleware rather than
-    # re-raised as 500s.
+    # Register recognized exceptions explicitly to override FastAPI defaults.
 
     @app.exception_handler(AppError)
     def handle_app_error(  # type: ignore[reportUnusedFunction]
@@ -66,19 +60,17 @@ def init_error_handlers(app: FastAPI) -> None:
 
 
 def _to_response(error: AppError) -> JSONResponse:
-    entry = error_catalog[error.code]
-    # The catalog message is the only one clients see; AppError.message is
-    # internal-only context and must not leak here.
+    kind = error_kind_map[error.code]
     body = ErrorResponseSchema(
-        kind=entry["kind"],
+        kind=kind,
         code=error.code,
-        message=entry["message"],
-        issues=_to_issue_schemas(error) if isinstance(error, ValidationError) else None,
+        ctx=error.ctx,
+        issues=error.issues if isinstance(error, ValidationError) else None,
     )
     # Error handlers return JSONResponse directly, so there's no router
     # response_model to serialize the body for us — do it here.
     return JSONResponse(
-        status_code=kind_status_map[entry["kind"]],
+        status_code=kind_status_map[kind],
         content=body.model_dump(by_alias=True, exclude_none=True, mode="json"),
         headers=(
             {"Retry-After": str(error.retry_after_seconds)}
@@ -86,19 +78,6 @@ def _to_response(error: AppError) -> JSONResponse:
             else None
         ),
     )
-
-
-def _to_issue_schemas(error: ValidationError) -> list[ValidationIssueSchema]:
-    return [
-        ValidationIssueSchema(
-            code=issue["code"],
-            path=list(issue["path"]),
-            message=validation_issue_catalog[issue["code"]]["create_message"](
-                issue.get("ctx", {})
-            ),
-        )
-        for issue in error.issues
-    ]
 
 
 # ================================
@@ -110,7 +89,7 @@ def _to_code(status_code: int) -> ErrorCode:
     """Map a raw Starlette HTTPException status to a base code.
 
     The detail string is discarded on purpose — it can carry internals that
-    must not reach the client; the catalog message is used instead.
+    must not reach the client; only the mapped code is used.
     """
     code = _status_to_code.get(status_code)
     if code is not None:

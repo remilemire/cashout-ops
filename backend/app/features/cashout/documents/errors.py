@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.config import settings
-from app.core.errors import ErrorDefinition, ErrorDefinitionList
+from app.core.errors import ErrorKindMap
 
 type ErrorCode = Literal[
     "DOCUMENT_NOT_FOUND",
@@ -14,27 +13,11 @@ type ErrorCode = Literal[
     "UNSUPPORTED_DOCUMENT_TYPE",
 ]
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="DOCUMENT_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Cashout document not found.",
-    ),
-    ErrorDefinition(
-        code="DOCUMENT_TOO_LARGE",
-        kind="BAD_REQUEST",
-        message=f"Document exceeds the {settings.storage.MAX_DOCUMENT_SIZE_MB} MB size limit.",
-    ),
-    ErrorDefinition(
-        code="DOCUMENT_DUPLICATE",
-        kind="CONFLICT",
-        message="This document has already been uploaded to this cashout.",
-    ),
-    ErrorDefinition(
-        code="UNSUPPORTED_DOCUMENT_TYPE",
-        kind="BAD_REQUEST",
-        message="Unsupported document content type.",
-    ),
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    "DOCUMENT_NOT_FOUND": "NOT_FOUND",
+    "DOCUMENT_TOO_LARGE": "BAD_REQUEST",
+    "DOCUMENT_DUPLICATE": "CONFLICT",
+    "UNSUPPORTED_DOCUMENT_TYPE": "BAD_REQUEST",
+}
 
-__all__ = ["ErrorCode", "error_definition_list"]
+__all__ = ["ErrorCode", "error_kind_map"]

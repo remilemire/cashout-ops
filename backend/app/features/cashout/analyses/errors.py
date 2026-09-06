@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.errors import ErrorDefinition, ErrorDefinitionList
+from app.core.errors import ErrorKindMap
 
 type ErrorCode = Literal[
     "ANALYSIS_NOT_FOUND",
@@ -14,32 +14,12 @@ type ErrorCode = Literal[
     "EXTRACTION_FAILED",
 ]
 
-error_definition_list: ErrorDefinitionList[ErrorCode] = [
-    ErrorDefinition(
-        code="ANALYSIS_NOT_FOUND",
-        kind="NOT_FOUND",
-        message="Document analysis not found.",
-    ),
-    ErrorDefinition(
-        code="ANALYSIS_VERIFIED",
-        kind="CONFLICT",
-        message="This analysis has already been verified.",
-    ),
-    ErrorDefinition(
-        code="ANALYSIS_NOT_VERIFIED",
-        kind="CONFLICT",
-        message="Only a verified analysis can be edited.",
-    ),
-    ErrorDefinition(
-        code="EXTRACTION_IN_PROGRESS",
-        kind="CONFLICT",
-        message="An extraction is already in progress.",
-    ),
-    ErrorDefinition(
-        code="EXTRACTION_FAILED",
-        kind="CONFLICT",
-        message="The extraction failed; retry it before verifying.",
-    ),
-]
+error_kind_map: ErrorKindMap[ErrorCode] = {
+    "ANALYSIS_NOT_FOUND": "NOT_FOUND",
+    "ANALYSIS_VERIFIED": "CONFLICT",
+    "ANALYSIS_NOT_VERIFIED": "CONFLICT",
+    "EXTRACTION_IN_PROGRESS": "CONFLICT",
+    "EXTRACTION_FAILED": "CONFLICT",
+}
 
-__all__ = ["ErrorCode", "error_definition_list"]
+__all__ = ["ErrorCode", "error_kind_map"]

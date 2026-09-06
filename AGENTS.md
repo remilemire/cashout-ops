@@ -174,13 +174,14 @@ Error translation is centralized in `backend/app/errors/translators.py`.
 
 Use the existing translators:
 
-* `translate_integrity_errors`
-* `translate_validation_errors`
+* `translate_integrity_error`
+* `translate_validation_error`
 
 Do not scatter equivalent integrity-error or validation-error translation across routers and services.
 
 * Feature code may define or raise meaningful application and domain errors.
-* Preserve the shared API error contract.
+* Error responses contain `kind`, `code`, and a public JSON `ctx` object. Validation responses may also contain `issues`, each with a Pydantic `code`, camelCase `path`, and safe constraint `ctx`.
+* The frontend's `frontend/src/api/errors.ts` owns user-facing messages. Backend `AppError.message` is private diagnostic detail; only deliberately public values belong in `ctx`.
 * Do not expose raw database, validation-library, or provider exceptions directly through HTTP responses.
 * Add translation behavior to the centralized error system when a new known exception requires normalization.
 
