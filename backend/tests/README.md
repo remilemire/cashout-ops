@@ -39,8 +39,10 @@ tests/
     cashout.py           workflow drivers: create_submission, upload_document,
                          poll_analysis, verify_analysis, complete_submission,
                          configure_server_summary
-    documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads
-    fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient
+    documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads, and the
+                         decodable SAMPLE_PHOTO_UPLOAD with its text boxes
+    fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient,
+                         FakeTextDetector
       sdk/               SDK-shaped fakes for the provider adapter unit tests
     fixtures/            fixture modules loaded via pytest_plugins (db, redis,
                          integrations, app, clients)
@@ -57,8 +59,8 @@ clean_tables (autouse, function) ─reads─> _db_state    # no-op if DB never p
 redis_url (session) ──sets──> _redis_state (session) ──> redis_client
 clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis never provisioned
 ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
-email_client + redis_client ──────┘      └─> client / make_client
-                                              └─> cashier_client / admin_client
+text_detector ─> cropper ─────────┤      └─> client / make_client
+email_client + redis_client ──────┘          └─> cashier_client / admin_client
                                                   / owner_client
 ```
 
@@ -94,7 +96,8 @@ email_client + redis_client ──────┘      └─> client / make_cli
   need a wider loop scope — don't).
 - Mutating requests need `csrf_headers(client)`; the helpers in
   `support/cashout.py` handle this already.
-- The AI provider, object storage, and email are always faked; the extraction
-  stack between them (`DocumentAIClient`, processor, registry) is real.
+- The AI provider, object storage, email, and text detector are always faked;
+  the extraction stack between them (`DocumentAIClient`, processor, registry)
+  and the cropper are real.
 - Schema comes from `registry.metadata.create_all`, so migrations are not
   exercised by this suite.

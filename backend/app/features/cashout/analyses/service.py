@@ -373,9 +373,7 @@ async def _apply_extraction(
         # Unreachable in practice: the reset created the row before this ran.
         raise RuntimeError("analysis missing for document under extraction")
 
-    ref = DocumentRef(
-        storage_key=document.storage_key, content_type=document.content_type
-    )
+    ref = _extraction_ref(document)
 
     try:
         result = await processor.process(ref, classification=classification)
@@ -410,6 +408,25 @@ async def _apply_extraction(
     analysis.extracted_data_json = result.data.model_dump(mode="json")
     analysis.extraction_confidence = result.confidence
     analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
+
+
+def _extraction_ref(document: CashoutDocument) -> DocumentRef:
+    """What the AI reads: the crop the upload produced, else the original.
+
+    Retries and reclassifications come through here too, so a rerun reads
+    the stored crop rather than detecting again.
+    """
+    if (
+        document.cropped_storage_key is not None
+        and document.cropped_content_type is not None
+    ):
+        return DocumentRef(
+            storage_key=document.cropped_storage_key,
+            content_type=document.cropped_content_type,
+        )
+    return DocumentRef(
+        storage_key=document.storage_key, content_type=document.content_type
+    )
 
 
 def _ensure_replaceable(analysis: CashoutDocumentAnalysis | None) -> None:

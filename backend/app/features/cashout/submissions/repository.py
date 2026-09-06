@@ -87,13 +87,14 @@ async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> 
 
 
 async def list_storage_keys(db: AsyncSession, *, submission_id: UUID) -> list[str]:
-    return list(
-        await db.scalars(
-            select(CashoutDocument.storage_key).where(
-                CashoutDocument.cashout_submission_id == submission_id
-            )
+    """Every stored object behind the submission's documents: each original
+    and, where the upload was cropped, its crop."""
+    rows = await db.execute(
+        select(CashoutDocument.storage_key, CashoutDocument.cropped_storage_key).where(
+            CashoutDocument.cashout_submission_id == submission_id
         )
     )
+    return [key for original, cropped in rows for key in (original, cropped) if key]
 
 
 async def list_documents_with_analysis(

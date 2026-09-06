@@ -872,3 +872,70 @@ def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
         assert view_columns[-2:] == ["manager_tipout", "manager_tipout_rate"]
     finally:
         engine.dispose()
+
+
+def test_upgrade_head_adds_the_optional_document_crop(migrated_url: str) -> None:
+    """Documents gain the columns for their crop; earlier rows stay uncropped.
+
+    A document uploaded before cropping existed has no crop, which is a
+    state the application handles anyway (a PDF, a photo with no detectable
+    text): the new columns are nullable and the backfill is simply null, so
+    such a document keeps extracting from its original.
+    """
+    # The last revision before documents could carry a crop.
+    _upgrade(migrated_url, "b8e1d47c5a92")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'image/jpeg', 'key', 'photo.jpg', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        nullable = {
+            c["name"]: bool(c["nullable"])
+            for c in inspect(engine).get_columns("cashout_documents")
+        }
+        assert nullable["cropped_storage_key"] is True
+        assert nullable["cropped_content_type"] is True
+        assert nullable["crop_bounds"] is True
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT cropped_storage_key, cropped_content_type, crop_bounds"
+                    " FROM cashout_documents"
+                )
+            ).one()
+            # Two documents can never share a crop object, as they never share
+            # an original.
+            unique = conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_constraint WHERE contype = 'u'"
+                    " AND conname = 'cashout_documents_cropped_storage_key_key'"
+                )
+            ).scalar_one()
+        assert tuple(row) == (None, None, None)
+        assert unique == 1
+    finally:
+        engine.dispose()

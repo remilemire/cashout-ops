@@ -103,7 +103,7 @@ async def delete_submission(
 
     storage_keys = await repository.list_storage_keys(db, submission_id=submission.id)
     has_traces = (
-        bool(storage_keys)  # one key per document
+        bool(storage_keys)  # at least one key per document
         or data is not None
         or submission.first_completed_at is not None
     )

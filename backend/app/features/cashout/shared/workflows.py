@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.document_ai import DocumentCropper
     from app.features.cashout.analyses.model import CashoutDocumentAnalysis
     from app.features.cashout.documents.types import DocumentUpload
     from app.features.cashout.extraction import CashoutDocumentProcessor
@@ -39,6 +40,7 @@ async def upload_document(
     submission_id: UUID,
     user: User,
     storage: DocumentStorageClient,
+    cropper: DocumentCropper,
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
     """Store the document, create its EXTRACTING analysis, and queue extraction.
@@ -46,7 +48,8 @@ async def upload_document(
     The AI extraction itself runs from the outbox (`run_extraction` via the
     extraction handler); the message is enqueued in this transaction, so it
     dispatches only once the upload commits. Clients poll the returned
-    analysis.
+    analysis. The upload is cropped to its printed area on the way in (when
+    text detection finds one), and the extraction reads that crop.
     """
     document = await documents_service.upload_document(
         db,
@@ -54,6 +57,7 @@ async def upload_document(
         submission_id=submission_id,
         user=user,
         storage=storage,
+        cropper=cropper,
     )
     return await analyses_service.start_extraction(
         db, document=document, processor=processor
@@ -69,13 +73,15 @@ async def upload_manual_document(
     data: dict[str, Any],
     user: User,
     storage: DocumentStorageClient,
+    cropper: DocumentCropper,
 ) -> CashoutDocumentAnalysis:
     """Store the document and record its manually entered, VERIFIED analysis.
 
     No AI runs and nothing is enqueued: typing the values is the verification,
     so the returned analysis is already VERIFIED and there is nothing to poll.
     The entered data is validated before the upload — validating after it
-    would orphan a stored blob when the transaction rolls back.
+    would orphan a stored blob when the transaction rolls back. The document
+    is cropped like an extracting upload, so it previews the same way.
     """
     parsed = parse_manual_document_data(classification, data)
     document = await documents_service.upload_document(
@@ -84,6 +90,7 @@ async def upload_manual_document(
         submission_id=submission_id,
         user=user,
         storage=storage,
+        cropper=cropper,
     )
     return await analyses_service.record_manual_entry(
         db, document=document, classification=classification, data=parsed, user=user

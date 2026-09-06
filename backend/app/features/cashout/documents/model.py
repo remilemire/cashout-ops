@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Uuid, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.models import Base, enum_column
@@ -55,6 +56,22 @@ class CashoutDocument(Base):
     # SHA-256 of the stored bytes: audits what the AI analyzed and rejects
     # duplicate uploads within a submission (unique with the submission id).
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    # The crop derived from the upload — its printed area, found by text
+    # detection at upload time — stored as a sibling object. Null when there
+    # is none: a PDF, an image with no detectable text, or cropping disabled
+    # or failed at upload. Extraction reads the crop when it exists and the
+    # original otherwise; the original stays the document of record either
+    # way (its checksum, "view original").
+    cropped_storage_key: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, unique=True
+    )
+    cropped_content_type: Mapped[DocumentContentType | None] = mapped_column(
+        enum_column(DocumentContentType, "document_content_type"), nullable=True
+    )
+    # Where the crop sits in the upright original, in pixels:
+    # {left, top, right, bottom}.
+    crop_bounds: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
 
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"), nullable=False, index=True

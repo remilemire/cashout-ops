@@ -1,15 +1,21 @@
 # backend/tests/support/fixtures/integrations.py
 
-"""Fake integration clients, and the real processor wired over them."""
+"""Fake integration clients, and the real processor and cropper wired over them."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.document_ai import DocumentAIClient
+from app.document_ai import DocumentAIClient, DocumentCropper
 from app.features.cashout.extraction import CashoutDocumentProcessor
 
-from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient, FakeOAuthClient
+from ..fakes import (
+    FakeAIClient,
+    FakeDocumentStorage,
+    FakeEmailClient,
+    FakeOAuthClient,
+    FakeTextDetector,
+)
 
 
 @pytest.fixture
@@ -33,6 +39,26 @@ def oauth_client() -> FakeOAuthClient:
 
 
 @pytest.fixture
+def text_detector() -> FakeTextDetector:
+    # No boxes by default: uploads stay uncropped and extract from the
+    # original, so tests that are not about cropping see the pre-crop flow.
+    # A cropping test assigns `boxes` (see SAMPLE_PHOTO_TEXT_BOXES).
+    return FakeTextDetector()
+
+
+@pytest.fixture
+def cropper(text_detector: FakeTextDetector) -> DocumentCropper:
+    # Real cropper over the fake detector, with the settings defaults.
+    return DocumentCropper(
+        text_detector,
+        detection_max_side=1280,
+        margin=0.03,
+        min_text_boxes=3,
+        max_area_ratio=0.95,
+    )
+
+
+@pytest.fixture
 def processor(
     ai_client: FakeAIClient, storage: FakeDocumentStorage
 ) -> CashoutDocumentProcessor:
@@ -47,4 +73,12 @@ def processor(
     )
 
 
-__all__ = ["ai_client", "email_client", "oauth_client", "processor", "storage"]
+__all__ = [
+    "ai_client",
+    "cropper",
+    "email_client",
+    "oauth_client",
+    "processor",
+    "storage",
+    "text_detector",
+]
