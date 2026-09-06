@@ -205,8 +205,14 @@ export function DocumentCard({
     onError: refreshIfGone,
   });
 
-  const isImage = document.contentType.startsWith("image/");
   const contentUrl = cashoutApi.documentContentUrl(document.id);
+  // The preview is the crop the AI read, when the upload produced one; the
+  // original stays one link away. A crop is always an image.
+  const cropped = document.croppedContentType != null;
+  const previewUrl = cropped
+    ? cashoutApi.documentCroppedUrl(document.id)
+    : contentUrl;
+  const isImage = cropped || document.contentType.startsWith("image/");
   // Correcting the classification only makes sense on a settled, unverified
   // extraction; other states keep the plain label.
   const canCorrectClassification =
@@ -217,15 +223,15 @@ export function DocumentCard({
       <Card className="space-y-3">
         <div className="flex items-start gap-3">
           <a
-            href={contentUrl}
+            href={previewUrl}
             target="_blank"
             rel="noreferrer"
-            title="View original"
+            title={cropped ? "View cropped document" : "View original"}
             className="border-line bg-surface-2 block size-14 shrink-0 overflow-hidden rounded-lg border"
           >
             {isImage && !thumbnailBroken ? (
               <img
-                src={contentUrl}
+                src={previewUrl}
                 alt={document.originalFilename}
                 loading="lazy"
                 className="size-full object-cover"

@@ -134,6 +134,7 @@ const verifiedSubmission: CashoutSubmissionDetail = {
       contentType: "application/pdf",
       originalFilename: "report.pdf",
       checksumSha256: "abc123",
+      croppedContentType: null,
       uploadedByUserId: employee.id,
       uploadedAt: "2026-07-16T01:00:00Z",
       cashoutSubmissionId: "completed-submission",

@@ -227,6 +227,12 @@ export interface CashoutDocument {
   contentType: DocumentContentType;
   originalFilename: string;
   checksumSha256: string;
+  /**
+   * Set when the upload was cropped to its printed area: the crop is what the
+   * AI read, served by `documentCroppedUrl`. Null for a PDF, an image with no
+   * detectable text, or an upload made with cropping switched off.
+   */
+  croppedContentType: DocumentContentType | null;
   uploadedByUserId: string;
   uploadedAt: string;
   cashoutSubmissionId: string;
