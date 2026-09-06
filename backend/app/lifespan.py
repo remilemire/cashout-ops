@@ -18,6 +18,7 @@ from app.infrastructure.redis.lifespan import redis_lifespan
 from app.integrations.ai.lifespan import ai_lifespan
 from app.integrations.email.lifespan import email_lifespan
 from app.integrations.oauth.lifespan import oauth_lifespan
+from app.integrations.ocr.lifespan import ocr_lifespan
 from app.integrations.storage.lifespan import storage_lifespan
 
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
         email_client = await stack.enter_async_context(email_lifespan())
         oauth_client = await stack.enter_async_context(oauth_lifespan())
         storage = await stack.enter_async_context(storage_lifespan())
+        text_detector = await stack.enter_async_context(ocr_lifespan())
 
         app.state.db_engine = db.engine
         app.state.db_sessionmaker = db.sessionmaker
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
         app.state.email_client = email_client
         app.state.oauth_client = oauth_client
         app.state.document_storage = storage
+        app.state.text_detector = text_detector
 
         # Entered last so the dispatchers stop before their dependencies are
         # torn down on shutdown (the exit stack unwinds in reverse).

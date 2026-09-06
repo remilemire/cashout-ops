@@ -12,6 +12,7 @@ from .base import SettingsGroup
 from .bootstrap import BootstrapSettings
 from .db import DbSettings
 from .email import EmailSettings
+from .ocr import OCRSettings
 from .outbox import OutboxSettings
 from .rate_limit import RateLimitSettings
 from .redis import RedisSettings
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     # environment supplies the value.
     db: DbSettings = Field(default_factory=lambda: DbSettings())  # pyright: ignore[reportCallIssue]
     email: EmailSettings = Field(default_factory=EmailSettings)
+    ocr: OCRSettings = Field(default_factory=OCRSettings)
     outbox: OutboxSettings = Field(default_factory=OutboxSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     redis: RedisSettings = Field(default_factory=lambda: RedisSettings())  # pyright: ignore[reportCallIssue]
@@ -55,6 +57,7 @@ __all__ = [
     "BootstrapSettings",
     "DbSettings",
     "EmailSettings",
+    "OCRSettings",
     "OutboxSettings",
     "RateLimitSettings",
     "RedisSettings",

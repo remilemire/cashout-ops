@@ -21,6 +21,7 @@ from app.core.config import (
     BootstrapSettings,
     DbSettings,
     EmailSettings,
+    OCRSettings,
     OutboxSettings,
     RateLimitSettings,
     RedisSettings,
@@ -65,6 +66,7 @@ def make_test_settings() -> Settings:
             **{**_NO_DOTENV, "DATABASE_URL": "postgresql+psycopg://unused/unused"}
         ),
         "email": EmailSettings(**_NO_DOTENV),
+        "ocr": OCRSettings(**_NO_DOTENV),
         "outbox": OutboxSettings(**_NO_DOTENV),
         "rate_limit": RateLimitSettings(**_NO_DOTENV),
         # Required field; a placeholder for the same reason as db above.
