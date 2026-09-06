@@ -53,7 +53,9 @@ async def lifespan(app: FastAPI):
         registry = create_outbox_handler_registry(
             [
                 SendLoginCodeEmailOutboxHandler(redis_client, email_client),
-                RunExtractionOutboxHandler(db.sessionmaker, ai_client, storage),
+                RunExtractionOutboxHandler(
+                    db.sessionmaker, ai_client, storage, text_detector
+                ),
             ]
         )
         await stack.enter_async_context(

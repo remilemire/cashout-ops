@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.document_ai import DocumentAIClient, DocumentCropper
+from app.document_ai import DocumentAIClient
+from app.document_cropping import DocumentCropper
 from app.features.cashout.extraction import CashoutDocumentProcessor
 
 from ..fakes import (
@@ -60,16 +61,19 @@ def cropper(text_detector: FakeTextDetector) -> DocumentCropper:
 
 @pytest.fixture
 def processor(
-    ai_client: FakeAIClient, storage: FakeDocumentStorage
+    ai_client: FakeAIClient, storage: FakeDocumentStorage, cropper: DocumentCropper
 ) -> CashoutDocumentProcessor:
-    # Real processor + DocumentAIClient over the fake provider and storage.
+    # Real processor, DocumentAIClient, and cropper over the fake provider,
+    # storage, and detector.
     return CashoutDocumentProcessor(
         DocumentAIClient(
             ai_client,
             storage,
             classification_max_tokens=512,
             extraction_max_tokens=2048,
-        )
+        ),
+        cropper=cropper,
+        storage=storage,
     )
 
 

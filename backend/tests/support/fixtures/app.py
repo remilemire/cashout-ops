@@ -10,8 +10,6 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.document_ai import DocumentCropper
-from app.features.cashout.documents.dependencies import get_document_cropper
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.extraction.dependencies import (
     get_cashout_document_processor,
@@ -32,7 +30,6 @@ def app(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     redis_client: Redis,
     processor: CashoutDocumentProcessor,
-    cropper: DocumentCropper,
     storage: FakeDocumentStorage,
     email_client: FakeEmailClient,
     oauth_client: FakeOAuthClient,
@@ -53,7 +50,6 @@ def app(
     application = create_app()
     application.dependency_overrides[get_db] = _get_db
     application.dependency_overrides[get_cashout_document_processor] = lambda: processor
-    application.dependency_overrides[get_document_cropper] = lambda: cropper
     application.dependency_overrides[get_document_storage] = lambda: storage
     application.dependency_overrides[get_email_client] = lambda: email_client
     application.dependency_overrides[get_oauth_client] = lambda: oauth_client

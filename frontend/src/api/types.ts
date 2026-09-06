@@ -209,6 +209,13 @@ export interface CashoutDocumentAnalysis {
    * rendering stays data-driven, so no branching on it is needed here.
    */
   schemaVersion: number | null;
+  /**
+   * Set when the extraction read a crop of the document rather than the whole
+   * image: the crop is served by `analysisCroppedUrl`, and is what to check
+   * the extraction against. Null for a PDF, an image with no detectable text,
+   * cropping switched off, or an analysis not yet extracted.
+   */
+  croppedContentType: DocumentContentType | null;
   extractedDataJson: Record<string, unknown> | null;
   extractionConfidence: number | null;
   issues: FieldIssue[] | null;
@@ -227,12 +234,6 @@ export interface CashoutDocument {
   contentType: DocumentContentType;
   originalFilename: string;
   checksumSha256: string;
-  /**
-   * Set when the upload was cropped to its printed area: the crop is what the
-   * AI read, served by `documentCroppedUrl`. Null for a PDF, an image with no
-   * detectable text, or an upload made with cropping switched off.
-   */
-  croppedContentType: DocumentContentType | null;
   uploadedByUserId: string;
   uploadedAt: string;
   cashoutSubmissionId: string;

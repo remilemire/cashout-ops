@@ -58,10 +58,11 @@ postgres_url (session) ──> schema (session) ──sets──> _db_state (ses
 clean_tables (autouse, function) ─reads─> _db_state    # no-op if DB never provisioned
 redis_url (session) ──sets──> _redis_state (session) ──> redis_client
 clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis never provisioned
-ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
-text_detector ─> cropper ─────────┤      └─> client / make_client
-email_client + redis_client ──────┘          └─> cashier_client / admin_client
-                                                  / owner_client
+text_detector ─> cropper ─┐
+ai_client + storage ──────┴─> processor ─┬─> app (fresh create_app per test)
+email_client + redis_client ─────────────┘      └─> client / make_client
+                                                     └─> cashier_client / admin_client
+                                                         / owner_client
 ```
 
 - `app` is a fresh `create_app()` instance per test with the database, Redis,
@@ -97,7 +98,7 @@ email_client + redis_client ──────┘          └─> cashier_clien
 - Mutating requests need `csrf_headers(client)`; the helpers in
   `support/cashout.py` handle this already.
 - The AI provider, object storage, email, and text detector are always faked;
-  the extraction stack between them (`DocumentAIClient`, processor, registry)
-  and the cropper are real.
+  the extraction stack between them (`DocumentAIClient`, the cropper, the
+  processor, registry) is real.
 - Schema comes from `registry.metadata.create_all`, so migrations are not
   exercised by this suite.

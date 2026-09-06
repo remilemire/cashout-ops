@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.features.cashout.analyses.model import CashoutDocumentAnalysis
 from app.features.cashout.documents.model import CashoutDocument
 
 from .model import CashoutSubmission
@@ -87,14 +88,25 @@ async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> 
 
 
 async def list_storage_keys(db: AsyncSession, *, submission_id: UUID) -> list[str]:
-    """Every stored object behind the submission's documents: each original
-    and, where the upload was cropped, its crop."""
-    rows = await db.execute(
-        select(CashoutDocument.storage_key, CashoutDocument.cropped_storage_key).where(
+    """Every stored object behind the submission's documents: each original,
+    and the crop each of their analyses read (see analyses.model)."""
+    originals = await db.scalars(
+        select(CashoutDocument.storage_key).where(
             CashoutDocument.cashout_submission_id == submission_id
         )
     )
-    return [key for original, cropped in rows for key in (original, cropped) if key]
+    crops = await db.scalars(
+        select(CashoutDocumentAnalysis.cropped_storage_key)
+        .join(
+            CashoutDocument,
+            CashoutDocumentAnalysis.cashout_document_id == CashoutDocument.id,
+        )
+        .where(
+            CashoutDocument.cashout_submission_id == submission_id,
+            CashoutDocumentAnalysis.cropped_storage_key.is_not(None),
+        )
+    )
+    return [*originals, *(key for key in crops if key is not None)]
 
 
 async def list_documents_with_analysis(

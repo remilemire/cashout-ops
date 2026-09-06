@@ -69,6 +69,7 @@ const analysis: CashoutDocumentAnalysis = {
   classificationConfidence: 0.95,
   schemaName: "ServerSummaryReportData",
   schemaVersion: 1,
+  croppedContentType: null,
   extractedDataJson: {
     grand_total: "1234.56",
     grand_total_transaction_count: 42,
@@ -101,7 +102,6 @@ const cashoutDocument: CashoutDocument = {
   contentType: "application/pdf",
   originalFilename: "receipt.pdf",
   checksumSha256: "abc123",
-  croppedContentType: null,
   uploadedByUserId: "user-1",
   uploadedAt: "2026-07-17T01:00:00Z",
   cashoutSubmissionId: "submission-1",
@@ -529,24 +529,29 @@ describe("DocumentCard", () => {
     );
   });
 
-  it("previews the cropped version and keeps the original one link away", () => {
+  it("previews the crop the extraction read and keeps the original one link away", () => {
     // The crop is what the AI read, so it is what the cashier checks the
     // extraction against; the photo it was cut from stays reachable.
+    const croppedAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      croppedContentType: "image/jpeg",
+    };
+    getAnalysisMock.mockResolvedValue(croppedAnalysis);
     renderCard(false, {
       ...cashoutDocument,
       contentType: "image/jpeg",
-      croppedContentType: "image/jpeg",
+      analysis: croppedAnalysis,
     });
 
     expect(screen.getByAltText("receipt.pdf").getAttribute("src")).toBe(
-      "/api/cashout/documents/document-1/cropped",
+      "/api/cashout/analyses/analysis-1/cropped",
     );
     expect(
       screen.getByRole("link", { name: "View original" }).getAttribute("href"),
     ).toBe("/api/cashout/documents/document-1/content");
   });
 
-  it("previews the original when there is no cropped version", () => {
+  it("previews the original when the extraction read the whole image", () => {
     renderCard(false, { ...cashoutDocument, contentType: "image/jpeg" });
 
     expect(screen.getByAltText("receipt.pdf").getAttribute("src")).toBe(

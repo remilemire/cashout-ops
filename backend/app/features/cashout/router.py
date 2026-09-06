@@ -21,7 +21,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, Path, UploadFile, status
 
 from app.core.config import settings
-from app.document_ai import DocumentCropper
 from app.errors import AppError, error_responses
 from app.features.auth.dependencies import get_current_user
 from app.features.users.model import User
@@ -39,7 +38,6 @@ from .analyses.schemas import (
 )
 from .data.router import router as data_router
 from .dependencies import rate_limit_extract, rate_limit_upload
-from .documents.dependencies import get_document_cropper
 from .documents.router import router as documents_router
 from .documents.types import DocumentUpload
 from .extraction import CashoutDocumentProcessor
@@ -105,7 +103,6 @@ async def upload_document(
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
-    cropper: Annotated[DocumentCropper, Depends(get_document_cropper)],
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
@@ -114,10 +111,7 @@ async def upload_document(
 
     Accepts JPEG, PNG, WebP, or PDF within the configured size limit
     (`STORAGE_MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
-    checksum) is rejected. An image is cropped to its printed area when text
-    detection finds one (`croppedContentType` on the document; the crop is
-    served by `GET /cashout/documents/{id}/cropped`), and the extraction
-    reads that crop. The AI extraction runs in the background: this
+    checksum) is rejected. The AI extraction runs in the background: this
     returns the analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
     until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the extract
     endpoint).
@@ -141,7 +135,6 @@ async def upload_document(
         submission_id=submission_id,
         user=current_user,
         storage=storage,
-        cropper=cropper,
         processor=processor,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
@@ -171,7 +164,6 @@ async def upload_manual_document(
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
-    cropper: Annotated[DocumentCropper, Depends(get_document_cropper)],
 ) -> CashoutDocumentAnalysisOut:
     """Upload a document with manually entered details, skipping AI entirely.
 
@@ -201,7 +193,6 @@ async def upload_manual_document(
         data=entry.data,
         user=current_user,
         storage=storage,
-        cropper=cropper,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

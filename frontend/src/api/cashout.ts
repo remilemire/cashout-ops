@@ -87,12 +87,11 @@ export const cashoutApi = {
   /** Plain URL for viewing the original file (img src / link href). */
   documentContentUrl: (documentId: string) =>
     `/api/cashout/documents/${documentId}/content`,
-  /** Plain URL for the cropped version; 404 for a document without one. */
-  documentCroppedUrl: (documentId: string) =>
-    `/api/cashout/documents/${documentId}/cropped`,
 
   getAnalysis: (id: string) =>
     api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}`),
+  /** Plain URL for the crop the analysis read; 404 when it read the whole image. */
+  analysisCroppedUrl: (id: string) => `/api/cashout/analyses/${id}/cropped`,
   verifyAnalysis: (id: string, input: VerifyAnalysisInput) =>
     api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/verify`, {
       method: "POST",

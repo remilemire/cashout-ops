@@ -1,4 +1,4 @@
-# backend/app/document_ai/cropping.py
+# backend/app/document_cropping/cropper.py
 
 """Cropping a document image to its printed area before analysis.
 
@@ -160,8 +160,8 @@ class DocumentCropper:
 def build_document_cropper(detector: TextDetector | None) -> DocumentCropper:
     """Compose a cropper over the configured OCR settings.
 
-    Like the extraction processor, the cropper opens no resource of its own —
-    the detector owns the model — so each consumer builds one for itself.
+    The cropper opens no resource of its own — the detector owns the model —
+    so each consumer builds one for itself, as it builds its AI client.
     """
     return DocumentCropper(
         detector,

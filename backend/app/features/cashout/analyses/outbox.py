@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from app.integrations.ai import AIClient
+    from app.integrations.ocr import TextDetector
     from app.integrations.storage import DocumentStorageClient
 
 logger = logging.getLogger(__name__)
@@ -56,11 +57,12 @@ class RunExtractionOutboxHandler:
         sessionmaker: async_sessionmaker[AsyncSession],
         ai: AIClient,
         storage: DocumentStorageClient,
+        text_detector: TextDetector | None,
     ) -> None:
         self._sessionmaker = sessionmaker
         # Built here rather than handed in: the processor holds no resource,
         # so there is nothing for the composition root to own on its behalf.
-        self._processor = build_cashout_document_processor(ai, storage)
+        self._processor = build_cashout_document_processor(ai, storage, text_detector)
 
     async def handle(self, payload: RunExtraction) -> None:
         # Imported at call time: the outbox catalog imports cashout's root

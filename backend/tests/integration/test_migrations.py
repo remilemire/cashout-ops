@@ -874,15 +874,16 @@ def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
         engine.dispose()
 
 
-def test_upgrade_head_adds_the_optional_document_crop(migrated_url: str) -> None:
-    """Documents gain the columns for their crop; earlier rows stay uncropped.
+def test_upgrade_head_adds_the_optional_analysis_crop(migrated_url: str) -> None:
+    """Analyses gain the columns for the crop they read; earlier rows stay
+    uncropped.
 
-    A document uploaded before cropping existed has no crop, which is a
+    An analysis from before cropping read its document whole, which is a
     state the application handles anyway (a PDF, a photo with no detectable
     text): the new columns are nullable and the backfill is simply null, so
-    such a document keeps extracting from its original.
+    such an analysis keeps serving no crop until a re-extraction makes one.
     """
-    # The last revision before documents could carry a crop.
+    # The last revision before analyses could record a crop.
     _upgrade(migrated_url, "b8e1d47c5a92")
 
     engine = create_engine(migrated_url)
@@ -907,32 +908,37 @@ def test_upgrade_head_adds_the_optional_document_crop(migrated_url: str) -> None
                             '22222222-2222-2222-2222-222222222222',
                             'image/jpeg', 'key', 'photo.jpg', 'checksum',
                             '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status,
+                         classification, schema_name, schema_version,
+                         extracted_data_json, completed_at)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'needs_verification',
+                            'server_summary_report', 'ServerSummaryReportData', 1,
+                            '{"grand_total": "1.00"}'::jsonb, now());
                     """
                 )
             )
 
         _upgrade(migrated_url, "head")
 
-        nullable = {
-            c["name"]: bool(c["nullable"])
-            for c in inspect(engine).get_columns("cashout_documents")
-        }
-        assert nullable["cropped_storage_key"] is True
-        assert nullable["cropped_content_type"] is True
-        assert nullable["crop_bounds"] is True
+        nullability = _analysis_nullability(migrated_url)
+        assert nullability["cropped_storage_key"] is True
+        assert nullability["cropped_content_type"] is True
+        assert nullability["crop_bounds"] is True
         with engine.connect() as conn:
             row = conn.execute(
                 text(
                     "SELECT cropped_storage_key, cropped_content_type, crop_bounds"
-                    " FROM cashout_documents"
+                    " FROM cashout_document_analyses"
                 )
             ).one()
-            # Two documents can never share a crop object, as they never share
-            # an original.
+            # Two analyses can never share a crop object.
             unique = conn.execute(
                 text(
                     "SELECT count(*) FROM pg_constraint WHERE contype = 'u'"
-                    " AND conname = 'cashout_documents_cropped_storage_key_key'"
+                    " AND conname = 'cashout_document_analyses_cropped_storage_key_key'"
                 )
             ).scalar_one()
         assert tuple(row) == (None, None, None)

@@ -206,13 +206,16 @@ export function DocumentCard({
   });
 
   const contentUrl = cashoutApi.documentContentUrl(document.id);
-  // The preview is the crop the AI read, when the upload produced one; the
-  // original stays one link away. A crop is always an image.
-  const cropped = document.croppedContentType != null;
-  const previewUrl = cropped
-    ? cashoutApi.documentCroppedUrl(document.id)
-    : contentUrl;
-  const isImage = cropped || document.contentType.startsWith("image/");
+  // The preview is the crop the extraction read, once there is one — what
+  // the cashier checks the extraction against; the original stays one link
+  // away. A crop is always an image.
+  const croppedUrl =
+    analysis?.croppedContentType != null
+      ? cashoutApi.analysisCroppedUrl(analysis.id)
+      : null;
+  const previewUrl = croppedUrl ?? contentUrl;
+  const isImage =
+    croppedUrl != null || document.contentType.startsWith("image/");
   // Correcting the classification only makes sense on a settled, unverified
   // extraction; other states keep the plain label.
   const canCorrectClassification =
@@ -226,7 +229,9 @@ export function DocumentCard({
             href={previewUrl}
             target="_blank"
             rel="noreferrer"
-            title={cropped ? "View cropped document" : "View original"}
+            title={
+              croppedUrl != null ? "View cropped document" : "View original"
+            }
             className="border-line bg-surface-2 block size-14 shrink-0 overflow-hidden rounded-lg border"
           >
             {isImage && !thumbnailBroken ? (

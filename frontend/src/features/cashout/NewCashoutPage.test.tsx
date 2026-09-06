@@ -90,6 +90,7 @@ const analysis: CashoutDocumentAnalysis = {
   classificationConfidence: null,
   schemaName: null,
   schemaVersion: null,
+  croppedContentType: null,
   extractedDataJson: null,
   extractionConfidence: null,
   issues: null,

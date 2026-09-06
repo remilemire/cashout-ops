@@ -10,14 +10,12 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.document_ai import DocumentCropper
 from app.errors import AppError
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.model import User
 from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
-from app.lib.documents import DocumentContent
 
 from . import repository
 from .model import CashoutDocument
@@ -33,18 +31,12 @@ async def upload_document(
     submission_id: UUID,
     user: User,
     storage: DocumentStorageClient,
-    cropper: DocumentCropper,
 ) -> CashoutDocument:
     """Validate and store an uploaded document on an incomplete submission.
 
     Storage only: the AI extraction is started by the document-intake workflow
     (`shared/workflows.py`), which calls this and then starts extraction on the
     stored document in the same transaction.
-
-    The upload is also cropped to its printed area when text detection finds
-    one; the crop is stored beside the original and recorded on the row, and
-    it is what extraction reads. Cropping is best-effort: an uncroppable
-    upload (a PDF, no detectable text, a failed detection) is stored as-is.
     """
     submission = await _get_submission_for_actor(
         db, submission_id=submission_id, actor=user
@@ -74,22 +66,8 @@ async def upload_document(
         cashout_submission_id=submission.id,
     )
 
-    # Flushed before any bytes land in storage: a duplicate is rejected here,
-    # before the detector or the object store does any work for it.
     await repository.add_document(db, document)
-
-    cropped = await cropper.crop(
-        DocumentContent(data=payload.data, content_type=payload.content_type)
-    )
     await storage.write(document.storage_key, payload.data)
-    if cropped is not None:
-        # A sibling object, not a child path: under local storage the
-        # original's key is a file, so nothing can nest beneath it.
-        cropped_key = f"{document.storage_key}-cropped"
-        document.cropped_storage_key = cropped_key
-        document.cropped_content_type = cropped.content_type
-        document.crop_bounds = cropped.bounds.as_json()
-        await storage.write(cropped_key, cropped.data)
 
     return document
 
@@ -111,12 +89,10 @@ async def delete_document(
             "SUBMISSION_COMPLETED", "Documents cannot be removed after completion."
         )
 
-    # Both objects go with the row: the original and, when there is one, the
-    # crop derived from it.
+    # The original and the crop each of its analyses read all go with the row.
     storage_keys = [
-        key
-        for key in (document.storage_key, document.cropped_storage_key)
-        if key is not None
+        document.storage_key,
+        *await repository.list_crop_storage_keys(db, document_id=document.id),
     ]
     await repository.delete_document(db, document)
     for storage_key in storage_keys:
@@ -147,37 +123,6 @@ async def get_document_content(
             document.storage_key,
         )
         raise AppError("DOCUMENT_NOT_FOUND", "The stored file is missing.") from exc
-    return document, data
-
-
-async def get_cropped_document_content(
-    db: AsyncSession,
-    *,
-    document_id: UUID,
-    user: User,
-    storage: DocumentStorageClient,
-) -> tuple[CashoutDocument, bytes]:
-    """The crop stored beside the original, for viewing; employee or admin.
-
-    A document with no crop is, to this endpoint, not found: the caller
-    already knows from the document's `cropped_content_type` whether to ask.
-    """
-    document = await _get_document(db, document_id)
-    submission = await _get_submission(db, document.cashout_submission_id)
-    ensure_can_view(submission, user)
-
-    if document.cropped_storage_key is None:
-        raise AppError("DOCUMENT_NOT_FOUND", "This document has no cropped version.")
-    try:
-        data = await storage.read(document.cropped_storage_key)
-    except DocumentNotFoundError as exc:
-        # As for the original: the row outlived its stored bytes.
-        logger.warning(
-            "Stored crop missing for document %s (key %s)",
-            document.id,
-            document.cropped_storage_key,
-        )
-        raise AppError("DOCUMENT_NOT_FOUND", "The stored crop is missing.") from exc
     return document, data
 
 
@@ -212,5 +157,4 @@ __all__ = [
     "upload_document",
     "delete_document",
     "get_document_content",
-    "get_cropped_document_content",
 ]

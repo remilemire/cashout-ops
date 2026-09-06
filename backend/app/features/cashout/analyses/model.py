@@ -13,6 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.providers import AIProvider
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.infrastructure.db.models import Base, enum_column
+from app.lib.documents import DocumentContentType
 
 from .types import DocumentAnalysisStatus
 
@@ -82,6 +83,21 @@ class CashoutDocumentAnalysis(Base):
     # it flagged as uncertain/inconsistent ([{path, message}, ...]).
     extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     issues: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+
+    # The crop of the document this analysis read, when its first extraction
+    # produced one: stored beside the original (in the original's format),
+    # with where it sits in the upright original ({left, top, right, bottom},
+    # pixels). Kept through resets and manual entry, so every rerun reads the
+    # same crop and the card keeps previewing it. Null when the document was
+    # read whole — a PDF, an image with no detectable text, cropping switched
+    # off — or has not been extracted yet.
+    cropped_storage_key: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, unique=True
+    )
+    cropped_content_type: Mapped[DocumentContentType | None] = mapped_column(
+        enum_column(DocumentContentType, "document_content_type"), nullable=True
+    )
+    crop_bounds: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
 
     # Set when status is FAILED: the DocumentAIErrorCode value the extraction
     # failed with; error_code stays null for unexpected job crashes (only the

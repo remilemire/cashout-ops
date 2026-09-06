@@ -5,11 +5,13 @@ from __future__ import annotations
 from .processor import (
     CashoutDocumentProcessingResult,
     CashoutDocumentProcessor,
+    DocumentCrop,
     build_cashout_document_processor,
 )
 
 __all__ = [
     "CashoutDocumentProcessingResult",
     "CashoutDocumentProcessor",
+    "DocumentCrop",
     "build_cashout_document_processor",
 ]

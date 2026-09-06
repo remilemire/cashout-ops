@@ -18,7 +18,12 @@ from app.infrastructure.outbox.dispatcher import OutboxDispatcher
 from app.infrastructure.outbox.lifespan import create_outbox_handler_registry
 from app.infrastructure.redis import Redis
 
-from ..fakes import FakeAIClient, FakeDocumentStorage, FakeEmailClient
+from ..fakes import (
+    FakeAIClient,
+    FakeDocumentStorage,
+    FakeEmailClient,
+    FakeTextDetector,
+)
 
 
 class OutboxDrain:
@@ -41,14 +46,18 @@ def drain_outbox(
     email_client: FakeEmailClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
+    text_detector: FakeTextDetector,
 ) -> OutboxDrain:
     # The handler builds its own processor, so it is wired from the same fake
-    # AI and storage fixtures the request path uses — tests that configure
-    # `ai_client` still steer what the drained extraction returns.
+    # AI, storage, and detector fixtures the request path uses — tests that
+    # configure `ai_client` or `text_detector` still steer what the drained
+    # extraction returns.
     registry = create_outbox_handler_registry(
         [
             SendLoginCodeEmailOutboxHandler(redis_client, email_client),
-            RunExtractionOutboxHandler(db_sessionmaker, ai_client, storage),
+            RunExtractionOutboxHandler(
+                db_sessionmaker, ai_client, storage, text_detector
+            ),
         ]
     )
     dispatcher = OutboxDispatcher(

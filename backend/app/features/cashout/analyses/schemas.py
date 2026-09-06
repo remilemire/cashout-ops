@@ -8,6 +8,7 @@ from typing import Any
 from app.core.providers import AIProvider
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.cashout.extraction.types import CashoutDocumentClassification
+from app.lib.documents import DocumentContentType
 
 from .types import DocumentAnalysisStatus
 
@@ -28,6 +29,9 @@ class CashoutDocumentAnalysisOut(BaseOut):
     extracted_data_json: dict[str, Any] | None = None
     extraction_confidence: float | None = None
     issues: list[dict[str, Any]] | None = None
+    # Set when the extraction read a crop of the document rather than the
+    # whole image; the crop is served by the analysis's cropped endpoint.
+    cropped_content_type: DocumentContentType | None = None
     error_code: str | None = None
     error_message: str | None = None
     completed_at: UtcDateTime | None = None

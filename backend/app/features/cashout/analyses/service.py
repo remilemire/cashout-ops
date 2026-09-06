@@ -21,6 +21,8 @@ from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from app.features.users.model import User
 from app.infrastructure.outbox import service as outbox_service
+from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
+from app.lib.documents import DocumentContent
 
 from . import repository
 from .messages import analysis_error_message
@@ -118,7 +120,9 @@ async def record_manual_entry(
 
     # The AI-run fields are nulled explicitly: when a FAILED or unverified
     # analysis is converted, its old provider/confidence/error state must not
-    # survive under the manual entry.
+    # survive under the manual entry. The crop (cropped_*) is not among them:
+    # it describes the document, not the run, and the card keeps previewing
+    # it.
     analysis.provider = None
     analysis.model = None
     analysis.status = DocumentAnalysisStatus.VERIFIED
@@ -245,6 +249,43 @@ async def get_analysis(
     return analysis
 
 
+async def get_cropped_document(
+    db: AsyncSession,
+    *,
+    analysis_id: UUID,
+    user: User,
+    storage: DocumentStorageClient,
+) -> tuple[DocumentContent, str]:
+    """The crop this analysis read, with the document's filename, for
+    viewing; employee or admin.
+
+    An analysis that read the document whole has no crop and is, to this
+    endpoint, not found: the caller already knows from
+    `cropped_content_type` whether to ask.
+    """
+    analysis = await _get_analysis(db, analysis_id)
+
+    document = await _get_document(db, analysis.cashout_document_id)
+    submission = await _get_submission(db, document.cashout_submission_id)
+    ensure_can_view(submission, user)
+
+    storage_key = analysis.cropped_storage_key
+    content_type = analysis.cropped_content_type
+    if storage_key is None or content_type is None:
+        raise AppError("DOCUMENT_NOT_FOUND", "This analysis has no cropped document.")
+    try:
+        data = await storage.read(storage_key)
+    except DocumentNotFoundError as exc:
+        # The row outlived its stored bytes (lost or deleted out of band). To
+        # the viewer the crop is gone; the mismatch is an operational signal.
+        logger.warning(
+            "Stored crop missing for analysis %s (key %s)", analysis.id, storage_key
+        )
+        raise AppError("DOCUMENT_NOT_FOUND", "The stored crop is missing.") from exc
+    content = DocumentContent(data=data, content_type=content_type)
+    return content, document.original_filename
+
+
 async def verify_analysis(
     db: AsyncSession,
     *,
@@ -359,21 +400,37 @@ async def _apply_extraction(
     processor: CashoutDocumentProcessor,
     classification: CashoutDocumentClassification | None = None,
 ) -> None:
-    """Run classification + extraction and persist the outcome on the analysis.
+    """Crop, then run classification + extraction, and persist the outcome.
 
-    Success lands the analysis in NEEDS_VERIFICATION with its extracted data.
-    A document the AI cannot place, like a provider failure, lands it in
-    FAILED with error_code/error_message — there is nothing to verify either
-    way, so the cashier retries, replaces the document, or enters its details
-    manually. A supplied `classification` is passed to the processor, which
-    skips the AI classify step and reports a null classification confidence.
+    The first extraction crops the document to its printed area and records
+    the crop on the analysis; it and every rerun then read that crop rather
+    than the whole image. Success lands the analysis in NEEDS_VERIFICATION
+    with its extracted data. A document the AI cannot place, like a provider
+    failure, lands it in FAILED with error_code/error_message — there is
+    nothing to verify either way, so the cashier retries, replaces the
+    document, or enters its details manually. A supplied `classification` is
+    passed to the processor, which skips the AI classify step and reports a
+    null classification confidence.
     """
     analysis = await repository.find_analysis_by_document(db, document_id=document.id)
     if analysis is None:
         # Unreachable in practice: the reset created the row before this ran.
         raise RuntimeError("analysis missing for document under extraction")
 
-    ref = _extraction_ref(document)
+    original = DocumentRef(
+        storage_key=document.storage_key, content_type=document.content_type
+    )
+    if analysis.cropped_storage_key is None:
+        # No crop yet — the first run, or earlier runs found nothing to crop
+        # to. Trying again on a rerun is cheap and picks up a detector or a
+        # setting that has changed since; a crop, once made, is kept. Recorded
+        # before the AI call so a failed extraction still keeps its crop.
+        crop = await processor.crop(original)
+        if crop is not None:
+            analysis.cropped_storage_key = crop.storage_key
+            analysis.cropped_content_type = crop.content_type
+            analysis.crop_bounds = crop.bounds.as_json()
+    ref = _extraction_source(analysis, original)
 
     try:
         result = await processor.process(ref, classification=classification)
@@ -410,23 +467,19 @@ async def _apply_extraction(
     analysis.issues = [issue.model_dump(mode="json") for issue in result.issues]
 
 
-def _extraction_ref(document: CashoutDocument) -> DocumentRef:
-    """What the AI reads: the crop the upload produced, else the original.
-
-    Retries and reclassifications come through here too, so a rerun reads
-    the stored crop rather than detecting again.
-    """
+def _extraction_source(
+    analysis: CashoutDocumentAnalysis, original: DocumentRef
+) -> DocumentRef:
+    """What the AI reads: the crop recorded on the analysis, else the original."""
     if (
-        document.cropped_storage_key is not None
-        and document.cropped_content_type is not None
+        analysis.cropped_storage_key is not None
+        and analysis.cropped_content_type is not None
     ):
         return DocumentRef(
-            storage_key=document.cropped_storage_key,
-            content_type=document.cropped_content_type,
+            storage_key=analysis.cropped_storage_key,
+            content_type=analysis.cropped_content_type,
         )
-    return DocumentRef(
-        storage_key=document.storage_key, content_type=document.content_type
-    )
+    return original
 
 
 def _ensure_replaceable(analysis: CashoutDocumentAnalysis | None) -> None:
@@ -459,6 +512,8 @@ async def _reset_analysis(
         await repository.add_analysis(db, analysis)
         return analysis
 
+    # The crop (cropped_*) survives the reset: it describes the document,
+    # not the run, and the rerun reads it rather than detecting again.
     analysis.provider = processor.provider
     analysis.model = processor.model
     analysis.status = DocumentAnalysisStatus.EXTRACTING
@@ -488,6 +543,7 @@ __all__ = [
     "replace_with_manual_entry",
     "run_extraction",
     "get_analysis",
+    "get_cropped_document",
     "verify_analysis",
     "unverify_analysis",
 ]

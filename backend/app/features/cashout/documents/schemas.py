@@ -15,9 +15,6 @@ class CashoutDocumentOut(BaseOut):
     content_type: DocumentContentType
     original_filename: str
     checksum_sha256: str
-    # Set when the upload was cropped to its printed area: the crop is served
-    # by the cropped-content endpoint, and is what the AI read.
-    cropped_content_type: DocumentContentType | None = None
     uploaded_by_user_id: uuid.UUID
     uploaded_at: UtcDateTime
     cashout_submission_id: uuid.UUID

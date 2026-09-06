@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 
 from app.core.config import settings
-from app.document_ai import CropBounds, DocumentCropper, build_document_cropper
+from app.document_cropping import CropBounds, DocumentCropper, build_document_cropper
 from app.integrations.ocr import TextBox, TextDetectionError
 from app.lib.documents import DocumentContent, DocumentContentType
 from tests.support.fakes import FakeTextDetector

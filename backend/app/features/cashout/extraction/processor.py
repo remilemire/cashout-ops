@@ -11,8 +11,11 @@ from app.document_ai import (
     DocumentRef,
     FieldIssue,
 )
+from app.document_cropping import CropBounds, DocumentCropper, build_document_cropper
 from app.integrations.ai import AIClient
-from app.integrations.storage import DocumentStorageClient
+from app.integrations.ocr import TextDetector
+from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
+from app.lib.documents import DocumentContent, DocumentContentType
 
 from .registry import CASHOUT_CLASSIFICATION_HINTS, CASHOUT_DOCUMENT_SCHEMAS
 from .schemas import CashoutDocumentSchema
@@ -44,6 +47,20 @@ Handwritten values may be corrections or final accepted amounts; prefer them ove
 
 
 @dataclass(frozen=True)
+class DocumentCrop:
+    """A crop of a stored document, written beside the original.
+
+    What extraction reads in place of the whole image, and what the cashier
+    previews: the printed area text detection found, in the original's
+    format, with where it sits in the upright original.
+    """
+
+    storage_key: str
+    content_type: DocumentContentType
+    bounds: CropBounds
+
+
+@dataclass(frozen=True)
 class CashoutDocumentProcessingResult:
     """A placed document and what was extracted from it.
 
@@ -66,10 +83,25 @@ class CashoutDocumentProcessingResult:
 
 
 class CashoutDocumentProcessor:
-    """Maps generic document analysis onto the cashout domain."""
+    """Maps generic document analysis onto the cashout domain.
 
-    def __init__(self, documents: DocumentAIClient) -> None:
+    Coordinates the two generic components an extraction needs — the
+    cropper, which cuts a photo down to its printed area, and the document
+    AI, which classifies and extracts — without either knowing of the
+    other. The caller sequences them (`crop`, then `process` over the crop)
+    and persists what each reports.
+    """
+
+    def __init__(
+        self,
+        documents: DocumentAIClient,
+        *,
+        cropper: DocumentCropper,
+        storage: DocumentStorageClient,
+    ) -> None:
         self._documents = documents
+        self._cropper = cropper
+        self._storage = storage
 
     @property
     def provider(self) -> AIProvider:
@@ -79,6 +111,34 @@ class CashoutDocumentProcessor:
     def model(self) -> str:
         return self._documents.ai.model
 
+    async def crop(self, document: DocumentRef) -> DocumentCrop | None:
+        """Crop the stored document to its printed area, storing the crop
+        beside it.
+
+        None when there is nothing to crop to — a PDF, an image with no
+        detectable text, cropping switched off — and the document should be
+        read whole. A missing original is None too: `process` reports that
+        as MISSING_DOCUMENT, where the caller already handles it.
+        """
+        try:
+            data = await self._storage.read(document.storage_key)
+        except DocumentNotFoundError:
+            return None
+        cropped = await self._cropper.crop(
+            DocumentContent(data=data, content_type=document.content_type)
+        )
+        if cropped is None:
+            return None
+        # A sibling object, not a child path: under local storage the
+        # original's key is a file, so nothing can nest beneath it.
+        storage_key = f"{document.storage_key}-cropped"
+        await self._storage.write(storage_key, cropped.data)
+        return DocumentCrop(
+            storage_key=storage_key,
+            content_type=cropped.content_type,
+            bounds=cropped.bounds,
+        )
+
     async def process(
         self,
         document: DocumentRef,
@@ -86,6 +146,9 @@ class CashoutDocumentProcessor:
         classification: CashoutDocumentClassification | None = None,
     ) -> CashoutDocumentProcessingResult:
         """Classify the document and extract its type's schema from it.
+
+        `document` is whatever the caller wants read: the crop `crop`
+        produced, or the original when there was none.
 
         Raises DocumentAIError — DocumentUnclassifiableError when the model
         places the document as none of the known types, or a re-raised AI
@@ -131,15 +194,16 @@ class CashoutDocumentProcessor:
 
 
 def build_cashout_document_processor(
-    ai: AIClient, storage: DocumentStorageClient
+    ai: AIClient, storage: DocumentStorageClient, text_detector: TextDetector | None
 ) -> CashoutDocumentProcessor:
-    """Compose a processor over the configured per-operation token budgets.
+    """Compose a processor over the configured token budgets and OCR settings.
 
-    Neither the processor nor its `DocumentAIClient` opens a resource — they
-    only wrap the AI and storage clients, which own their own lifecycles — so
-    each consumer calls this for itself rather than sharing one instance: the
-    request dependency per request, the extraction outbox handler when the
-    composition root constructs it.
+    Neither the processor nor its `DocumentAIClient` and `DocumentCropper`
+    opens a resource — they only wrap the AI, storage, and detector clients,
+    which own their own lifecycles — so each consumer calls this for itself
+    rather than sharing one instance: the request dependency per request,
+    the extraction outbox handler when the composition root constructs it.
+    A None detector (cropping disabled) makes a processor that never crops.
     """
     return CashoutDocumentProcessor(
         DocumentAIClient(
@@ -147,12 +211,15 @@ def build_cashout_document_processor(
             storage,
             classification_max_tokens=settings.ai.CLASSIFICATION_MAX_TOKENS,
             extraction_max_tokens=settings.ai.EXTRACTION_MAX_TOKENS,
-        )
+        ),
+        cropper=build_document_cropper(text_detector),
+        storage=storage,
     )
 
 
 __all__ = [
     "CashoutDocumentProcessingResult",
     "CashoutDocumentProcessor",
+    "DocumentCrop",
     "build_cashout_document_processor",
 ]
