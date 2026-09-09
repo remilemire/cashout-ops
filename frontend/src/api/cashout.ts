@@ -9,8 +9,8 @@ import type {
   CashoutSubmissionListItem,
   CompleteSubmissionInput,
   CreateSubmissionInput,
-  ExtractDocumentInput,
   ManualDocumentInput,
+  RetryAnalysisInput,
   UpdateSubmissionInput,
   VerifyAnalysisInput,
 } from "./types";
@@ -68,20 +68,15 @@ export const cashoutApi = {
       { method: "POST", body },
     );
   },
-  /** Replace a failed or unverified analysis with manually entered details. */
-  enterManualDocument: (documentId: string, input: ManualDocumentInput) =>
-    api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/manual`, {
-      method: "POST",
-      json: input,
-    }),
-  /** Re-run extraction; a corrected classification skips the AI classify step. */
-  extractDocument: (documentId: string, input?: ExtractDocumentInput) =>
+  /**
+   * Start an upload over: discard every analysis and crop, find the documents
+   * in it again, and extract each afresh. Returns the fresh first analysis.
+   */
+  restartDocument: (documentId: string) =>
     api<CashoutDocumentAnalysis>(`/cashout/documents/${documentId}/extract`, {
       method: "POST",
-      // A bare retry sends no body at all.
-      ...(input !== undefined && { json: input }),
     }),
-  /** Remove a document (and its analysis) from an incomplete submission. */
+  /** Remove a document (and its analyses) from an incomplete submission. */
   deleteDocument: (documentId: string) =>
     api<void>(`/cashout/documents/${documentId}`, { method: "DELETE" }),
   /** Plain URL for viewing the original file (img src / link href). */
@@ -92,6 +87,22 @@ export const cashoutApi = {
     api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}`),
   /** Plain URL for the crop the analysis read; 404 when it read the whole image. */
   analysisCroppedUrl: (id: string) => `/api/cashout/analyses/${id}/cropped`,
+  /**
+   * Re-run one analysis over the crop it read; a corrected classification
+   * skips the AI classify step.
+   */
+  retryAnalysis: (id: string, input?: RetryAnalysisInput) =>
+    api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/extract`, {
+      method: "POST",
+      // A bare retry sends no body at all.
+      ...(input !== undefined && { json: input }),
+    }),
+  /** Replace a failed or unverified analysis with manually entered details. */
+  enterManualAnalysis: (id: string, input: ManualDocumentInput) =>
+    api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/manual`, {
+      method: "POST",
+      json: input,
+    }),
   verifyAnalysis: (id: string, input: VerifyAnalysisInput) =>
     api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/verify`, {
       method: "POST",

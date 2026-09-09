@@ -181,11 +181,19 @@ export function SubmissionPage() {
   const canUnsubmit =
     user != null && isAdminRole(user.role) && submission.status === "completed";
   const documents = inUploadOrder(submission.documents);
-  const verifiedCount = documents.filter(
-    (doc) => doc.analysis?.status === "verified",
+  // Every document found in every upload counts on its own; completing needs
+  // all of them verified, and an upload with nothing found yet holds it up.
+  const analyses = documents.flatMap((doc) => doc.analyses);
+  const verifiedCount = analyses.filter(
+    (analysis) => analysis.status === "verified",
   ).length;
   const allVerified =
-    documents.length > 0 && verifiedCount === documents.length;
+    documents.length > 0 &&
+    documents.every(
+      (doc) =>
+        doc.analyses.length > 0 &&
+        doc.analyses.every((analysis) => analysis.status === "verified"),
+    );
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -233,7 +241,7 @@ export function SubmissionPage() {
           <div className="flex items-center gap-2">
             {documents.length > 0 && submission.status === "processing" && (
               <Badge tone={allVerified ? "success" : "neutral"}>
-                {verifiedCount}/{documents.length} verified
+                {verifiedCount}/{analyses.length} verified
               </Badge>
             )}
             <SubmissionStatusBadge status={submission.status} />

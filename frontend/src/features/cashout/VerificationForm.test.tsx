@@ -22,6 +22,7 @@ const verifyMock = vi.mocked(cashoutApi.verifyAnalysis);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
+  position: 1,
   createdAt: "2026-07-17T00:00:00Z",
   provider: "anthropic",
   model: "test-model",

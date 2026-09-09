@@ -196,6 +196,11 @@ export interface FieldIssue {
 export interface CashoutDocumentAnalysis {
   id: string;
   createdAt: string;
+  /**
+   * Reading order among the document's analyses (1-based): the order the
+   * documents were found in the upload, page by page for a PDF.
+   */
+  position: number;
   /** Null when the details were entered manually (no AI ran). */
   provider: string | null;
   model: string | null;
@@ -210,10 +215,11 @@ export interface CashoutDocumentAnalysis {
    */
   schemaVersion: number | null;
   /**
-   * Set when the extraction read a crop of the document rather than the whole
-   * image: the crop is served by `analysisCroppedUrl`, and is what to check
-   * the extraction against. Null for a PDF, an image with no detectable text,
-   * cropping switched off, or an analysis not yet extracted.
+   * Set when the extraction read a crop — this analysis's document among
+   * those found in the upload — rather than the whole upload: the crop is
+   * served by `analysisCroppedUrl`, and is what to check the extraction
+   * against. Null for an upload with no detectable text, cropping switched
+   * off, or an analysis not yet extracted.
    */
   croppedContentType: DocumentContentType | null;
   extractedDataJson: Record<string, unknown> | null;
@@ -237,7 +243,12 @@ export interface CashoutDocument {
   uploadedByUserId: string;
   uploadedAt: string;
   cashoutSubmissionId: string;
-  analysis: CashoutDocumentAnalysis | null;
+  /**
+   * One per document found in the upload (several receipts in one photo,
+   * each page of a PDF), in reading order. Empty only for the instant
+   * between the upload and its first analysis.
+   */
+  analyses: CashoutDocumentAnalysis[];
 }
 
 export type TipoutDepartment = "bar" | "kitchen" | "expo" | "host" | "manager";
@@ -343,7 +354,7 @@ export interface VerifyAnalysisInput {
   verifiedData?: Record<string, unknown>;
 }
 
-export interface ExtractDocumentInput {
+export interface RetryAnalysisInput {
   /**
    * Corrected classification: the rerun skips AI classification and extracts
    * as this type (its confidence is recorded as null). Omit for a plain
