@@ -49,7 +49,11 @@ from app.integrations.ai import (
     compose_instructions,
 )
 from app.lib.documents import DocumentContentType
-from tests.support.documents import SAMPLE_PHOTO_BYTES, SAMPLE_PHOTO_TEXT_BOXES
+from tests.support.documents import (
+    SAMPLE_PHOTO_BYTES,
+    SAMPLE_PHOTO_TEXT_BOXES,
+    SAMPLE_RECEIPT_PDF_BYTES,
+)
 from tests.support.fakes import FakeAIClient, FakeDocumentStorage, FakeTextDetector
 
 # ================================
@@ -65,6 +69,10 @@ def _cropper(detector: FakeTextDetector | None = None) -> DocumentCropper:
         margin=0.03,
         min_text_boxes=3,
         max_area_ratio=0.95,
+        split_enabled=True,
+        split_gap=4.0,
+        pdf_dpi=200,
+        pdf_max_pages=10,
     )
 
 
@@ -275,47 +283,66 @@ async def test_processor_crops_the_stored_document_beside_the_original() -> None
     detector = FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES)
     processor = _cropping_processor(storage, detector)
 
-    crop = await processor.crop(
+    (crop,) = await processor.crop(
         DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PNG)
     )
 
-    assert crop is not None
-    # A sibling object in the original's format, cut to the boxes' union
-    # ((160, 120)–(480, 350)) plus its 3% margin.
-    assert crop.storage_key == "doc-key-cropped"
+    # A numbered sibling object in the original's format, cut to the boxes'
+    # union ((160, 120)–(480, 350)) plus its 3% margin.
+    assert crop.storage_key == "doc-key-crop-1"
     assert crop.content_type is DocumentContentType.PNG
     assert crop.bounds == CropBounds(left=150, top=110, right=490, bottom=360)
-    assert set(storage.objects) == {"doc-key", "doc-key-cropped"}
-    assert storage.objects["doc-key-cropped"] != SAMPLE_PHOTO_BYTES
+    assert crop.page is None
+    assert crop.bounds_json() == {"left": 150, "top": 110, "right": 490, "bottom": 360}
+    assert set(storage.objects) == {"doc-key", "doc-key-crop-1"}
+    assert storage.objects["doc-key-crop-1"] != SAMPLE_PHOTO_BYTES
     assert detector.calls == [(480, 640)]
 
 
-async def test_processor_crop_is_none_when_no_text_is_found() -> None:
+async def test_processor_stores_one_crop_per_document_found() -> None:
+    # A two-page PDF: one crop per page, numbered in reading order, each
+    # recording its page.
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", SAMPLE_RECEIPT_PDF_BYTES)
+    processor = _cropping_processor(storage, FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES))
+
+    crops = await processor.crop(
+        DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
+    )
+
+    assert [crop.storage_key for crop in crops] == ["doc-key-crop-1", "doc-key-crop-2"]
+    assert [crop.page for crop in crops] == [1, 2]
+    assert all(crop.content_type is DocumentContentType.PNG for crop in crops)
+    assert crops[1].bounds_json()["page"] == 2
+    assert set(storage.objects) == {"doc-key", "doc-key-crop-1", "doc-key-crop-2"}
+
+
+async def test_processor_crops_nothing_when_no_text_is_found() -> None:
     storage = FakeDocumentStorage()
     await storage.write("doc-key", SAMPLE_PHOTO_BYTES)
     processor = _cropping_processor(storage, FakeTextDetector())
 
-    crop = await processor.crop(
+    crops = await processor.crop(
         DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PNG)
     )
 
-    assert crop is None
+    assert crops == []
     # Nothing was written beside the original.
     assert set(storage.objects) == {"doc-key"}
 
 
-async def test_processor_crop_is_none_for_a_missing_original() -> None:
+async def test_processor_crops_nothing_for_a_missing_original() -> None:
     # The missing bytes are left to `process`, which reports them as
     # MISSING_DOCUMENT where the caller already handles that failure.
     storage = FakeDocumentStorage()
     detector = FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES)
     processor = _cropping_processor(storage, detector)
 
-    crop = await processor.crop(
+    crops = await processor.crop(
         DocumentRef(storage_key="gone-key", content_type=DocumentContentType.PNG)
     )
 
-    assert crop is None
+    assert crops == []
     assert detector.calls == []
 
 

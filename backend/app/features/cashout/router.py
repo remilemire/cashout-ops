@@ -1,15 +1,18 @@
 # backend/app/features/cashout/router.py
 
-"""The flow, per document: the cashier uploads it and immediately gets back an
-EXTRACTING analysis; the AI extraction runs in a background task and the
-client polls the analysis until it reaches NEEDS_VERIFICATION (or FAILED —
-a provider failure, or a document the AI could not place as a cashout
-report — retryable via the extract endpoint). The cashier verifies each analysis —
+"""The flow, per upload: the cashier uploads it and immediately gets back an
+EXTRACTING analysis; the AI extraction runs in a background task, first
+finding every document printed in the upload (two receipts in one photo, the
+pages of a PDF) and giving each its own analysis, and the client polls each
+analysis until it reaches NEEDS_VERIFICATION (or FAILED — a provider failure,
+or a document the AI could not place as a cashout report — retryable via the
+analysis's extract endpoint; the document's extract endpoint starts the
+upload over, detecting again). The cashier verifies each analysis —
 optionally submitting corrections. Alternatively, a document can be added
 with manually entered details (or a failed/unverified analysis replaced by
 them), skipping AI entirely and landing directly in VERIFIED. Once every
-document is verified, completing the submission reconciles the analyses into
-a CashoutData row and closes the cashout (COMPLETED) — or refuses, when the
+analysis is verified, completing the submission reconciles them into a
+CashoutData row and closes the cashout (COMPLETED) — or refuses, when the
 documents do not cross-check (see data/reconciliation.py).
 """
 
@@ -32,8 +35,8 @@ from app.security.dependencies import require_csrf
 
 from .analyses.router import router as analyses_router
 from .analyses.schemas import (
+    CashoutAnalysisExtract,
     CashoutDocumentAnalysisOut,
-    CashoutDocumentExtract,
     CashoutDocumentManualEntry,
 )
 from .data.router import router as data_router
@@ -78,6 +81,7 @@ router.include_router(data_router)
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
 DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
+AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 
 
 @router.post(
@@ -112,9 +116,12 @@ async def upload_document(
     Accepts JPEG, PNG, WebP, or PDF within the configured size limit
     (`STORAGE_MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
     checksum) is rejected. The AI extraction runs in the background: this
-    returns the analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
-    until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the extract
-    endpoint).
+    returns the first analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
+    until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the
+    analysis's extract endpoint). The extraction first finds every document
+    printed in the upload (several receipts in one photo, each page of a
+    PDF) and gives each further one its own analysis, listed on the document
+    in the submission detail.
 
     The content type is checked before the body is read, and the body itself is
     read only up to the limit (plus the byte that proves it was exceeded); the
@@ -198,34 +205,35 @@ async def upload_manual_document(
 
 
 @router.post(
-    "/documents/{document_id}/manual",
+    "/analyses/{analysis_id}/manual",
     response_model=CashoutDocumentAnalysisOut,
     # No rate limit: like verify, a manual entry costs no AI or storage.
     responses=error_responses(
-        "DOCUMENT_NOT_FOUND",
+        "ANALYSIS_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "ANALYSIS_VERIFIED",
         "EXTRACTION_IN_PROGRESS",
         "VALIDATION_FAILED",
     ),
 )
-async def enter_manual_document(
-    document_id: DocumentId,
+async def enter_manual_analysis(
+    analysis_id: AnalysisId,
     payload: CashoutDocumentManualEntry,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
-    """Replace a document's analysis with manually entered details.
+    """Replace an analysis with manually entered details.
 
     Skips AI entirely: the entered data is validated against the
     classification's registered schema and the analysis lands directly in
     `VERIFIED` — typing the values is the verification. Allowed from `FAILED`
     and `NEEDS_VERIFICATION`; a verified analysis cannot be replaced, nor one
-    whose extraction is still in progress.
+    whose extraction is still in progress. The crop the analysis read stays
+    its preview.
     """
-    analysis = await workflows.enter_manual_document(
+    analysis = await workflows.enter_manual_analysis(
         db,
-        document_id=document_id,
+        analysis_id=analysis_id,
         classification=payload.classification,
         data=payload.data,
         user=current_user,
@@ -234,9 +242,56 @@ async def enter_manual_document(
 
 
 @router.post(
-    "/documents/{document_id}/extract",
+    "/analyses/{analysis_id}/extract",
     response_model=CashoutDocumentAnalysisOut,
     # Re-extraction burns provider tokens on demand — per-user quota applies.
+    dependencies=[Depends(rate_limit_extract)],
+    responses=error_responses(
+        "ANALYSIS_NOT_FOUND",
+        "SUBMISSION_COMPLETED",
+        "ANALYSIS_VERIFIED",
+        "EXTRACTION_IN_PROGRESS",
+        "VALIDATION_FAILED",
+        "RATE_LIMITED",
+    ),
+)
+async def extract_analysis(
+    analysis_id: AnalysisId,
+    db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
+    processor: Annotated[
+        CashoutDocumentProcessor, Depends(get_cashout_document_processor)
+    ],
+    # The body is optional: a bare POST is the plain retry.
+    payload: CashoutAnalysisExtract | None = None,
+) -> CashoutDocumentAnalysisOut:
+    """Re-run one analysis (e.g. after a `FAILED` attempt).
+
+    Resets the analysis to `EXTRACTING` and runs the AI in the background
+    over the crop it read before — poll `GET /cashout/analyses/{id}` for the
+    outcome. A verified analysis cannot be re-run, nor one whose extraction
+    is still in progress. To detect the documents in the upload again, use
+    the document's extract endpoint instead.
+
+    With a `classification` in the body (the user correcting a
+    misclassification), the rerun skips AI classification and extracts
+    straight into that type's schema; the recorded classification confidence
+    is then null. Without one, the full classify + extract pipeline runs.
+    """
+    analysis = await workflows.retry_analysis(
+        db,
+        analysis_id=analysis_id,
+        user=current_user,
+        processor=processor,
+        classification=payload.classification if payload is not None else None,
+    )
+    return CashoutDocumentAnalysisOut.model_validate(analysis)
+
+
+@router.post(
+    "/documents/{document_id}/extract",
+    response_model=CashoutDocumentAnalysisOut,
+    # Starting over burns provider tokens on demand — per-user quota applies.
     dependencies=[Depends(rate_limit_extract)],
     responses=error_responses(
         "DOCUMENT_NOT_FOUND",
@@ -251,29 +306,27 @@ async def extract_document(
     document_id: DocumentId,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
+    storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
     processor: Annotated[
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
-    # The body is optional: a bare POST is the plain retry.
-    payload: CashoutDocumentExtract | None = None,
 ) -> CashoutDocumentAnalysisOut:
-    """Restart extraction on a document (e.g. after a `FAILED` attempt).
+    """Start a document over: detect the documents in the upload again and
+    re-extract them all.
 
-    Resets the analysis to `EXTRACTING` and runs the AI in the background —
-    poll `GET /cashout/analyses/{id}` for the outcome. A verified analysis
-    cannot be re-run, nor one whose extraction is still in progress.
-
-    With a `classification` in the body (the user correcting a
-    misclassification), the rerun skips AI classification and extracts
-    straight into that type's schema; the recorded classification confidence
-    is then null. Without one, the full classify + extract pipeline runs.
+    Every current analysis of the document, and the crop each read, is
+    discarded; a fresh `EXTRACTING` analysis is returned, and the background
+    job adds one for each further document it finds — refresh the submission
+    for them. Refused while any analysis is verified or still extracting.
+    The way to recover from a wrong split or crop; to re-run just one
+    analysis, use its own extract endpoint.
     """
     analysis = await workflows.restart_extraction(
         db,
         document_id=document_id,
         user=current_user,
         processor=processor,
-        classification=payload.classification if payload is not None else None,
+        storage=storage,
     )
     return CashoutDocumentAnalysisOut.model_validate(analysis)
 

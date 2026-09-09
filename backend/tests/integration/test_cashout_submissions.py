@@ -229,7 +229,7 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     assert detail["data"] is None
     # The analyses stay verified — nothing to re-verify on re-completion.
     assert (
-        detail["documents"][0]["analysis"]["status"]
+        detail["documents"][0]["analyses"][0]["status"]
         == DocumentAnalysisStatus.VERIFIED.value
     )
 

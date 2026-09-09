@@ -69,6 +69,11 @@ class CashoutDocument(Base):
 
     uploaded_by: Mapped[User] = relationship()
 
-    analysis: Mapped[CashoutDocumentAnalysis | None] = relationship(
-        back_populates="cashout_document", cascade="all, delete-orphan"
+    # One per document found in the upload, in the order they were found;
+    # empty only between the upload and its first analysis being created,
+    # which the intake workflow does in the same transaction.
+    analyses: Mapped[list[CashoutDocumentAnalysis]] = relationship(
+        back_populates="cashout_document",
+        cascade="all, delete-orphan",
+        order_by="CashoutDocumentAnalysis.position",
     )

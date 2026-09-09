@@ -18,7 +18,8 @@ class CashoutDocumentOut(BaseOut):
     uploaded_by_user_id: uuid.UUID
     uploaded_at: UtcDateTime
     cashout_submission_id: uuid.UUID
-    analysis: CashoutDocumentAnalysisOut | None = None
+    # One per document found in the upload, in reading order.
+    analyses: list[CashoutDocumentAnalysisOut] = []
 
 
 __all__ = ["CashoutDocumentOut"]

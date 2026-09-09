@@ -9,13 +9,14 @@ from .base import SettingsGroup
 
 
 class OCRSettings(SettingsGroup):
-    """Cropping uploaded photos to their printed area.
+    """Cropping uploads down to the documents printed in them.
 
-    A local text-detection model finds the text in an uploaded image; the
-    document is cropped to that region (plus a margin), stored beside the
-    original, and read by the AI in place of the full photo. ENABLED=false
-    skips both the model load at startup and the crop at upload, so uploads
-    extract from the original as they did before cropping existed.
+    A local text-detection model finds the text in an uploaded image (or in
+    each rendered page of a PDF); each printed area is cropped out (plus a
+    margin), stored beside the original, and read by the AI in place of the
+    whole upload — one extraction per document found. ENABLED=false skips
+    both the model load at startup and the crop, so uploads extract from the
+    original whole, as they did before cropping existed.
     """
 
     model_config = SettingsConfigDict(env_prefix="OCR_")
@@ -34,6 +35,18 @@ class OCRSettings(SettingsGroup):
     # A crop keeping more than this share of the image's pixels saves nothing
     # worth a second stored copy: the upload stays uncropped.
     MAX_CROP_AREA_RATIO: float = Field(default=0.95, gt=0, le=1)
+    # Whether an upload holding several documents (two receipts on the
+    # table, a two-page PDF) is split into one crop — and one extraction —
+    # per document. Off, every image is one document.
+    SPLIT_ENABLED: bool = True
+    # An empty band at least this many text-line heights wide, on background
+    # rather than paper, separates two documents. Blank lines inside a
+    # document are one or two line heights; leave room above that.
+    SPLIT_GAP: float = Field(default=4.0, ge=1)
+    # Resolution a PDF page is rendered at before detection and cropping.
+    PDF_RENDER_DPI: int = Field(default=200, ge=72, le=400)
+    # Pages of a PDF rendered at most; later pages are ignored.
+    PDF_MAX_PAGES: int = Field(default=10, ge=1)
 
 
 __all__ = ["OCRSettings"]

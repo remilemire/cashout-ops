@@ -6,7 +6,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,10 +33,22 @@ if TYPE_CHECKING:
 
 
 class CashoutDocumentAnalysis(Base):
-    """One classification + extraction pass over a cashout document — an AI
-    run, or its manually entered equivalent (null provider)."""
+    """One classification + extraction pass over one document found in an
+    upload — an AI run, or its manually entered equivalent (null provider).
+
+    An upload holds one document until its first extraction finds more (two
+    receipts in one photo, the pages of a PDF); each becomes its own analysis
+    of the same CashoutDocument, reading its own crop.
+    """
 
     __tablename__ = "cashout_document_analyses"
+    __table_args__ = (
+        UniqueConstraint(
+            "cashout_document_id",
+            "position",
+            name="uq_cashout_document_analyses_document_position",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
@@ -35,13 +57,18 @@ class CashoutDocumentAnalysis(Base):
         server_default=func.now(),
     )
 
-    # One analysis per document: a retry resets this row in place rather than
-    # appending an attempt.
+    # A retry resets the row in place rather than appending an attempt; a
+    # document gains rows only for further documents found in its upload.
     cashout_document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cashout_documents.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
         index=True,
+    )
+    # Reading order among the document's analyses, 1-based: the order the
+    # documents were found in the upload (page by page for a PDF). Unique
+    # per document.
+    position: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
     )
 
     # Null provider (and model) ⇔ a manually entered analysis: the user typed
@@ -84,13 +111,13 @@ class CashoutDocumentAnalysis(Base):
     extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     issues: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
-    # The crop of the document this analysis read, when its first extraction
-    # produced one: stored beside the original (in the original's format),
-    # with where it sits in the upright original ({left, top, right, bottom},
-    # pixels). Kept through resets and manual entry, so every rerun reads the
-    # same crop and the card keeps previewing it. Null when the document was
-    # read whole — a PDF, an image with no detectable text, cropping switched
-    # off — or has not been extracted yet.
+    # The crop this analysis reads — the one document among those found in
+    # the upload — stored beside the original (in the original's format; PNG
+    # for a PDF's rendered page), with where it sits in the upright original
+    # ({left, top, right, bottom} pixels, plus `page` for a PDF). Kept
+    # through resets and manual entry, so every rerun reads the same crop and
+    # the card keeps previewing it. Null when the upload was read whole — no
+    # detectable text, cropping switched off — or has not been extracted yet.
     cropped_storage_key: Mapped[str | None] = mapped_column(
         String(512), nullable=True, unique=True
     )
@@ -123,6 +150,6 @@ class CashoutDocumentAnalysis(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analysis")
+    cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analyses")
 
     verified_by: Mapped[User | None] = relationship()

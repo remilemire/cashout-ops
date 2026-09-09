@@ -79,7 +79,7 @@ async def delete_document(
     user: User,
     storage: DocumentStorageClient,
 ) -> None:
-    """Remove a document (and its analysis) from an incomplete submission."""
+    """Remove a document (and its analyses) from an incomplete submission."""
     document = await _get_document(db, document_id)
     submission = await _get_submission_for_actor(
         db, submission_id=document.cashout_submission_id, actor=user

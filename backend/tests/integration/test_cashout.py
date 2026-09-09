@@ -79,17 +79,17 @@ async def test_full_cashout_flow(
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
-    assert {document["analysis"]["id"] for document in detail["documents"]} == {
+    assert {document["analyses"][0]["id"] for document in detail["documents"]} == {
         analysis["id"],
         summary["id"],
     }
     document = next(
         entry
         for entry in detail["documents"]
-        if entry["analysis"]["id"] == analysis["id"]
+        if entry["analyses"][0]["id"] == analysis["id"]
     )
     assert (
-        document["analysis"]["classification"]
+        document["analyses"][0]["classification"]
         == CashoutDocumentClassification.TOUCHBISTRO_REPORT.value
     )
 
@@ -188,7 +188,7 @@ async def test_admin_can_manage_another_users_submission(
     # Upload and retry extraction on the employee's behalf.
     created = await upload_document(admin_client, submission_id, drain=drain_outbox)
     retried = await admin_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         headers=csrf_headers(admin_client),
     )
     assert retried.status_code == 200, retried.text
@@ -247,7 +247,7 @@ async def test_extract_with_corrected_classification_skips_ai_classify(
     # proves the corrected rerun skipped it.
     ai_client.classification = None
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         json={
             "classification": CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
         },
@@ -280,7 +280,7 @@ async def test_extract_without_body_still_runs_the_full_pipeline(
 
     # The pre-existing retry: no body at all.
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         headers=csrf_headers(cashier_client),
     )
     assert response.status_code == 200, response.text
@@ -307,7 +307,7 @@ async def test_extract_rejects_an_invalid_classification_value(
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
 
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         json={"classification": "coffee_receipt"},
         headers=csrf_headers(cashier_client),
     )

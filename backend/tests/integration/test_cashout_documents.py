@@ -21,6 +21,8 @@ from tests.support.documents import (
     SAMPLE_PDF_BYTES,
     SAMPLE_PHOTO_TEXT_BOXES,
     SAMPLE_PHOTO_UPLOAD,
+    SAMPLE_TWO_RECEIPTS_TEXT_BOXES,
+    SAMPLE_TWO_RECEIPTS_UPLOAD,
 )
 from tests.support.fakes import FakeAIClient, FakeDocumentStorage, FakeTextDetector
 from tests.support.fixtures.clients import ClientFactory
@@ -235,23 +237,26 @@ async def test_upload_rejects_duplicate_document(
     await upload_document(cashier_client, other_submission_id, drain=drain_outbox)
 
 
-async def test_delete_document_removes_the_crop_its_extraction_read(
+async def test_delete_document_removes_the_crops_its_analyses_read(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
     text_detector: FakeTextDetector,
     drain_outbox: OutboxDrain,
 ) -> None:
-    # The crop lives beside the original and is recorded on the analysis; the
-    # cascade removes the analysis row, and the document's delete must take
-    # the stored crop with it.
+    # Each crop lives beside the original and is recorded on its analysis;
+    # the cascade removes the analysis rows, and the document's delete must
+    # take every stored crop with it.
     configure_server_summary(ai_client)
-    text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
+    text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
     created = await upload_document(
-        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
+        cashier_client,
+        submission_id,
+        drain=drain_outbox,
+        file=SAMPLE_TWO_RECEIPTS_UPLOAD,
     )
-    assert len(storage.objects) == 2
+    assert len(storage.objects) == 3
 
     response = await cashier_client.delete(
         f"/api/cashout/documents/{created['cashoutDocumentId']}",

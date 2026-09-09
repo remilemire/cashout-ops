@@ -37,10 +37,12 @@ tests/
     api.py               OWNER_EMAIL, csrf_headers, login
     factories.py         direct DB seeding: create_user
     cashout.py           workflow drivers: create_submission, upload_document,
-                         poll_analysis, verify_analysis, complete_submission,
+                         poll_analysis, retry_analysis, enter_manual_analysis,
+                         verify_analysis, complete_submission,
                          configure_server_summary
     documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads, and the
-                         decodable SAMPLE_PHOTO_UPLOAD with its text boxes
+                         decodable SAMPLE_PHOTO_UPLOAD, SAMPLE_TWO_RECEIPTS_UPLOAD,
+                         and SAMPLE_RECEIPT_PDF_UPLOAD with their text boxes
     fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient,
                          FakeTextDetector
       sdk/               SDK-shaped fakes for the provider adapter unit tests

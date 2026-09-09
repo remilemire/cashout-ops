@@ -238,7 +238,7 @@ async def test_extract_per_user_is_limited(
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    url = f"/api/cashout/documents/{created['cashoutDocumentId']}/extract"
+    url = f"/api/cashout/analyses/{created['id']}/extract"
 
     first = await cashier_client.post(url, headers=csrf_headers(cashier_client))
     assert first.status_code == 200, first.text

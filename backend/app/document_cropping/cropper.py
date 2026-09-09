@@ -1,18 +1,23 @@
 # backend/app/document_cropping/cropper.py
 
-"""Cropping a document image to its printed area before analysis.
+"""Cropping an upload down to the documents printed in it, before analysis.
 
-A phone photo of a report is mostly tabletop. Text detection says where the
-print is; the crop keeps that region plus a margin, so the AI reads far fewer
-pixels and the cashier sees the report rather than the table. Best-effort by
-design: whatever stops the crop — a PDF, an image with no detectable text, a
-failed detection, cropping switched off — leaves the document uncropped, and
-the upload proceeds exactly as it did before cropping existed.
+A phone photo of a report is mostly tabletop, and one photo may hold more
+than one report. Text detection says where the print is; each printed area
+plus a margin becomes a crop, so the AI reads far fewer pixels, reads one
+document at a time, and the cashier sees the report rather than the table. A
+PDF is rendered page by page and every page treated like a photo.
 
-The single-document rule lives in `_text_region`: every detected box belongs
-to the one document, so the crop is their union. Splitting a photo of several
-reports into one crop each is the planned next step, and replaces that one
-function with clustering.
+Best-effort by design: whatever stops the crop — no detectable text, a failed
+detection or render, cropping switched off — yields no crops, and the caller
+reads the upload whole, exactly as it did before cropping existed.
+
+Splitting (`_split`) is a recursive cut through empty bands. A band at least
+`split_gap` line heights wide with no text across it separates two documents
+when its background differs from the paper around the text: two receipts on
+a table sit apart on the table, so they cut; blank lines and label/value gaps
+inside one document sit on paper, so they never do. Two documents on a
+background their paper matches stay one crop — a conservative failure.
 """
 
 from __future__ import annotations
@@ -22,31 +27,42 @@ import io
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.integrations.ocr import TextBox, TextDetectionError, TextDetector
 from app.lib.documents import DocumentContent, DocumentContentType
 
+from .pdf import PdfRenderError, render_pdf_pages
+
 logger = logging.getLogger(__name__)
 
-# Pillow format and save options per croppable content type. A crop keeps its
+# Pillow format and save options per image content type. A crop keeps its
 # source's format: a lossless screenshot stays lossless, a photo stays a JPEG.
-# PDFs are absent: a PDF is a document already, not a photo of one.
+# A PDF's crops are cut from rendered pages and stored as PNG.
 _ENCODINGS: Mapping[DocumentContentType, tuple[str, dict[str, Any]]] = {
     DocumentContentType.JPEG: ("JPEG", {"quality": 90, "optimize": True}),
     DocumentContentType.PNG: ("PNG", {"optimize": True}),
     DocumentContentType.WEBP: ("WEBP", {"quality": 90}),
 }
 
+# How far (0–255 luminance) an empty band must differ from the paper beside
+# it to count as background between two documents rather than a gap on one.
+_BACKGROUND_CONTRAST = 30
+
+type _Axis = Literal["x", "y"]
+type _Luminance = NDArray[np.uint8]
+
 
 @dataclass(frozen=True)
 class CropBounds:
     """The crop's rectangle in the upright source image (after its EXIF
-    rotation is applied): left/top inclusive, right/bottom exclusive."""
+    rotation is applied), or in the rendered page for a PDF: left/top
+    inclusive, right/bottom exclusive."""
 
     left: int
     top: int
@@ -77,13 +93,15 @@ class CroppedDocument:
     bounds: CropBounds
     width: int
     height: int
+    # The 1-based page the crop was cut from, for a PDF; None for an image.
+    page: int | None = None
 
 
 class DocumentCropper:
-    """Crops an uploaded image to the region its text detector finds.
+    """Finds the documents printed in an upload and crops each one out.
 
     `detector` is None when cropping is disabled: every crop then returns
-    None without decoding anything.
+    nothing without decoding anything.
     """
 
     def __init__(
@@ -94,67 +112,137 @@ class DocumentCropper:
         margin: float,
         min_text_boxes: int,
         max_area_ratio: float,
+        split_enabled: bool,
+        split_gap: float,
+        pdf_dpi: int,
+        pdf_max_pages: int,
     ) -> None:
         self._detector = detector
         self._detection_max_side = detection_max_side
         self._margin = margin
         self._min_text_boxes = min_text_boxes
         self._max_area_ratio = max_area_ratio
+        self._split_enabled = split_enabled
+        self._split_gap = split_gap
+        self._pdf_dpi = pdf_dpi
+        self._pdf_max_pages = pdf_max_pages
 
-    async def crop(self, content: DocumentContent) -> CroppedDocument | None:
-        """The cropped document, or None when there is nothing to crop to.
+    async def crop(self, content: DocumentContent) -> list[CroppedDocument]:
+        """The documents found in the upload, in reading order — page by
+        page for a PDF — or nothing when there is nothing to crop to.
 
-        Never raises for a document-shaped reason: an undecodable image or a
-        failed detection is logged and yields None, so the caller stores the
-        upload uncropped rather than rejecting it.
+        Never raises for a document-shaped reason: an undecodable image, a
+        PDF that will not render, or a failed detection is logged and yields
+        nothing, so the caller reads the upload whole rather than rejecting
+        it.
         """
-        if self._detector is None or content.content_type not in _ENCODINGS:
-            return None
+        if self._detector is None:
+            return []
 
-        try:
-            image = await asyncio.to_thread(_decode, content.data)
-        except (UnidentifiedImageError, Image.DecompressionBombError, OSError) as exc:
-            logger.warning("Document could not be decoded for cropping: %s", exc)
-            return None
+        if content.content_type is DocumentContentType.PDF:
+            try:
+                pages = await asyncio.to_thread(
+                    render_pdf_pages,
+                    content.data,
+                    dpi=self._pdf_dpi,
+                    max_pages=self._pdf_max_pages,
+                )
+            except PdfRenderError as exc:
+                logger.warning("PDF could not be rendered for cropping: %s", exc)
+                return []
+            # A page's crop stands in for the page: even print that fills the
+            # page is cut out, or a later page would be lost to "read whole".
+            sources = [(number, page, False) for number, page in enumerate(pages, 1)]
+            output_type = DocumentContentType.PNG
+        elif content.content_type in _ENCODINGS:
+            try:
+                image = await asyncio.to_thread(_decode, content.data)
+            except (
+                UnidentifiedImageError,
+                Image.DecompressionBombError,
+                OSError,
+            ) as exc:
+                logger.warning("Document could not be decoded for cropping: %s", exc)
+                return []
+            sources = [(None, image, True)]
+            output_type = content.content_type
+        else:
+            return []
 
+        crops: list[CroppedDocument] = []
+        for page, image, whole_is_pointless in sources:
+            try:
+                regions = await self._find_documents(
+                    image, whole_is_pointless=whole_is_pointless
+                )
+            except TextDetectionError as exc:
+                logger.warning(
+                    "Text detection failed; reading the upload whole: %s", exc
+                )
+                return []
+            for bounds in regions:
+                data = await asyncio.to_thread(
+                    _encode,
+                    image.crop((bounds.left, bounds.top, bounds.right, bounds.bottom)),
+                    output_type,
+                )
+                crops.append(
+                    CroppedDocument(
+                        data=data,
+                        content_type=output_type,
+                        bounds=bounds,
+                        width=bounds.width,
+                        height=bounds.height,
+                        page=page,
+                    )
+                )
+        return crops
+
+    async def _find_documents(
+        self, image: Image.Image, *, whole_is_pointless: bool
+    ) -> list[CropBounds]:
+        """The printed areas of one image, in its own pixels, in reading order.
+
+        `whole_is_pointless` skips a lone region that keeps nearly the whole
+        image: a second copy of a photo saves nothing.
+        """
+        assert self._detector is not None
         detection_image, scale = await asyncio.to_thread(
             _downscale, image, self._detection_max_side
         )
-        try:
-            boxes = await self._detector.detect(
-                np.asarray(detection_image, dtype=np.uint8)
-            )
-        except TextDetectionError as exc:
-            logger.warning(
-                "Text detection failed; storing the document uncropped: %s", exc
-            )
-            return None
+        boxes = await self._detector.detect(np.asarray(detection_image, dtype=np.uint8))
         if len(boxes) < self._min_text_boxes:
-            return None
+            return []
+
+        if self._split_enabled:
+            luminance = np.asarray(detection_image.convert("L"), dtype=np.uint8)
+            groups = _split(
+                boxes,
+                luminance,
+                gap_ratio=self._split_gap,
+                min_boxes=self._min_text_boxes,
+            )
+        else:
+            groups = [list(boxes)]
 
         width, height = image.size
-        bounds = _with_margin(
-            _scale(_text_region(boxes), 1 / scale),
-            margin=self._margin,
-            width=width,
-            height=height,
-        )
-        if bounds.width * bounds.height > self._max_area_ratio * width * height:
-            # The print fills the frame already: a second copy saves nothing.
-            return None
-
-        data = await asyncio.to_thread(
-            _encode,
-            image.crop((bounds.left, bounds.top, bounds.right, bounds.bottom)),
-            content.content_type,
-        )
-        return CroppedDocument(
-            data=data,
-            content_type=content.content_type,
-            bounds=bounds,
-            width=bounds.width,
-            height=bounds.height,
-        )
+        regions = [
+            _with_margin(
+                _scale(_union(group), 1 / scale),
+                margin=self._margin,
+                width=width,
+                height=height,
+            )
+            for group in groups
+        ]
+        if (
+            whole_is_pointless
+            and len(regions) == 1
+            and regions[0].width * regions[0].height
+            > self._max_area_ratio * width * height
+        ):
+            return []
+        return regions
 
 
 def build_document_cropper(detector: TextDetector | None) -> DocumentCropper:
@@ -169,6 +257,10 @@ def build_document_cropper(detector: TextDetector | None) -> DocumentCropper:
         margin=settings.ocr.CROP_MARGIN,
         min_text_boxes=settings.ocr.MIN_TEXT_BOXES,
         max_area_ratio=settings.ocr.MAX_CROP_AREA_RATIO,
+        split_enabled=settings.ocr.SPLIT_ENABLED,
+        split_gap=settings.ocr.SPLIT_GAP,
+        pdf_dpi=settings.ocr.PDF_RENDER_DPI,
+        pdf_max_pages=settings.ocr.PDF_MAX_PAGES,
     )
 
 
@@ -199,8 +291,132 @@ def _downscale(image: Image.Image, max_side: int) -> tuple[Image.Image, float]:
     return resized, scale
 
 
-def _text_region(boxes: Sequence[TextBox]) -> CropBounds:
-    """The one document's extent: the union of every detected box."""
+def _split(
+    boxes: Sequence[TextBox],
+    luminance: _Luminance,
+    *,
+    gap_ratio: float,
+    min_boxes: int,
+) -> list[list[TextBox]]:
+    """Group the boxes into one group per document, in reading order.
+
+    Groups too small to be a document (fewer than `min_boxes`: a stray label
+    on the table) are dropped — unless that would drop everything, in which
+    case the boxes stay one document rather than none.
+    """
+    heights = sorted(box.height for box in boxes)
+    line_height = max(1, heights[len(heights) // 2])
+    gap = max(2, round(gap_ratio * line_height))
+    groups = _cut(list(boxes), luminance, gap=gap, line_height=line_height)
+    kept = [group for group in groups if len(group) >= min_boxes]
+    if not kept:
+        return [list(boxes)]
+    # Reading order: by row (tops within a couple of lines share a row),
+    # then left to right.
+    row_height = 2 * line_height
+    return sorted(
+        kept,
+        key=lambda group: (
+            min(box.top for box in group) // row_height,
+            min(box.left for box in group),
+        ),
+    )
+
+
+def _cut(
+    boxes: list[TextBox], luminance: _Luminance, *, gap: int, line_height: int
+) -> list[list[TextBox]]:
+    """Recursively cut the boxes through the widest qualifying empty band,
+    trying horizontal bands (stacked documents) before vertical ones."""
+    for axis in ("y", "x"):
+        parts = _cut_along(boxes, luminance, axis, gap=gap, line_height=line_height)
+        if parts is not None:
+            first, second = parts
+            return _cut(first, luminance, gap=gap, line_height=line_height) + _cut(
+                second, luminance, gap=gap, line_height=line_height
+            )
+    return [boxes]
+
+
+def _cut_along(
+    boxes: list[TextBox],
+    luminance: _Luminance,
+    axis: _Axis,
+    *,
+    gap: int,
+    line_height: int,
+) -> tuple[list[TextBox], list[TextBox]] | None:
+    """The two sides of the widest empty band along `axis` that is at least
+    `gap` wide and sits on background rather than paper, or None."""
+    if len(boxes) < 2:
+        return None
+    ordered = sorted(boxes, key=lambda box: _span(box, axis)[0])
+    across = _extent(boxes, "x" if axis == "y" else "y")
+
+    # Every empty band between one box's end and the next box's start, once
+    # all earlier boxes have ended: (width, split index, band start, band end).
+    candidates: list[tuple[int, int, int, int]] = []
+    reach = _span(ordered[0], axis)[1]
+    for index in range(1, len(ordered)):
+        start, end = _span(ordered[index], axis)
+        if start - reach >= gap:
+            candidates.append((start - reach, index, reach, start))
+        reach = max(reach, end)
+
+    for _, index, band_start, band_end in sorted(candidates, reverse=True):
+        if _is_background(
+            luminance, axis, band_start, band_end, across, line_height=line_height
+        ):
+            return ordered[:index], ordered[index:]
+    return None
+
+
+def _is_background(
+    luminance: _Luminance,
+    axis: _Axis,
+    band_start: int,
+    band_end: int,
+    across: tuple[int, int],
+    *,
+    line_height: int,
+) -> bool:
+    """Whether the band's fill differs from the paper on both sides of it.
+
+    Paper is measured on a line's height of the print beside the band: text
+    is a minority of those pixels, so their median is the paper. A band whose
+    median is far from that is the table showing between two documents.
+    """
+    low, high = across
+    before = _band(
+        luminance, axis, max(0, band_start - line_height), band_start, low, high
+    )
+    strip = _band(luminance, axis, band_start, band_end, low, high)
+    after = _band(luminance, axis, band_end, band_end + line_height, low, high)
+    if before.size == 0 or strip.size == 0 or after.size == 0:
+        return False
+    paper = float(np.median(np.concatenate([before.ravel(), after.ravel()])))
+    return abs(float(np.median(strip)) - paper) > _BACKGROUND_CONTRAST
+
+
+def _band(
+    luminance: _Luminance, axis: _Axis, start: int, end: int, low: int, high: int
+) -> _Luminance:
+    if axis == "y":
+        return luminance[start:end, low:high]
+    return luminance[low:high, start:end]
+
+
+def _span(box: TextBox, axis: _Axis) -> tuple[int, int]:
+    return (box.top, box.bottom) if axis == "y" else (box.left, box.right)
+
+
+def _extent(boxes: Sequence[TextBox], axis: _Axis) -> tuple[int, int]:
+    spans = [_span(box, axis) for box in boxes]
+    return min(start for start, _ in spans), max(end for _, end in spans)
+
+
+def _union(boxes: Sequence[TextBox]) -> CropBounds:
+    """One document's extent: the union of its boxes."""
     return CropBounds(
         left=min(box.left for box in boxes),
         top=min(box.top for box in boxes),

@@ -1,14 +1,15 @@
 # backend/app/features/cashout/shared/workflows.py
 
-"""Cross-sub-feature workflows: receiving a document and recording its analysis.
+"""Cross-sub-feature workflows: receiving a document and recording its analyses.
 
 Document intake and entry span two sub-features — documents stores the file,
-analyses records the outcome (an AI extraction, or a manual entry that skips
-AI entirely) — so the workflows live here: neither sub-feature's service
-depends on the other, and the namespace root's router makes a single call.
-Every route that enqueues `cashout.run_extraction` enters through this module,
-as do the manual entry points that enqueue nothing. Only the root router calls
-it; sub-feature modules never import it.
+analyses records the outcomes (an AI extraction per document found in the
+upload, or a manual entry that skips AI entirely) — so the workflows live
+here: neither sub-feature's service depends on the other, and the namespace
+root's router makes a single call. Every route that enqueues
+`cashout.run_extraction` enters through this module, as do the manual entry
+points that enqueue nothing. Only the root router calls it; sub-feature
+modules never import it.
 """
 
 from __future__ import annotations
@@ -41,12 +42,15 @@ async def upload_document(
     storage: DocumentStorageClient,
     processor: CashoutDocumentProcessor,
 ) -> CashoutDocumentAnalysis:
-    """Store the document, create its EXTRACTING analysis, and queue extraction.
+    """Store the document, create its first EXTRACTING analysis, and queue
+    extraction.
 
     The AI extraction itself runs from the outbox (`run_extraction` via the
     extraction handler); the message is enqueued in this transaction, so it
-    dispatches only once the upload commits. Clients poll the returned
-    analysis.
+    dispatches only once the upload commits. That job also finds every
+    document printed in the upload and adds an analysis for each further one.
+    Clients poll the returned analysis and refresh the submission for the
+    rest.
     """
     document = await documents_service.upload_document(
         db,
@@ -56,7 +60,7 @@ async def upload_document(
         storage=storage,
     )
     return await analyses_service.start_extraction(
-        db, document=document, processor=processor
+        db, document=document, processor=processor, storage=storage
     )
 
 
@@ -96,24 +100,42 @@ async def restart_extraction(
     document_id: UUID,
     user: User,
     processor: CashoutDocumentProcessor,
-    classification: CashoutDocumentClassification | None = None,
+    storage: DocumentStorageClient,
 ) -> CashoutDocumentAnalysis:
     # Pure delegation: the behavior lives wholly in the analyses service. The
-    # indirection is kept so both extraction entry points enter through this
+    # indirection is kept so every extraction entry point enters through this
     # workflow and the root router never reaches into sub-feature services.
     return await analyses_service.restart_extraction(
         db,
         document_id=document_id,
         user=user,
         processor=processor,
+        storage=storage,
+    )
+
+
+async def retry_analysis(
+    db: AsyncSession,
+    *,
+    analysis_id: UUID,
+    user: User,
+    processor: CashoutDocumentProcessor,
+    classification: CashoutDocumentClassification | None = None,
+) -> CashoutDocumentAnalysis:
+    # Pure delegation, as above.
+    return await analyses_service.retry_analysis(
+        db,
+        analysis_id=analysis_id,
+        user=user,
+        processor=processor,
         classification=classification,
     )
 
 
-async def enter_manual_document(
+async def enter_manual_analysis(
     db: AsyncSession,
     *,
-    document_id: UUID,
+    analysis_id: UUID,
     classification: CashoutDocumentClassification,
     data: dict[str, Any],
     user: User,
@@ -124,7 +146,7 @@ async def enter_manual_document(
     # services.
     return await analyses_service.replace_with_manual_entry(
         db,
-        document_id=document_id,
+        analysis_id=analysis_id,
         classification=classification,
         data=data,
         user=user,
@@ -135,5 +157,6 @@ __all__ = [
     "upload_document",
     "upload_manual_document",
     "restart_extraction",
-    "enter_manual_document",
+    "retry_analysis",
+    "enter_manual_analysis",
 ]

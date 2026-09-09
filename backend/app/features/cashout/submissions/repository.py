@@ -45,8 +45,8 @@ async def get_submission_with_details(
     stmt = (
         select(CashoutSubmission)
         .options(
-            selectinload(CashoutSubmission.documents).joinedload(
-                CashoutDocument.analysis
+            selectinload(CashoutSubmission.documents).selectinload(
+                CashoutDocument.analyses
             ),
             joinedload(CashoutSubmission.data),
             joinedload(CashoutSubmission.employee),
@@ -109,12 +109,12 @@ async def list_storage_keys(db: AsyncSession, *, submission_id: UUID) -> list[st
     return [*originals, *(key for key in crops if key is not None)]
 
 
-async def list_documents_with_analysis(
+async def list_documents_with_analyses(
     db: AsyncSession, *, submission_id: UUID
 ) -> Sequence[CashoutDocument]:
     stmt = (
         select(CashoutDocument)
-        .options(joinedload(CashoutDocument.analysis))
+        .options(selectinload(CashoutDocument.analyses))
         .where(CashoutDocument.cashout_submission_id == submission_id)
     )
     return (await db.execute(stmt)).scalars().all()
@@ -127,5 +127,5 @@ __all__ = [
     "list_submissions",
     "delete_submission",
     "list_storage_keys",
-    "list_documents_with_analysis",
+    "list_documents_with_analyses",
 ]

@@ -188,15 +188,36 @@ async def upload_manual_document(
     return response.json()
 
 
-async def enter_manual_document(
-    client: AsyncClient, document_id: str, body: dict[str, Any]
+async def enter_manual_analysis(
+    client: AsyncClient, analysis_id: str, body: dict[str, Any]
 ) -> dict[str, Any]:
     response = await client.post(
-        f"/api/cashout/documents/{document_id}/manual",
+        f"/api/cashout/analyses/{analysis_id}/manual",
         json=body,
         headers=csrf_headers(client),
     )
     assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def retry_analysis(
+    client: AsyncClient,
+    analysis_id: str,
+    *,
+    drain: OutboxDrain,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-run one analysis and drain the outbox so the rerun completes.
+
+    Returns the analysis as reset — EXTRACTING; poll it for the outcome.
+    """
+    response = await client.post(
+        f"/api/cashout/analyses/{analysis_id}/extract",
+        json=body,
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    await drain()
     return response.json()
 
 
@@ -328,10 +349,11 @@ __all__ = [
     "configure_server_summary",
     "configure_touchbistro",
     "create_submission",
-    "enter_manual_document",
+    "enter_manual_analysis",
     "manual_entry_body",
     "poll_analysis",
     "prepare_completable_submission",
+    "retry_analysis",
     "touchbistro_manual_entry_body",
     "unsubmit_submission",
     "unverify_analysis",

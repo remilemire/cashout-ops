@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -943,5 +943,89 @@ def test_upgrade_head_adds_the_optional_analysis_crop(migrated_url: str) -> None
             ).scalar_one()
         assert tuple(row) == (None, None, None)
         assert unique == 1
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_allows_several_analyses_per_document(migrated_url: str) -> None:
+    """A document may carry one analysis per document found in its upload.
+
+    The one-analysis-per-document uniqueness becomes a plain index and every
+    existing analysis is stamped its document's first (position 1); a second
+    position is accepted, and the same position twice is not.
+    """
+    # The last revision with one analysis per document.
+    _upgrade(migrated_url, "3e7a1c9d5f42")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'image/jpeg', 'key', 'photo.jpg', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            position = conn.execute(
+                text("SELECT position FROM cashout_document_analyses")
+            ).scalar_one()
+            indexdef = conn.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes WHERE indexname ="
+                    " 'ix_cashout_document_analyses_cashout_document_id'"
+                )
+            ).scalar_one()
+        assert position == 1
+        assert "UNIQUE" not in indexdef
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, position, provider, model, status)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '33333333-3333-3333-3333-333333333333', 2, 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, position, provider, model, status)
+                    VALUES ('66666666-6666-6666-6666-666666666666',
+                            '33333333-3333-3333-3333-333333333333', 2, 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
     finally:
         engine.dispose()

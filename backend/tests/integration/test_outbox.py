@@ -106,13 +106,13 @@ async def test_enqueue_validates_and_persists_the_message(
     message = await enqueue(
         db_session,
         type="cashout.run_extraction",
-        payload={"document_id": str(document_id)},
+        payload={"analysis_id": str(document_id)},
     )
 
     assert message.type == "cashout.run_extraction"
     # Persisted as the validated model, so omitted defaults (here the
     # optional corrected classification) land explicitly.
-    assert message.payload == {"document_id": str(document_id), "classification": None}
+    assert message.payload == {"analysis_id": str(document_id), "classification": None}
     assert message.attempts == 0
 
 
@@ -134,7 +134,7 @@ async def test_enqueue_rejects_a_payload_that_fails_validation(
         await enqueue(
             db_session,
             type="cashout.run_extraction",
-            payload={"document_id": "not-a-uuid"},
+            payload={"analysis_id": "not-a-uuid"},
         )
 
 

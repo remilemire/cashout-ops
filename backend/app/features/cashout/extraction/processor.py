@@ -48,16 +48,25 @@ Handwritten values may be corrections or final accepted amounts; prefer them ove
 
 @dataclass(frozen=True)
 class DocumentCrop:
-    """A crop of a stored document, written beside the original.
+    """One document found in a stored upload, cropped out and written beside
+    the original.
 
-    What extraction reads in place of the whole image, and what the cashier
-    previews: the printed area text detection found, in the original's
-    format, with where it sits in the upright original.
+    What extraction reads in place of the whole upload, and what the cashier
+    previews: the printed area text detection found, in the original's format
+    (PNG for a PDF's rendered page), with where it sits in the upright
+    original — and on which page, for a PDF.
     """
 
     storage_key: str
     content_type: DocumentContentType
     bounds: CropBounds
+    page: int | None
+
+    def bounds_json(self) -> dict[str, int]:
+        bounds = self.bounds.as_json()
+        if self.page is not None:
+            bounds["page"] = self.page
+        return bounds
 
 
 @dataclass(frozen=True)
@@ -86,10 +95,10 @@ class CashoutDocumentProcessor:
     """Maps generic document analysis onto the cashout domain.
 
     Coordinates the two generic components an extraction needs — the
-    cropper, which cuts a photo down to its printed area, and the document
-    AI, which classifies and extracts — without either knowing of the
-    other. The caller sequences them (`crop`, then `process` over the crop)
-    and persists what each reports.
+    cropper, which finds the documents printed in an upload and cuts each
+    out, and the document AI, which classifies and extracts one document —
+    without either knowing of the other. The caller sequences them (`crop`,
+    then `process` over each crop) and persists what each reports.
     """
 
     def __init__(
@@ -111,33 +120,37 @@ class CashoutDocumentProcessor:
     def model(self) -> str:
         return self._documents.ai.model
 
-    async def crop(self, document: DocumentRef) -> DocumentCrop | None:
-        """Crop the stored document to its printed area, storing the crop
-        beside it.
+    async def crop(self, document: DocumentRef) -> list[DocumentCrop]:
+        """Find the documents printed in the stored upload and store a crop of
+        each beside it, in reading order.
 
-        None when there is nothing to crop to — a PDF, an image with no
-        detectable text, cropping switched off — and the document should be
-        read whole. A missing original is None too: `process` reports that
-        as MISSING_DOCUMENT, where the caller already handles it.
+        Empty when there is nothing to crop to — no detectable text, cropping
+        switched off — and the upload should be read whole. A missing
+        original is empty too: `process` reports that as MISSING_DOCUMENT,
+        where the caller already handles it.
         """
         try:
             data = await self._storage.read(document.storage_key)
         except DocumentNotFoundError:
-            return None
+            return []
         cropped = await self._cropper.crop(
             DocumentContent(data=data, content_type=document.content_type)
         )
-        if cropped is None:
-            return None
-        # A sibling object, not a child path: under local storage the
-        # original's key is a file, so nothing can nest beneath it.
-        storage_key = f"{document.storage_key}-cropped"
-        await self._storage.write(storage_key, cropped.data)
-        return DocumentCrop(
-            storage_key=storage_key,
-            content_type=cropped.content_type,
-            bounds=cropped.bounds,
-        )
+        crops: list[DocumentCrop] = []
+        for number, crop in enumerate(cropped, start=1):
+            # Sibling objects, not child paths: under local storage the
+            # original's key is a file, so nothing can nest beneath it.
+            storage_key = f"{document.storage_key}-crop-{number}"
+            await self._storage.write(storage_key, crop.data)
+            crops.append(
+                DocumentCrop(
+                    storage_key=storage_key,
+                    content_type=crop.content_type,
+                    bounds=crop.bounds,
+                    page=crop.page,
+                )
+            )
+        return crops
 
     async def process(
         self,

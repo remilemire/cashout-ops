@@ -156,18 +156,22 @@ async def complete_submission(
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
 
-    documents = await repository.list_documents_with_analysis(
+    documents = await repository.list_documents_with_analyses(
         db, submission_id=submission.id
     )
     if not documents:
         raise AppError("SUBMISSION_EMPTY")
 
+    # Every analysis of every document — each document found in an upload
+    # is verified on its own — and no document without one.
     analyses: list[CashoutDocumentAnalysis] = []
     for document in documents:
-        analysis = document.analysis
-        if analysis is None or analysis.status is not DocumentAnalysisStatus.VERIFIED:
+        if not document.analyses:
             raise AppError("SUBMISSION_UNVERIFIED")
-        analyses.append(analysis)
+        for analysis in document.analyses:
+            if analysis.status is not DocumentAnalysisStatus.VERIFIED:
+                raise AppError("SUBMISSION_UNVERIFIED")
+            analyses.append(analysis)
 
     data = await data_service.reconcile(
         db,

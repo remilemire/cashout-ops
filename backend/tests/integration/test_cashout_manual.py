@@ -23,7 +23,7 @@ from tests.support.cashout import (
     complete_submission,
     configure_server_summary,
     create_submission,
-    enter_manual_document,
+    enter_manual_analysis,
     manual_entry_body,
     poll_analysis,
     touchbistro_manual_entry_body,
@@ -224,8 +224,8 @@ async def test_convert_failed_analysis_to_manual(
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
 
     # Instead of retrying the AI, the cashier types the values in.
-    entered = await enter_manual_document(
-        cashier_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        cashier_client, created["id"], manual_entry_body()
     )
 
     assert entered["id"] == created["id"]
@@ -258,8 +258,8 @@ async def test_convert_unclassified_analysis_to_manual(
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
 
-    entered = await enter_manual_document(
-        cashier_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        cashier_client, created["id"], manual_entry_body()
     )
 
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
@@ -287,7 +287,7 @@ async def test_convert_verified_analysis_conflicts(
     await verify_analysis(cashier_client, created["id"])
 
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(cashier_client),
     )
@@ -314,7 +314,7 @@ async def test_convert_while_extracting_conflicts(
     created = response.json()
 
     blocked = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(cashier_client),
     )
@@ -379,7 +379,7 @@ async def test_manual_entry_requires_employee_or_admin(
         headers=csrf_headers(other),
     )
     convert_forbidden = await other.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(other),
     )
@@ -389,8 +389,8 @@ async def test_manual_entry_requires_employee_or_admin(
     assert convert_forbidden.json()["code"] == "FORBIDDEN"
 
     # An admin can, on anyone's submission — recorded as the verifier.
-    entered = await enter_manual_document(
-        admin_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        admin_client, created["id"], manual_entry_body()
     )
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert entered["verifiedByUserId"] == admin_id
@@ -431,7 +431,7 @@ async def test_commit_failure_surfaces_as_error_not_phantom_success(
         await db.commit()
     try:
         response = await cashier_client.post(
-            f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+            f"/api/cashout/analyses/{created['id']}/manual",
             json=manual_entry_body(),
             headers=csrf_headers(cashier_client),
         )
