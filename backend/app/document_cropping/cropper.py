@@ -326,11 +326,19 @@ def _is_background(
     *,
     line_height: int,
 ) -> bool:
-    """Compare the band's median luminance with pooled pixels on its two sides.
+    """Whether at least a line's height of the band shows something that is
+    neither side's paper — the table between two documents.
 
-    The pooled median estimates paper brightness when text occupies a small
-    share of those pixels. This is a contrast heuristic, not separate checks
-    against each side or proof that the band lies between documents.
+    Each side's paper is the median of a line's height of its print (text is
+    a minority of those pixels), measured per side so a dark report beside a
+    white receipt keeps two papers. The band is then read position by
+    position along the axis, each position summarized by its median across
+    the print, and it is background when a run of at least `line_height`
+    positions differs from both papers by more than `_BACKGROUND_CONTRAST`.
+    Judging a run rather than the band's overall median keeps a document's
+    own blank margins, which lie inside the band, from outvoting a narrower
+    strip of table. This is a contrast heuristic, not proof that the band
+    lies between documents.
     """
     low, high = across
     before = _band(
@@ -340,8 +348,24 @@ def _is_background(
     after = _band(luminance, axis, band_end, band_end + line_height, low, high)
     if before.size == 0 or strip.size == 0 or after.size == 0:
         return False
-    paper = float(np.median(np.concatenate([before.ravel(), after.ravel()])))
-    return abs(float(np.median(strip)) - paper) > _BACKGROUND_CONTRAST
+    paper_before = float(np.median(before))
+    paper_after = float(np.median(after))
+    # One value per position along the axis: per row of a horizontal band,
+    # per column of a vertical one.
+    profile = np.median(strip, axis=1 if axis == "y" else 0)
+    unlike_paper = (np.abs(profile - paper_before) > _BACKGROUND_CONTRAST) & (
+        np.abs(profile - paper_after) > _BACKGROUND_CONTRAST
+    )
+    return _longest_run(unlike_paper) >= line_height
+
+
+def _longest_run(flags: NDArray[np.bool_]) -> int:
+    """The length of the longest run of consecutive True values."""
+    longest = current = 0
+    for flag in flags.tolist():
+        current = current + 1 if flag else 0
+        longest = max(longest, current)
+    return longest
 
 
 def _band(

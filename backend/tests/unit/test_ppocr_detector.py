@@ -17,10 +17,12 @@ from app.integrations.ocr import PPOCRTextDetector, TextBox, TextDetectionError
 from app.integrations.ocr.ppocr import MODEL_SHA256, model_path
 
 
-def _receipt_image() -> tuple[np.ndarray, TextBox]:
-    """A synthetic receipt: a few printed lines on white, plus the exact
-    pixel bounds of the print (measured, not assumed)."""
-    image = Image.new("RGB", (640, 480), "white")
+def _receipt_image(*, inverted: bool = False) -> tuple[np.ndarray, TextBox]:
+    """A synthetic receipt: a few printed lines on white — or, inverted,
+    light lines on black — plus the exact pixel bounds of the print
+    (measured, not assumed)."""
+    paper, ink = ("black", "white") if inverted else ("white", "black")
+    image = Image.new("RGB", (640, 480), paper)
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default(size=26)
     lines = [
@@ -33,7 +35,7 @@ def _receipt_image() -> tuple[np.ndarray, TextBox]:
     bounds: list[tuple[int, int, int, int]] = []
     for index, line in enumerate(lines):
         origin = (124, 106 + index * 44)
-        draw.text(origin, line, fill="black", font=font)
+        draw.text(origin, line, fill=ink, font=font)
         left, top, right, bottom = draw.textbbox(origin, line, font=font)
         bounds.append((int(left), int(top), int(right), int(bottom)))
     printed = TextBox(
@@ -87,6 +89,19 @@ async def test_finds_the_printed_lines_and_nothing_else(
     boxes = await detector.detect(image)
 
     # One box per line, give or take a merged pair; all of them on the print.
+    assert 3 <= len(boxes) <= 8
+    _assert_close(_union(boxes), printed, tolerance=24)
+
+
+async def test_finds_light_print_on_a_dark_background(
+    detector: PPOCRTextDetector,
+) -> None:
+    # A dark-themed report or a screenshot of a dark app: the model is not
+    # bound to dark ink on light paper.
+    image, printed = _receipt_image(inverted=True)
+
+    boxes = await detector.detect(image)
+
     assert 3 <= len(boxes) <= 8
     _assert_close(_union(boxes), printed, tolerance=24)
 

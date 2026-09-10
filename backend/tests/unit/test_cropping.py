@@ -59,12 +59,14 @@ def _table_photo(
     *,
     size: tuple[int, int] = (800, 480),
     image_format: str = "PNG",
+    paper: tuple[int, int, int] = _PAPER,
+    table: tuple[int, int, int] = _TABLE,
 ) -> Image.Image:
-    """Light paper rectangles on a dark table."""
-    image = Image.new("RGB", size, _TABLE)
+    """Paper rectangles on a table: light on dark unless told otherwise."""
+    image = Image.new("RGB", size, table)
     draw = ImageDraw.Draw(image)
-    for paper in papers:
-        draw.rectangle(paper, fill=_PAPER)
+    for rectangle in papers:
+        draw.rectangle(rectangle, fill=paper)
     return image
 
 
@@ -294,6 +296,119 @@ async def test_stray_print_on_the_table_is_dropped() -> None:
 
     assert [crop.bounds for crop in crops] == [
         CropBounds(left=63, top=113, right=307, bottom=311)
+    ]
+
+
+# ================================
+# -------- Dark documents --------
+# ================================
+
+# The same receipts printed light on dark paper — a dark-themed report, a
+# screenshot of a dark app. The splitter measures the paper beside the print
+# rather than assuming it is light, so every judgement above holds with the
+# colours swapped, and so does the one limitation: matching paper and table.
+_DARK_PAPER = (12, 12, 12)
+_LIGHT_TABLE = (225, 220, 210)
+_MID_TABLE = (140, 120, 100)
+
+
+@pytest.mark.parametrize("table", [_TABLE, _LIGHT_TABLE])
+async def test_a_dark_document_crops_like_a_light_one(
+    table: tuple[int, int, int],
+) -> None:
+    photo = _table_photo([(40, 80, 340, 400)], paper=_DARK_PAPER, table=table)
+    cropper = _cropper(FakeTextDetector(_lines(70, 300, (120, 200, 280))))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=113, right=307, bottom=311)
+    ]
+
+
+async def test_splits_two_dark_documents_on_a_light_table() -> None:
+    photo = _table_photo(
+        [(40, 80, 340, 400), (460, 80, 760, 400)],
+        paper=_DARK_PAPER,
+        table=_LIGHT_TABLE,
+    )
+    cropper = _cropper(FakeTextDetector(_SIDE_BY_SIDE_LINES))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=113, right=307, bottom=311),
+        CropBounds(left=483, top=113, right=727, bottom=311),
+    ]
+
+
+async def test_splits_a_dark_document_from_a_light_one() -> None:
+    # A dark report beside a paper receipt on a mid-tone table: each side's
+    # paper is measured on its own, so the table between them is neither.
+    photo = _table_photo([(40, 80, 340, 400)], paper=_DARK_PAPER, table=_MID_TABLE)
+    ImageDraw.Draw(photo).rectangle((460, 80, 760, 400), fill=_PAPER)
+    cropper = _cropper(FakeTextDetector(_SIDE_BY_SIDE_LINES))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=113, right=307, bottom=311),
+        CropBounds(left=483, top=113, right=727, bottom=311),
+    ]
+
+
+async def test_blank_lines_on_dark_paper_do_not_split() -> None:
+    one_tall_sheet = _table_photo(
+        [(60, 40, 420, 760)], size=(480, 800), paper=_DARK_PAPER, table=_LIGHT_TABLE
+    )
+    lines = _lines(90, 390, (80, 120, 160)) + _lines(90, 390, (500, 540, 580))
+    cropper = _cropper(FakeTextDetector(lines))
+
+    crops = await cropper.crop(_content(_png(one_tall_sheet)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=74, top=64, right=406, bottom=620)
+    ]
+
+
+async def test_two_dark_documents_on_a_dark_table_stay_one_crop() -> None:
+    # The documented limitation, colours swapped: nothing distinguishes the
+    # table between the two reports from their paper, so they are one crop.
+    photo = _table_photo(
+        [(40, 80, 340, 400), (460, 80, 760, 400)], paper=_DARK_PAPER, table=_DARK_PAPER
+    )
+    cropper = _cropper(FakeTextDetector(_SIDE_BY_SIDE_LINES))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=50, top=100, right=740, bottom=324)
+    ]
+
+
+# Two receipts whose blank side margins (160 px each) are wider than the
+# table between them (100 px): most of the empty band between their print
+# is paper. The strip of table inside it is still what separates them.
+_WIDE_MARGINS = [(40, 80, 460, 400), (560, 80, 980, 400)]
+_WIDE_MARGIN_LINES = _lines(70, 300, (120, 200, 280)) + _lines(
+    720, 950, (120, 200, 280)
+)
+
+
+@pytest.mark.parametrize(
+    ("paper", "table"), [(_PAPER, _TABLE), (_DARK_PAPER, _LIGHT_TABLE)]
+)
+async def test_wide_paper_margins_do_not_hide_the_table_between_documents(
+    paper: tuple[int, int, int], table: tuple[int, int, int]
+) -> None:
+    photo = _table_photo(_WIDE_MARGINS, size=(1020, 480), paper=paper, table=table)
+    cropper = _cropper(FakeTextDetector(_WIDE_MARGIN_LINES))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=113, right=307, bottom=311),
+        CropBounds(left=713, top=113, right=957, bottom=311),
     ]
 
 
