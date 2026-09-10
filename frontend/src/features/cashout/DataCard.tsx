@@ -75,6 +75,25 @@ export function DataCard({ data }: { data: CashoutData }) {
         ))}
       </div>
 
+      {/* The admin's adjustment at completion. The card payments above stay
+          the report's own figure; the deposit came off it for the
+          cross-check only. */}
+      {data.depositTotal != null && (
+        <div className="bg-surface-2 rounded-lg p-3 text-sm">
+          <div className="flex justify-between gap-2">
+            <span className="text-ink-muted">
+              Deposit (not on the terminal summaries)
+            </span>
+            <span className="font-medium tabular-nums">
+              ${data.depositTotal}
+            </span>
+          </div>
+          {data.adjustmentNote != null && (
+            <p className="text-ink-muted mt-1 text-xs">{data.adjustmentNote}</p>
+          )}
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <p className="text-ink-muted text-xs">Tipped out to</p>
         {data.tipoutDepartments.length === 0 ? (

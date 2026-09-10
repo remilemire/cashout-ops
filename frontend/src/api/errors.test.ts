@@ -15,9 +15,40 @@ describe("error messages", () => {
     );
   });
 
+  it("names both sides of a card payment mismatch, and any deposit taken off", () => {
+    expect(
+      errorMessage("RECONCILE_CARD_PAYMENT_MISMATCH", {
+        cardPaymentTotal: "1234.56",
+        serverSummaryTotal: "1000.00",
+      }),
+    ).toBe(
+      "The TouchBistro card payments ($1234.56) do not match the server summary grand totals ($1000.00). Re-check both before completing.",
+    );
+    expect(
+      errorMessage("RECONCILE_CARD_PAYMENT_MISMATCH", {
+        cardPaymentTotal: "1234.56",
+        serverSummaryTotal: "1000.00",
+        depositTotal: "200.00",
+      }),
+    ).toBe(
+      "The TouchBistro card payments ($1234.56, less a $200.00 deposit) do not match the server summary grand totals ($1000.00). Re-check both before completing.",
+    );
+  });
+
   it("keeps useful fallbacks when context is absent or unusable", () => {
     expect(errorMessage("UPLOAD_TOO_LARGE", {})).toBe(
       "The file exceeds the size limit.",
+    );
+    // Both totals or neither: an older backend sends an empty context.
+    expect(errorMessage("RECONCILE_CARD_PAYMENT_MISMATCH", {})).toBe(
+      "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.",
+    );
+    expect(
+      errorMessage("RECONCILE_CARD_PAYMENT_MISMATCH", {
+        cardPaymentTotal: "1234.56",
+      }),
+    ).toBe(
+      "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.",
     );
     expect(
       errorMessage("UPLOAD_TOO_LARGE", { maxSizeMb: { unexpected: true } }),

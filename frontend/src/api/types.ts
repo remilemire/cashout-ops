@@ -287,6 +287,15 @@ export interface CashoutData {
   cardTipTotal: string;
 
   /**
+   * An admin's adjustment at completion: a deposit the TouchBistro report
+   * counts among its card payments but no server summary shows, taken off
+   * `cardPaymentTotal` for the cross-check only — that figure stays the
+   * report's. Both null when no adjustment was recorded.
+   */
+  depositTotal: string | null;
+  adjustmentNote: string | null;
+
+  /**
    * Which departments this cashout tipped out to (the cashier's selection
    * plus the manager, who is on every cashout), and the rates it closed
    * against. The rates are the row's own snapshot, so a later rate change
@@ -346,12 +355,26 @@ export interface UpdateSubmissionInput {
   businessDate: string;
 }
 
+/**
+ * Admin only. A deposit the TouchBistro report counts among its card payments
+ * but no server summary shows: subtracted from the report's card payments
+ * before the cross-check, and recorded on the resulting data.
+ */
+export interface CashoutAdjustmentInput {
+  /** Decimal string, e.g. "234.56". */
+  depositTotal: string;
+  /** Omitted when empty. */
+  note?: string;
+}
+
 export interface CompleteSubmissionInput {
   /**
    * The cashier's selection; the rest are left untipped. The server adds the
    * manager to every completion, so naming it is allowed but never needed.
    */
   tipoutDepartments: TipoutDepartment[];
+  /** Admin only: a non-admin sending one is refused outright. */
+  adjustment?: CashoutAdjustmentInput;
 }
 
 export interface VerifyAnalysisInput {

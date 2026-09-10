@@ -10,6 +10,7 @@ import { ApiError, isNotFound } from "@/api/client";
 import { isAdminRole, SELECTABLE_TIPOUT_DEPARTMENTS } from "@/api/types";
 import type {
   CashoutUpload,
+  CompleteSubmissionInput,
   ErrorCode,
   ManualEntryInput,
   TipoutDepartment,
@@ -29,6 +30,7 @@ import {
 import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
 
+import { AdjustmentForm } from "./AdjustmentForm";
 import { DataCard } from "./DataCard";
 import { UploadCard } from "./UploadCard";
 import { ManualEntryDialog } from "./ManualEntryDialog";
@@ -87,8 +89,8 @@ export function SubmissionPage() {
   });
 
   const complete = useMutation({
-    mutationFn: (tipoutDepartments: TipoutDepartment[]) =>
-      cashoutApi.completeSubmission(submissionId, { tipoutDepartments }),
+    mutationFn: (input: CompleteSubmissionInput) =>
+      cashoutApi.completeSubmission(submissionId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: cashoutKeys.submission(submissionId),
@@ -301,9 +303,10 @@ export function SubmissionPage() {
           initialSelected={selectableDepartments(
             submission.tipoutDepartments ?? [],
           )}
+          canAdjust={isAdminUser}
           pending={complete.isPending}
           error={complete.error}
-          onComplete={(departments) => complete.mutate(departments)}
+          onComplete={(input) => complete.mutate(input)}
         />
       )}
 
@@ -412,6 +415,17 @@ function reconcileHint(error: unknown): string | undefined {
   return error instanceof ApiError ? RECONCILE_HINTS[error.code] : undefined;
 }
 
+/** Whether completing was refused because the card payments do not add up. */
+function isCardMismatch(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.code === "RECONCILE_CARD_PAYMENT_MISMATCH"
+  );
+}
+
+/** The adjustment form's own controls; a validation issue on one shows there. */
+const ADJUSTMENT_FIELDS = new Set(["depositTotal", "note"]);
+
 /**
  * The post-verification prompt: once every document is verified the cashier
  * picks who this shift tips out to and closes the cashout, or keeps uploading
@@ -420,6 +434,7 @@ function reconcileHint(error: unknown): string | undefined {
 function CompletePrompt({
   allVerified,
   initialSelected,
+  canAdjust,
   pending,
   error,
   onComplete,
@@ -427,14 +442,33 @@ function CompletePrompt({
   allVerified: boolean;
   /** Seed for the checkboxes: the previous completion's departments, if any. */
   initialSelected: TipoutDepartment[];
+  /** Whether the viewer may record a deposit adjustment (admins only). */
+  canAdjust: boolean;
   pending: boolean;
   error: unknown;
-  onComplete: (tipoutDepartments: TipoutDepartment[]) => void;
+  onComplete: (input: CompleteSubmissionInput) => void;
 }) {
   // The prompt only mounts once the detail payload is loaded, so the
   // initializer sees the fetched snapshot (kept through unsubmit).
   const [selected, setSelected] = useState<TipoutDepartment[]>(initialSelected);
+  const [depositTotal, setDepositTotal] = useState("");
+  const [note, setNote] = useState("");
   const hint = reconcileHint(error);
+  // The adjustment is a remedy for one refusal, so it appears only after
+  // that one — and stays while it carries a value, through any later error.
+  const showAdjustment =
+    canAdjust && (isCardMismatch(error) || depositTotal !== "");
+  // A validation failure that landed entirely on the adjustment's own fields
+  // surfaces under them; anything else falls back to the banner.
+  const bannerError =
+    showAdjustment &&
+    error instanceof ApiError &&
+    error.issues.length > 0 &&
+    error.issues.every((issue) =>
+      ADJUSTMENT_FIELDS.has(String(issue.path.at(-1))),
+    )
+      ? null
+      : error;
 
   if (!allVerified) {
     return (
@@ -455,6 +489,23 @@ function CompletePrompt({
         ? current.filter((value) => value !== department)
         : [...current, department],
     );
+
+  const submit = () => {
+    const deposit = depositTotal.trim();
+    const trimmedNote = note.trim();
+    onComplete({
+      tipoutDepartments: selected,
+      // Only an admin's non-empty deposit becomes an adjustment; the note
+      // rides along with it and is dropped when blank.
+      ...(canAdjust &&
+        deposit !== "" && {
+          adjustment: {
+            depositTotal: deposit,
+            ...(trimmedNote !== "" && { note: trimmedNote }),
+          },
+        }),
+    });
+  };
 
   return (
     <Card className="border-accent/40 space-y-3">
@@ -501,14 +552,22 @@ function CompletePrompt({
         </div>
       </fieldset>
 
-      <Button
-        className="w-full"
-        loading={pending}
-        onClick={() => onComplete(selected)}
-      >
+      {showAdjustment && (
+        <AdjustmentForm
+          depositTotal={depositTotal}
+          note={note}
+          onChange={(next) => {
+            setDepositTotal(next.depositTotal);
+            setNote(next.note);
+          }}
+          error={error}
+        />
+      )}
+
+      <Button className="w-full" loading={pending} onClick={submit}>
         Complete cashout
       </Button>
-      <ErrorBanner error={error} />
+      <ErrorBanner error={bannerError} />
       {hint != null && <p className="text-ink-muted text-xs">{hint}</p>}
     </Card>
   );

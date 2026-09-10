@@ -102,6 +102,8 @@ const completedSubmission: CashoutSubmissionDetail = {
     cardPaymentTotal: "1234.56",
     cashPaymentTotal: "150.00",
     cardTipTotal: "180.00",
+    depositTotal: null,
+    adjustmentNote: null,
     tipoutDepartments: ["kitchen", "manager"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",
@@ -180,6 +182,15 @@ function renderPage() {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+}
+
+/** Completing refused: the report's card payments exceed the summaries by $234.56. */
+function cardMismatch(): ApiError {
+  return new ApiError(409, {
+    kind: "CONFLICT",
+    code: "RECONCILE_CARD_PAYMENT_MISMATCH",
+    ctx: { cardPaymentTotal: "1234.56", serverSummaryTotal: "1000.00" },
+  });
 }
 
 function mockViewer(user: User) {
@@ -479,6 +490,92 @@ describe("SubmissionPage", () => {
     expect(
       screen.getByText(/Compare Card payments on the TouchBistro report/),
     ).toBeDefined();
+  });
+
+  it("names both amounts of a card payment mismatch, with no deposit form for the cashier", async () => {
+    mockViewer(employee);
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    completeSubmissionMock.mockRejectedValue(cardMismatch());
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete cashout" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "The TouchBistro card payments ($1234.56) do not match the server summary grand totals ($1000.00). Re-check both before completing.",
+      ),
+    ).toBeDefined();
+    // Only an admin can record the deposit that explains the gap.
+    expect(screen.queryByLabelText("Deposit amount")).toBeNull();
+  });
+
+  it("lets an admin record a deposit once the card payments fail to add up", async () => {
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    completeSubmissionMock.mockRejectedValueOnce(cardMismatch());
+    renderPage(); // beforeEach signs the admin in
+
+    fireEvent.click(await screen.findByLabelText("Kitchen"));
+    // The form is a remedy for one refusal: nothing to see before it.
+    expect(screen.queryByLabelText("Deposit amount")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
+
+    expect(
+      await screen.findByText(/exceed the summaries by \$234\.56/),
+    ).toBeDefined();
+    fireEvent.change(screen.getByLabelText("Deposit amount"), {
+      target: { value: "234.56" },
+    });
+    fireEvent.change(screen.getByLabelText("Note (optional)"), {
+      target: { value: "Party deposit" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
+
+    await waitFor(() =>
+      expect(completeSubmissionMock).toHaveBeenCalledTimes(2),
+    );
+    expect(completeSubmissionMock.mock.calls[1]?.[1]).toEqual({
+      tipoutDepartments: ["kitchen"],
+      adjustment: { depositTotal: "234.56", note: "Party deposit" },
+    });
+  });
+
+  it("sends no adjustment when the admin leaves the deposit empty", async () => {
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    completeSubmissionMock.mockRejectedValueOnce(cardMismatch());
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete cashout" }),
+    );
+    expect(await screen.findByLabelText("Deposit amount")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
+
+    await waitFor(() =>
+      expect(completeSubmissionMock).toHaveBeenCalledTimes(2),
+    );
+    expect(completeSubmissionMock.mock.calls[1]?.[1]).toStrictEqual({
+      tipoutDepartments: [],
+    });
+  });
+
+  it("shows a recorded deposit and its note on the data card", async () => {
+    getSubmissionMock.mockResolvedValue({
+      ...completedSubmission,
+      data: {
+        ...completedSubmission.data!,
+        depositTotal: "234.56",
+        adjustmentNote: "Party deposit",
+      },
+    });
+    renderPage();
+
+    expect(
+      await screen.findByText("Deposit (not on the terminal summaries)"),
+    ).toBeDefined();
+    expect(screen.getByText("$234.56")).toBeDefined();
+    expect(screen.getByText("Party deposit")).toBeDefined();
   });
 
   it("shows a not-found state when the cashout no longer exists", async () => {

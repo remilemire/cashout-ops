@@ -60,6 +60,8 @@ function makeRow(
     cardPaymentTotal: "1234.56",
     cashPaymentTotal: "150.00",
     cardTipTotal: "180.00",
+    depositTotal: null,
+    adjustmentNote: null,
     tipoutDepartments: ["kitchen", "manager"],
     barTipoutRate: "0.0500",
     kitchenTipoutRate: "0.0300",

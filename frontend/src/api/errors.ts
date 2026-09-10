@@ -30,8 +30,20 @@ const ERROR_MESSAGES = {
     "Add the TouchBistro end-of-day report before completing.",
   RECONCILE_TOUCHBISTRO_DUPLICATE:
     "A cashout takes exactly one TouchBistro end-of-day report.",
-  RECONCILE_CARD_PAYMENT_MISMATCH:
-    "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.",
+  RECONCILE_CARD_PAYMENT_MISMATCH: (ctx: ErrorContext) => {
+    const cardPayments = parameter(ctx, "cardPaymentTotal");
+    const grandTotals = parameter(ctx, "serverSummaryTotal");
+    if (cardPayments === undefined || grandTotals === undefined) {
+      return "The TouchBistro card payments do not match the server summary grand totals. Re-check both before completing.";
+    }
+    // Present only when a deposit was taken off the card payments first.
+    const deposit = parameter(ctx, "depositTotal");
+    const reportSide =
+      deposit === undefined
+        ? `$${cardPayments}`
+        : `$${cardPayments}, less a $${deposit} deposit`;
+    return `The TouchBistro card payments (${reportSide}) do not match the server summary grand totals ($${grandTotals}). Re-check both before completing.`;
+  },
   RECONCILE_CARD_TRANSACTION_MISMATCH:
     "The TouchBistro card orders do not match the server summary transaction counts. Re-check both before completing.",
   RECONCILE_DOCUMENT_DATA_INVALID:
