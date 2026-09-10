@@ -42,8 +42,9 @@ export type ErrorCode =
   | "OAUTH_ISSUER_NOT_ENABLED"
   // cashout
   | "SUBMISSION_NOT_FOUND"
-  | "DOCUMENT_NOT_FOUND"
+  | "UPLOAD_NOT_FOUND"
   | "ANALYSIS_NOT_FOUND"
+  | "CROP_NOT_FOUND"
   | "SUBMISSION_COMPLETED"
   | "SUBMISSION_NOT_COMPLETED"
   | "SUBMISSION_EMPTY"
@@ -54,9 +55,9 @@ export type ErrorCode =
   | "ANALYSIS_NOT_VERIFIED"
   | "EXTRACTION_IN_PROGRESS"
   | "EXTRACTION_FAILED"
-  | "DOCUMENT_TOO_LARGE"
-  | "DOCUMENT_DUPLICATE"
-  | "UNSUPPORTED_DOCUMENT_TYPE"
+  | "UPLOAD_TOO_LARGE"
+  | "UPLOAD_DUPLICATE"
+  | "UNSUPPORTED_UPLOAD_TYPE"
   // cashout — reconciliation, raised while completing
   | "RECONCILE_TOUCHBISTRO_MISSING"
   | "RECONCILE_TOUCHBISTRO_DUPLICATE"
@@ -196,6 +197,11 @@ export interface FieldIssue {
 export interface CashoutDocumentAnalysis {
   id: string;
   createdAt: string;
+  /**
+   * Reading order among the upload's analyses (1-based): the order the
+   * documents were found in it, page by page for a PDF.
+   */
+  position: number;
   /** Null when the details were entered manually (no AI ran). */
   provider: string | null;
   model: string | null;
@@ -209,6 +215,14 @@ export interface CashoutDocumentAnalysis {
    * rendering stays data-driven, so no branching on it is needed here.
    */
   schemaVersion: number | null;
+  /**
+   * Set when the extraction read a crop — this analysis's document among
+   * those found in the upload — rather than the whole upload: the crop is
+   * served by `analysisCroppedUrl`, and is what to check the extraction
+   * against. Null for an upload with no detectable text, cropping switched
+   * off, or an analysis not yet extracted.
+   */
+  croppedContentType: DocumentContentType | null;
   extractedDataJson: Record<string, unknown> | null;
   extractionConfidence: number | null;
   issues: FieldIssue[] | null;
@@ -218,10 +232,14 @@ export interface CashoutDocumentAnalysis {
   verifiedDataJson: Record<string, unknown> | null;
   verifiedByUserId: string | null;
   verifiedAt: string | null;
-  cashoutDocumentId: string;
+  cashoutUploadId: string;
 }
 
-export interface CashoutDocument {
+/**
+ * The file a cashier submits to a cashout — a photo or PDF holding one or
+ * more printed documents, each of which gets an analysis of its own.
+ */
+export interface CashoutUpload {
   id: string;
   createdAt: string;
   contentType: DocumentContentType;
@@ -230,7 +248,12 @@ export interface CashoutDocument {
   uploadedByUserId: string;
   uploadedAt: string;
   cashoutSubmissionId: string;
-  analysis: CashoutDocumentAnalysis | null;
+  /**
+   * One per document found in the upload (several receipts in one photo,
+   * each page of a PDF), in reading order. Empty only for the instant
+   * between the upload and its first analysis.
+   */
+  analyses: CashoutDocumentAnalysis[];
 }
 
 export type TipoutDepartment = "bar" | "kitchen" | "expo" | "host" | "manager";
@@ -309,7 +332,7 @@ export interface CashoutDataRow extends CashoutData {
 
 export interface CashoutSubmissionDetail extends CashoutSubmission {
   employee: User;
-  documents: CashoutDocument[];
+  uploads: CashoutUpload[];
   data: CashoutData | null;
 }
 
@@ -336,7 +359,7 @@ export interface VerifyAnalysisInput {
   verifiedData?: Record<string, unknown>;
 }
 
-export interface ExtractDocumentInput {
+export interface RetryExtractionInput {
   /**
    * Corrected classification: the rerun skips AI classification and extracts
    * as this type (its confidence is recorded as null). Omit for a plain
@@ -345,7 +368,7 @@ export interface ExtractDocumentInput {
   classification?: CashoutDocumentClassification;
 }
 
-export interface ManualDocumentInput {
+export interface ManualEntryInput {
   classification: CashoutDocumentClassification;
   /** snake_case schema keys; raw string values — the backend coerces. */
   data: Record<string, string>;

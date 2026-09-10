@@ -54,6 +54,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 | Testing     | pytest + testcontainers (backend), Vitest + Testing Library (frontend) |
 | Prod server | Gunicorn + Uvicorn workers                              |
 | Doc AI      | Anthropic / OpenAI / Gemini (vision + structured output) |
+| Cropping    | PP-OCRv4 text detection (onnxruntime, vendored model) finds the documents in an upload — several receipts in a photo, each page of a PDF (pypdfium2) — and crops each out |
 | Hosting     | Render                                                  |
 
 ## What works today
@@ -67,11 +68,11 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Centralized application errors and database-constraint translation, returning `{ kind, code, ctx }`; the frontend owns message wording
 - Field validation issues carry Pydantic codes, camelCase paths, and safe constraint context (`issues: [{ code, path, ctx }]`); submitted values and private exception details stay out of responses
 - camelCase ↔ snake_case casing at the API boundary (`BaseIn` / `BaseOut`)
-- Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_documents`, `cashout_document_analyses`, and `cashout_data`
+- Fully-migrated schema: `users`, `external_identities`, `outbox_messages`, `cashout_submissions`, `cashout_uploads`, `cashout_document_analyses`, and `cashout_data`
 - Read-only reporting view `reporting.cashout_data` (the admin cashout data table, for spreadsheet consumers) and the `reporting_reader` role that may read it, both maintained by the migration chain
-- Cashout domain (create/list/re-date/delete submission — at most one live cashout per employee per business day, upload and remove documents with background AI extraction + polling, serve the original document bytes, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
+- Cashout domain (create/list/re-date/delete submission — at most one live cashout per employee per business day, add and remove uploads with background AI extraction + polling, serve an upload's original bytes and the crops its analyses read, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
 - Cross-document reconciliation on completion: the server summaries' grand totals and transaction counts must add up to the TouchBistro report's card payments and card orders, or completion fails naming what disagrees
-- AI document pipeline: an LLM classifies each uploaded document and extracts structured data (vision + structured output), decoupled behind provider/storage interfaces — Anthropic, OpenAI, or Gemini, selected by config
+- AI document pipeline: the first extraction finds every document printed in an upload — several receipts in one photo, each page of a PDF — with a local text-detection model and crops each out (crops are stored beside the original, recorded on their analyses, shown to the cashier, and reused by every rerun), then an LLM classifies each one and extracts structured data (vision + structured output), one analysis per document found, decoupled behind provider/storage/detector interfaces — Anthropic, OpenAI, or Gemini, selected by config
 - React 19 SPA: auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (drag-and-drop upload → poll extraction → correct → verify → complete), and admin submissions/data/users views
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
 - Render deploy hooks: `backend/scripts/build.bash`, `pre-deploy.bash`, `start.bash`
@@ -111,11 +112,12 @@ The backend is organized **by feature** under `app/features/<feature>/`; cross-c
 │       ├── lib/                       # pure helpers: casing, documents
 │       ├── security/                  # CSRF cookies, token crypto, require_csrf, time_floor, rate_limit/ (Redis fixed window)
 │       ├── errors/                    # Domain errors, handlers, translators, OpenAPI shapes
-│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), oauth/ (Authlib + OAuthIssuer), storage/ (+ get_document_storage)
+│       ├── integrations/              # ai/ (AIClient + Anthropic/OpenAI/Gemini), email/ (+ get_email_client), oauth/ (Authlib + OAuthIssuer), ocr/ (TextDetector + vendored PP-OCRv4 detector, get_text_detector), storage/ (+ get_document_storage)
 │       ├── document_ai/               # DocumentAIClient (generic classify + extract)
+│       ├── document_cropping/         # DocumentCropper (find the documents in an image or a PDF's rendered pages, crop each to its detected text)
 │       ├── features/                  # auth (sessions/, email_challenges/, oauth/+external_identities/, shared/ (access, accounts), dependencies: get_current_user/require_admin/require_owner), users, cashout
-│       │   └── cashout/               # submissions/, documents/, analyses/, data/ sub-features + shared/ (access policy, intake workflows); thin root router/errors/models/outbox surfaces
-│       │       └── extraction/        # CashoutDocumentProcessor, registry, per-document schemas with field hints, get_cashout_document_processor
+│       │   └── cashout/               # submissions/, uploads/, analyses/, data/ sub-features + shared/ (access policy, upload-intake workflows); thin root router/errors/models/outbox surfaces
+│       │       └── extraction/        # CashoutDocumentProcessor (coordinates cropper + document AI: crop stores one crop per document found, process extracts one), registry, per-document schemas with field hints, get_cashout_document_processor
 │       └── api/__init__.py            # mounts each feature router under /api
 └── frontend/
     ├── index.html
@@ -190,15 +192,24 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `AI_CLASSIFICATION_MAX_TOKENS` | `ai.CLASSIFICATION_MAX_TOKENS` | no | `512`                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | `ai.EXTRACTION_MAX_TOKENS` | no  | `2048`                                            | Max output tokens for an extraction request.                                                         |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | `ai.*` | see notes | — | Unprefixed (vendor convention). Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
+| `OCR_ENABLED`         | `ocr.ENABLED` | no   | `true`                                                         | Crop uploaded images to their printed area with the vendored text-detection model, loaded once at startup. `false` skips the model load and the crop; documents then extract from the original. |
+| `OCR_DETECTION_MAX_SIDE` | `ocr.DETECTION_MAX_SIDE` | no | `1280`                                            | Long side the image is downscaled to for detection. The crop itself keeps the original resolution. |
+| `OCR_CROP_MARGIN`     | `ocr.CROP_MARGIN` | no | `0.03`                                                     | Margin kept around the detected text, as a fraction of the crop's larger side. |
+| `OCR_MIN_TEXT_BOXES`  | `ocr.MIN_TEXT_BOXES` | no | `3`                                                     | Fewer detected text boxes than this means no document was found: the upload stays uncropped. |
+| `OCR_MAX_CROP_AREA_RATIO` | `ocr.MAX_CROP_AREA_RATIO` | no | `0.95`                                          | A crop that would keep more than this share of the image's pixels is skipped: nothing worth a second copy. |
+| `OCR_SPLIT_ENABLED`   | `ocr.SPLIT_ENABLED` | no | `true`                                                   | Split an upload holding several documents (two receipts on the table, the pages of a PDF) into one crop, and one extraction, per document. |
+| `OCR_SPLIT_GAP`       | `ocr.SPLIT_GAP` | no  | `4.0`                                                       | An empty band at least this many text-line heights wide, on background rather than paper, separates two documents. |
+| `OCR_PDF_RENDER_DPI`  | `ocr.PDF_RENDER_DPI` | no | `200`                                                   | Resolution a PDF page is rendered at before detection and cropping. |
+| `OCR_PDF_MAX_PAGES`   | `ocr.PDF_MAX_PAGES` | no | `10`                                                     | Pages of a PDF rendered at most; later pages are ignored. |
 | `STORAGE_PROVIDER`    | `storage.PROVIDER` | no | `local`                                                    | `local` writes documents under `STORAGE_LOCAL_DIR`; `s3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
 | `STORAGE_LOCAL_DIR`   | `storage.LOCAL_DIR` | see notes | —                                                     | Where uploaded documents are written by the local storage client. Required when `STORAGE_PROVIDER=local` (the default). |
 | `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=s3`. Credentials are not configured here — see the note below the table. |
 | `S3_REGION`           | `storage.S3_REGION` | see notes | —                                                     | AWS region for the S3 client. Required when `STORAGE_PROVIDER=s3`.                                   |
 | `S3_ENDPOINT_URL`     | `storage.S3_ENDPOINT_URL` | no  | —                                               | Custom endpoint for S3-compatible stores such as MinIO or Cloudflare R2. Optional even under `s3`; unset (or blank) leaves the client on the AWS endpoint for `S3_REGION`. |
-| `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single document the upload endpoint accepts; a larger body stops being read and is rejected with `DOCUMENT_TOO_LARGE`, whose message carries the configured size. |
+| `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single upload the upload endpoints accept; a larger body stops being read and is rejected with `UPLOAD_TOO_LARGE`, whose message carries the configured size. |
 | `RATE_LIMIT_AUTH_IP_PER_HOUR` | `rate_limit.AUTH_IP_PER_HOUR` | no | `20`                                          | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
 | `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | `rate_limit.INITIATE_EMAIL_PER_HOUR` | no | `5`                             | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
-| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | `rate_limit.UPLOADS_PER_USER_PER_HOUR` | no | `30`                          | Per-user hourly quota on cashout document uploads (each starts an AI extraction).                    |
+| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | `rate_limit.UPLOADS_PER_USER_PER_HOUR` | no | `30`                          | Per-user hourly quota on cashout uploads (each starts an AI extraction).                             |
 | `RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR` | `rate_limit.EXTRACTS_PER_USER_PER_HOUR` | no | `15`                        | Per-user hourly quota on AI re-extractions.                                                          |
 | `OUTBOX_MAX_ATTEMPTS` | `outbox.MAX_ATTEMPTS` | no | `10`                                                     | Delivery attempts before an outbox message dead-letters.                                             |
 | `OUTBOX_BATCH_SIZE`   | `outbox.BATCH_SIZE` | no  | `1`                                                        | Messages a dispatcher worker claims per poll.                                                        |
@@ -278,11 +289,11 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage, and — last, so they stop first on shutdown — the outbox dispatcher workers) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage, text detection, and — last, so they stop first on shutdown — the outbox dispatcher workers) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
 
-**AI document pipeline.** Uploaded documents are read directly by a vision model — there is no OCR. The layering keeps the domain off the provider SDK: `CashoutDocumentProcessor` (cashout-specific) → `DocumentAIClient` (generic classify + structured extraction) → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient`. Providers are swappable behind those interfaces, and the tests fake only the provider and storage.
+**AI document pipeline.** Two generic components, coordinated by the cashout-specific `CashoutDocumentProcessor` ([features/cashout/extraction/](backend/app/features/cashout/extraction/)), which knows both while neither knows the other. `DocumentCropper` ([document_cropping/](backend/app/document_cropping/)) finds the documents printed in an image — or in each page of a PDF, rendered with pypdfium2 — using a local text-detection model (PP-OCRv4 over onnxruntime, vendored with the app — [integrations/ocr/](backend/app/integrations/ocr/)) and cuts each one out; an empty band on background rather than paper between two blocks of text is what separates two documents. That is detection only, not OCR in the reading sense: no text is recognized. `DocumentAIClient` ([document_ai/](backend/app/document_ai/)) classifies and extracts one document with a vision model. The first extraction of an upload finds its documents and stores a crop of each beside the original: the upload's own analysis takes the first, and the job creates a sibling analysis with its own queued extraction for each further one. Every rerun reads its analysis's crop, the cashier previews it, and the upload's extract endpoint starts it over when the split was wrong. Uploads with no detectable text, and extractions made with `OCR_ENABLED=false`, read the original whole. The layering keeps the domain off the provider SDK: `DocumentAIClient` → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient` and a `TextDetector`. Providers are swappable behind those interfaces, and the tests fake only the provider, storage, and detector.
 
-**Settings.** `Settings` ([core/config/](backend/app/core/config/)) is one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `storage`, `outbox`, `rate_limit`, `tipout` — each a `BaseSettings` reading `.env` under its own `env_prefix`, so code reads `settings.storage.LOCAL_DIR`. Provider-conditional validation lives in the group it belongs to, so an incomplete deployment fails to load its configuration rather than failing on first use. `settings.app.DEBUG` is a computed field derived from `APP_ENV`.
+**Settings.** `Settings` ([core/config/](backend/app/core/config/)) is one nested settings group per concern — `app`, `db`, `redis`, `bootstrap`, `auth`, `email`, `ai`, `ocr`, `storage`, `outbox`, `rate_limit`, `tipout` — each a `BaseSettings` reading `.env` under its own `env_prefix`, so code reads `settings.storage.LOCAL_DIR`. Provider-conditional validation lives in the group it belongs to, so an incomplete deployment fails to load its configuration rather than failing on first use. `settings.app.DEBUG` is a computed field derived from `APP_ENV`.
 
 ## Authentication and sessions
 
@@ -338,25 +349,27 @@ Implemented under the `/api` prefix:
 | POST   | `/api/users/{id}/transfer-ownership`          | owner + CSRF    | 200     | Transfer ownership to an admin; the caller becomes a plain admin. |
 | POST   | `/api/cashout/submissions`                    | session + CSRF  | 201     | Open a cashout submission (any time — not shift-locked); optional `businessDate` defaults to today, and a second live cashout for the same day conflicts. |
 | GET    | `/api/cashout/submissions`                    | session         | 200     | List submissions, newest first — your own as a cashier, everyone's as an admin. |
-| GET    | `/api/cashout/submissions/{id}`               | submitter or admin | 200  | Submission detail with documents (analyses embedded) + data. |
+| GET    | `/api/cashout/submissions/{id}`               | submitter or admin | 200  | Submission detail with uploads (analyses embedded) + data.   |
 | DELETE | `/api/cashout/submissions/{id}`               | submitter + CSRF | 204    | Delete a submission unless reconciled cashout data exists.  |
 | PATCH  | `/api/cashout/submissions/{id}`               | submitter + CSRF | 200    | Change the business day of a `PROCESSING` cashout (a second live cashout for the new day conflicts); a completed cashout is read-only until unsubmitted. |
 | POST   | `/api/cashout/submissions/{id}/complete`      | submitter + CSRF | 200    | Reconcile the verified analyses → `COMPLETED`.              |
 | POST   | `/api/cashout/submissions/{id}/unsubmit`      | admin + CSRF     | 200    | Reopen a completed cashout: drops its reconciled data, back to `PROCESSING` (analyses stay verified). |
-| POST   | `/api/cashout/submissions/{id}/documents`     | submitter + CSRF | 201    | Upload a document (multipart); returns an `EXTRACTING` analysis — extraction runs in the background. |
-| POST   | `/api/cashout/submissions/{id}/documents/manual` | submitter + CSRF | 201 | Upload a document with manually entered details (multipart); skips AI, so the analysis lands `VERIFIED`. |
-| DELETE | `/api/cashout/documents/{id}`                 | submitter + CSRF | 204    | Remove a document and its analysis while the submission is still `PROCESSING`. |
-| GET    | `/api/cashout/documents/{id}/content`         | submitter or admin | 200  | Serve the original uploaded bytes inline (image or PDF).    |
-| POST   | `/api/cashout/documents/{id}/extract`         | submitter + CSRF | 200    | Restart extraction after a `FAILED` attempt (background, poll again). |
-| POST   | `/api/cashout/documents/{id}/manual`          | submitter + CSRF | 200    | Replace a document's analysis with manually entered details; skips AI, lands `VERIFIED`. |
+| POST   | `/api/cashout/submissions/{id}/uploads`       | submitter + CSRF | 201    | Upload a file (multipart); returns its first `EXTRACTING` analysis — extraction runs in the background, one analysis per document found in it. |
+| POST   | `/api/cashout/submissions/{id}/uploads/manual` | submitter + CSRF | 201  | Upload a file with its document's manually entered details (multipart); skips AI, so the analysis lands `VERIFIED`. |
+| DELETE | `/api/cashout/uploads/{id}`                   | submitter + CSRF | 204    | Remove an upload and its analyses while the submission is still `PROCESSING`. |
+| GET    | `/api/cashout/uploads/{id}/content`           | submitter or admin | 200  | Serve the original uploaded bytes inline (image or PDF).    |
+| POST   | `/api/cashout/uploads/{id}/extract`           | submitter + CSRF | 200    | Start an upload over: discard its analyses, detect its documents again, re-extract each (background, poll again). |
 | GET    | `/api/cashout/analyses/{id}`                  | submitter or admin | 200  | Poll the analysis: `EXTRACTING` → `NEEDS_VERIFICATION` \| `FAILED`. |
+| GET    | `/api/cashout/analyses/{id}/cropped`          | submitter or admin | 200  | The crop the analysis read (image bytes, inline); 404 when it read the upload whole. |
+| POST   | `/api/cashout/analyses/{id}/extract`          | submitter + CSRF | 200    | Re-run one analysis over the crop it read (background, poll again); an optional `classification` skips the AI classify step. |
+| POST   | `/api/cashout/analyses/{id}/manual`           | submitter + CSRF | 200    | Replace an analysis with manually entered details; skips AI, lands `VERIFIED`. |
 | POST   | `/api/cashout/analyses/{id}/verify`           | submitter + CSRF | 200    | Confirm an extraction, optionally with corrected values.    |
 | POST   | `/api/cashout/analyses/{id}/unverify`         | submitter + CSRF | 200    | Send a verified extraction back to `NEEDS_VERIFICATION` for editing. |
 | GET    | `/api/cashout/data`                           | admin           | 200     | List every reconciled cashout data row, newest first.       |
 
 "Submitter" is the cashier who created the submission — enforced in the cashout service ([cashout/shared/access.py](backend/app/features/cashout/shared/access.py)), not by a dependency. Admins (and the owner) have full control over every cashout, so every "submitter" row admits an admin too; it is unrelated to the single **owner** role, which only gates `transfer-ownership`. CSRF is checked on unsafe methods only, so the `GET` rows carry no CSRF requirement even though the routers declare `require_csrf`.
 
-The auth endpoints are rate limited (per client IP on each endpoint, sign-in emails per address, and link verification per challenge), and cashout document upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
+The auth endpoints are rate limited (per client IP on each endpoint, sign-in emails per address, and link verification per challenge), and cashout upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
 
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
 

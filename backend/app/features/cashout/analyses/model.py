@@ -6,26 +6,49 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.providers import AIProvider
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.infrastructure.db.models import Base, enum_column
+from app.lib.documents import DocumentContentType
 
 from .types import DocumentAnalysisStatus
 
 if TYPE_CHECKING:
-    from app.features.cashout.documents.model import CashoutDocument
+    from app.features.cashout.uploads.model import CashoutUpload
     from app.features.users.model import User
 
 
 class CashoutDocumentAnalysis(Base):
-    """One classification + extraction pass over a cashout document — an AI
-    run, or its manually entered equivalent (null provider)."""
+    """One classification + extraction pass over one document found in an
+    upload — an AI run, or its manually entered equivalent (null provider).
+
+    An upload holds one document until its first extraction finds more (two
+    receipts in one photo, the pages of a PDF); each becomes its own analysis
+    of the same CashoutUpload, reading its own crop.
+    """
 
     __tablename__ = "cashout_document_analyses"
+    __table_args__ = (
+        UniqueConstraint(
+            "cashout_upload_id",
+            "position",
+            name="uq_cashout_document_analyses_upload_position",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
@@ -34,13 +57,18 @@ class CashoutDocumentAnalysis(Base):
         server_default=func.now(),
     )
 
-    # One analysis per document: a retry resets this row in place rather than
-    # appending an attempt.
-    cashout_document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("cashout_documents.id", ondelete="CASCADE"),
+    # A retry resets the row in place rather than appending an attempt; a
+    # upload gains rows only for further documents found in it.
+    cashout_upload_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cashout_uploads.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
         index=True,
+    )
+    # Reading order among the document's analyses, 1-based: the order the
+    # documents were found in the upload (page by page for a PDF). Unique
+    # per upload.
+    position: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
     )
 
     # Null provider (and model) ⇔ a manually entered analysis: the user typed
@@ -83,6 +111,21 @@ class CashoutDocumentAnalysis(Base):
     extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     issues: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
+    # The crop this analysis reads — the one document among those found in
+    # the upload — stored beside the original (in the original's format; PNG
+    # for a PDF's rendered page), with where it sits in the upright original
+    # ({left, top, right, bottom} pixels, plus `page` for a PDF). Kept
+    # through resets and manual entry, so every rerun reads the same crop and
+    # the card keeps previewing it. Null when the upload was read whole — no
+    # detectable text, cropping switched off — or has not been extracted yet.
+    cropped_storage_key: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, unique=True
+    )
+    cropped_content_type: Mapped[DocumentContentType | None] = mapped_column(
+        enum_column(DocumentContentType, "document_content_type"), nullable=True
+    )
+    crop_bounds: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+
     # Set when status is FAILED: the DocumentAIErrorCode value the extraction
     # failed with; error_code stays null for unexpected job crashes (only the
     # message is set).
@@ -107,6 +150,6 @@ class CashoutDocumentAnalysis(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analysis")
+    cashout_upload: Mapped[CashoutUpload] = relationship(back_populates="analyses")
 
     verified_by: Mapped[User | None] = relationship()

@@ -1,7 +1,7 @@
 # backend/tests/integration/test_cashout.py
 #
 # End-to-end workflows that cross the cashout sub-features; per-sub-feature
-# coverage lives in test_cashout_submissions / test_cashout_documents /
+# coverage lives in test_cashout_submissions / test_cashout_uploads /
 # test_cashout_analyses / test_cashout_data.
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ from tests.support.cashout import (
     configure_server_summary,
     configure_touchbistro,
     create_submission,
+    create_upload,
     poll_analysis,
     unsubmit_submission,
     unverify_analysis,
-    upload_document,
     upload_reconcilable_documents,
     verify_analysis,
 )
@@ -43,7 +43,7 @@ async def test_full_cashout_flow(
     submission_id = await create_submission(cashier_client)
 
     # Upload returns immediately with an EXTRACTING analysis.
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     assert created["status"] == DocumentAnalysisStatus.EXTRACTING.value
     assert created["extractedDataJson"] is None
     assert created["schemaVersion"] is None
@@ -65,7 +65,7 @@ async def test_full_cashout_flow(
     # The cashout also needs the terminal summary its card payments are
     # cross-checked against.
     configure_server_summary(ai_client)
-    created_summary = await upload_document(
+    created_summary = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
     )
     summary = await poll_analysis(cashier_client, created_summary["id"])
@@ -74,22 +74,22 @@ async def test_full_cashout_flow(
         {"path": "grand_total", "message": "partially legible"}
     ]
 
-    # The detail view embeds each document's analysis.
+    # The detail view embeds each upload's analysis.
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert detail["status"] == CashoutSubmissionStatus.PROCESSING.value
-    assert {document["analysis"]["id"] for document in detail["documents"]} == {
+    assert {upload["analyses"][0]["id"] for upload in detail["uploads"]} == {
         analysis["id"],
         summary["id"],
     }
-    document = next(
+    upload = next(
         entry
-        for entry in detail["documents"]
-        if entry["analysis"]["id"] == analysis["id"]
+        for entry in detail["uploads"]
+        if entry["analyses"][0]["id"] == analysis["id"]
     )
     assert (
-        document["analysis"]["classification"]
+        upload["analyses"][0]["classification"]
         == CashoutDocumentClassification.TOUCHBISTRO_REPORT.value
     )
 
@@ -186,9 +186,9 @@ async def test_admin_can_manage_another_users_submission(
     submission_id = await create_submission(cashier_client)
 
     # Upload and retry extraction on the employee's behalf.
-    created = await upload_document(admin_client, submission_id, drain=drain_outbox)
+    created = await create_upload(admin_client, submission_id, drain=drain_outbox)
     retried = await admin_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         headers=csrf_headers(admin_client),
     )
     assert retried.status_code == 200, retried.text
@@ -202,18 +202,18 @@ async def test_admin_can_manage_another_users_submission(
 
     # The terminal summary the TouchBistro card payments reconcile against.
     configure_server_summary(ai_client)
-    summary = await upload_document(
+    summary = await create_upload(
         admin_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
     )
     await verify_analysis(admin_client, summary["id"])
 
-    # The document records the admin as its uploader; the submission keeps
+    # The upload records the admin as its uploader; the submission keeps
     # the cashier as its employee.
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
     assert detail["employeeUserId"] == cashier_id
-    assert detail["documents"][0]["uploadedByUserId"] == admin_id
+    assert detail["uploads"][0]["uploadedByUserId"] == admin_id
 
     # Complete: the admin is recorded as the completer, and the first
     # completion time is stamped.
@@ -240,14 +240,14 @@ async def test_extract_with_corrected_classification_skips_ai_classify(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # Only the extraction stays configured: a classify call would now fail the
     # fake (and land the analysis FAILED), so a NEEDS_VERIFICATION outcome
     # proves the corrected rerun skipped it.
     ai_client.classification = None
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         json={
             "classification": CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
         },
@@ -276,11 +276,11 @@ async def test_extract_without_body_still_runs_the_full_pipeline(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # The pre-existing retry: no body at all.
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         headers=csrf_headers(cashier_client),
     )
     assert response.status_code == 200, response.text
@@ -304,10 +304,10 @@ async def test_extract_rejects_an_invalid_classification_value(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/analyses/{created['id']}/extract",
         json={"classification": "coffee_receipt"},
         headers=csrf_headers(cashier_client),
     )
@@ -324,7 +324,7 @@ async def test_cannot_access_another_users_submission(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # A second, unrelated cashier can see neither the submission nor poll
     # its analyses.

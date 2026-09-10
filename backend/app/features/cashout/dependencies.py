@@ -2,7 +2,7 @@
 
 """Per-user quotas on the costly cashout endpoints.
 
-Document uploads land a file in storage and normally trigger an AI extraction
+Uploads land a file in storage and normally trigger an AI extraction
 (the manual-entry upload skips the AI but shares the same intake quota), and
 every on-demand re-extraction triggers one. These guards bound the spend a
 runaway script or a compromised account can incur — a cost ceiling, not a
@@ -30,7 +30,7 @@ async def rate_limit_upload(
     current_user: Annotated[User, Depends(get_current_user)],
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> None:
-    """Cap document uploads (AI-extracting and manual alike) per user."""
+    """Cap uploads (AI-extracting and manual alike) per user."""
     # Settings are read at call time so tests can monkeypatch the limit.
     await enforce(
         redis,

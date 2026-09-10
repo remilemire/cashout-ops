@@ -1,0 +1,12 @@
+ch_PP-OCRv4_det_infer.onnx
+
+The PP-OCRv4 text-detection model (DBNet) from PaddleOCR, in the ONNX export
+distributed by RapidOCR. Copyright (c) 2020 PaddlePaddle Authors; licensed under
+the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+
+Taken unmodified from the rapidocr_onnxruntime 1.4.4 wheel on PyPI
+(rapidocr_onnxruntime/models/ch_PP-OCRv4_det_infer.onnx).
+SHA-256: d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9
+
+The app only runs the detection stage: it locates text regions to crop a photo
+down to the printed document. No text recognition model is shipped.

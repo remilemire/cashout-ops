@@ -19,8 +19,8 @@ from tests.support.cashout import (
     configure_server_summary,
     configure_touchbistro,
     create_submission,
+    create_upload,
     prepare_completable_submission,
-    upload_document,
     upload_reconcilable_documents,
     verify_analysis,
 )
@@ -454,7 +454,7 @@ async def test_complete_without_a_touchbistro_report_conflicts(
     # A cashout with only terminal summaries has no source for its figures.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    summary = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    summary = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, summary["id"])
 
     body = await _try_complete(cashier_client, submission_id)
@@ -471,8 +471,8 @@ async def test_complete_with_two_touchbistro_reports_conflicts(
     # Exactly one, and there is no rule for picking between two.
     configure_touchbistro(ai_client)
     submission_id = await create_submission(cashier_client)
-    first = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    second = await upload_document(
+    first = await create_upload(cashier_client, submission_id, drain=drain_outbox)
+    second = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
     )
     await verify_analysis(cashier_client, first["id"])
@@ -571,9 +571,7 @@ async def test_complete_without_card_payments_needs_no_server_summary(
     # payments and nothing else.
     configure_touchbistro(ai_client)
     submission_id = await create_submission(cashier_client)
-    touchbistro = await upload_document(
-        cashier_client, submission_id, drain=drain_outbox
-    )
+    touchbistro = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(
         cashier_client,
         touchbistro["id"],

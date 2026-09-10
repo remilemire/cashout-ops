@@ -1,4 +1,4 @@
-// frontend/src/features/cashout/DocumentCard.test.tsx
+// frontend/src/features/cashout/UploadCard.test.tsx
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -12,11 +12,11 @@ import {
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { cashoutApi } from "@/api/cashout";
+import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { ApiError } from "@/api/client";
-import type { CashoutDocument, CashoutDocumentAnalysis } from "@/api/types";
+import type { CashoutUpload, CashoutDocumentAnalysis } from "@/api/types";
 
-import { DocumentCard } from "./DocumentCard";
+import { UploadCard } from "./UploadCard";
 
 vi.mock("@/api/cashout", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/cashout")>();
@@ -25,11 +25,12 @@ vi.mock("@/api/cashout", async (importOriginal) => {
     cashoutApi: {
       ...actual.cashoutApi,
       getAnalysis: vi.fn(),
-      deleteDocument: vi.fn(),
+      deleteUpload: vi.fn(),
       unverifyAnalysis: vi.fn(),
-      extractDocument: vi.fn(),
-      uploadDocument: vi.fn(),
-      enterManualDocument: vi.fn(),
+      retryExtraction: vi.fn(),
+      restartUpload: vi.fn(),
+      createUpload: vi.fn(),
+      replaceWithManualEntry: vi.fn(),
     },
   };
 });
@@ -53,14 +54,16 @@ vi.mock("@/components/dialog", () => ({
 }));
 
 const getAnalysisMock = vi.mocked(cashoutApi.getAnalysis);
-const deleteDocumentMock = vi.mocked(cashoutApi.deleteDocument);
+const deleteUploadMock = vi.mocked(cashoutApi.deleteUpload);
 const unverifyAnalysisMock = vi.mocked(cashoutApi.unverifyAnalysis);
-const extractDocumentMock = vi.mocked(cashoutApi.extractDocument);
-const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
-const enterManualDocumentMock = vi.mocked(cashoutApi.enterManualDocument);
+const retryExtractionMock = vi.mocked(cashoutApi.retryExtraction);
+const restartUploadMock = vi.mocked(cashoutApi.restartUpload);
+const createUploadMock = vi.mocked(cashoutApi.createUpload);
+const replaceWithManualEntryMock = vi.mocked(cashoutApi.replaceWithManualEntry);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
+  position: 1,
   createdAt: "2026-07-17T01:00:00Z",
   provider: "anthropic",
   model: "claude-sonnet-5",
@@ -69,6 +72,7 @@ const analysis: CashoutDocumentAnalysis = {
   classificationConfidence: 0.95,
   schemaName: "ServerSummaryReportData",
   schemaVersion: 1,
+  croppedContentType: null,
   extractedDataJson: {
     grand_total: "1234.56",
     grand_total_transaction_count: 42,
@@ -84,7 +88,7 @@ const analysis: CashoutDocumentAnalysis = {
   },
   verifiedByUserId: "user-1",
   verifiedAt: "2026-07-17T01:02:00Z",
-  cashoutDocumentId: "document-1",
+  cashoutUploadId: "upload-1",
 };
 
 const needsVerificationAnalysis: CashoutDocumentAnalysis = {
@@ -95,8 +99,8 @@ const needsVerificationAnalysis: CashoutDocumentAnalysis = {
   verifiedAt: null,
 };
 
-const cashoutDocument: CashoutDocument = {
-  id: "document-1",
+const cashoutUpload: CashoutUpload = {
+  id: "upload-1",
   createdAt: "2026-07-17T01:00:00Z",
   contentType: "application/pdf",
   originalFilename: "receipt.pdf",
@@ -104,13 +108,10 @@ const cashoutDocument: CashoutDocument = {
   uploadedByUserId: "user-1",
   uploadedAt: "2026-07-17T01:00:00Z",
   cashoutSubmissionId: "submission-1",
-  analysis,
+  analyses: [analysis],
 };
 
-function renderCard(
-  editable: boolean,
-  document: CashoutDocument = cashoutDocument,
-) {
+function renderCard(editable: boolean, upload: CashoutUpload = cashoutUpload) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -119,8 +120,8 @@ function renderCard(
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <DocumentCard
-          document={document}
+        <UploadCard
+          upload={upload}
           submissionId="submission-1"
           editable={editable}
         />
@@ -131,47 +132,52 @@ function renderCard(
 
 beforeEach(() => {
   getAnalysisMock.mockReset();
-  deleteDocumentMock.mockReset();
+  deleteUploadMock.mockReset();
   unverifyAnalysisMock.mockReset();
-  extractDocumentMock.mockReset();
-  uploadDocumentMock.mockReset();
-  enterManualDocumentMock.mockReset();
+  retryExtractionMock.mockReset();
+  restartUploadMock.mockReset();
+  createUploadMock.mockReset();
+  replaceWithManualEntryMock.mockReset();
   getAnalysisMock.mockResolvedValue(analysis);
-  deleteDocumentMock.mockResolvedValue(undefined);
+  deleteUploadMock.mockResolvedValue(undefined);
   unverifyAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
-  extractDocumentMock.mockResolvedValue({
+  retryExtractionMock.mockResolvedValue({
     ...needsVerificationAnalysis,
     status: "extracting",
   });
-  enterManualDocumentMock.mockResolvedValue({
+  restartUploadMock.mockResolvedValue({
+    ...needsVerificationAnalysis,
+    id: "analysis-3",
+    status: "extracting",
+    croppedContentType: null,
+  });
+  replaceWithManualEntryMock.mockResolvedValue({
     ...analysis,
     provider: null,
     model: null,
   });
 });
 
-describe("DocumentCard", () => {
+describe("UploadCard", () => {
   it("hides the remove option when not editable", () => {
     renderCard(false);
 
     expect(screen.getByText("receipt.pdf")).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Remove document" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove upload" })).toBeNull();
   });
 
-  it("confirms and removes the document", async () => {
+  it("confirms and removes the upload", async () => {
     renderCard(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove document" }));
-    const dialog = screen.getByRole("dialog", { name: "Remove document?" });
+    fireEvent.click(screen.getByRole("button", { name: "Remove upload" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove this upload?" });
 
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Remove document" }),
+      within(dialog).getByRole("button", { name: "Remove upload" }),
     );
 
-    await waitFor(() => expect(deleteDocumentMock).toHaveBeenCalledOnce());
-    expect(deleteDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
+    await waitFor(() => expect(deleteUploadMock).toHaveBeenCalledOnce());
+    expect(deleteUploadMock.mock.calls[0]?.[0]).toBe("upload-1");
   });
 
   it("edits a verified analysis by unverifying it", async () => {
@@ -206,7 +212,7 @@ describe("DocumentCard", () => {
       },
     };
     getAnalysisMock.mockResolvedValue(corrected);
-    renderCard(false, { ...cashoutDocument, analysis: corrected });
+    renderCard(false, { ...cashoutUpload, analyses: [corrected] });
 
     expect(
       screen.getByText(/corrected from the original extraction/i),
@@ -219,14 +225,14 @@ describe("DocumentCard", () => {
   it("offers retry extraction while needs-verification", async () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {
-      ...cashoutDocument,
-      analysis: needsVerificationAnalysis,
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Retry extraction" }));
 
-    await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
-    expect(extractDocumentMock.mock.calls[0]?.[0]).toBe("document-1");
+    await waitFor(() => expect(retryExtractionMock).toHaveBeenCalledOnce());
+    expect(retryExtractionMock.mock.calls[0]?.[0]).toBe("analysis-1");
   });
 
   it("uploads a replacement image after a failed extraction", async () => {
@@ -244,12 +250,12 @@ describe("DocumentCard", () => {
       ...needsVerificationAnalysis,
       id: "analysis-2",
       status: "extracting",
-      cashoutDocumentId: "document-2",
+      cashoutUploadId: "upload-2",
     };
-    uploadDocumentMock.mockResolvedValue(uploadedAnalysis);
+    createUploadMock.mockResolvedValue(uploadedAnalysis);
     const { container } = renderCard(true, {
-      ...cashoutDocument,
-      analysis: failedAnalysis,
+      ...cashoutUpload,
+      analyses: [failedAnalysis],
     });
 
     expect(screen.getByRole("button", { name: "Replace image" })).toBeDefined();
@@ -257,10 +263,10 @@ describe("DocumentCard", () => {
     const input = container.querySelector('input[type="file"]');
     fireEvent.change(input!, { target: { files: [file] } });
 
-    // The new document uploads first; only then is the failed one removed.
-    await waitFor(() => expect(deleteDocumentMock).toHaveBeenCalledOnce());
-    expect(uploadDocumentMock).toHaveBeenCalledWith("submission-1", file);
-    expect(deleteDocumentMock).toHaveBeenCalledWith("document-1");
+    // The replacement uploads first; only then is the failed upload removed.
+    await waitFor(() => expect(deleteUploadMock).toHaveBeenCalledOnce());
+    expect(createUploadMock).toHaveBeenCalledWith("submission-1", file);
+    expect(deleteUploadMock).toHaveBeenCalledWith("upload-1");
   });
 
   it("hides reupload after a failed extraction when not editable", () => {
@@ -272,7 +278,7 @@ describe("DocumentCard", () => {
       errorCode: "output_limit_reached",
     };
     getAnalysisMock.mockResolvedValue(failedAnalysis);
-    renderCard(false, { ...cashoutDocument, analysis: failedAnalysis });
+    renderCard(false, { ...cashoutUpload, analyses: [failedAnalysis] });
 
     expect(
       screen.getByText("Extraction failed (output_limit_reached)"),
@@ -293,7 +299,7 @@ describe("DocumentCard", () => {
       errorCode: "output_limit_reached",
     };
     getAnalysisMock.mockResolvedValue(failedAnalysis);
-    renderCard(true, { ...cashoutDocument, analysis: failedAnalysis });
+    renderCard(true, { ...cashoutUpload, analyses: [failedAnalysis] });
 
     fireEvent.click(
       screen.getByRole("button", { name: "Enter details manually" }),
@@ -308,9 +314,11 @@ describe("DocumentCard", () => {
       within(dialog).getByRole("button", { name: "Add details" }),
     );
 
-    await waitFor(() => expect(enterManualDocumentMock).toHaveBeenCalledOnce());
-    expect(enterManualDocumentMock.mock.calls[0]).toEqual([
-      "document-1",
+    await waitFor(() =>
+      expect(replaceWithManualEntryMock).toHaveBeenCalledOnce(),
+    );
+    expect(replaceWithManualEntryMock.mock.calls[0]).toEqual([
+      "analysis-1",
       {
         classification: "touchbistro_report",
         data: {
@@ -346,7 +354,10 @@ describe("DocumentCard", () => {
       errorMessage: "This doesn't look like a cashout report.",
     };
     getAnalysisMock.mockResolvedValue(unclassifiableAnalysis);
-    renderCard(true, { ...cashoutDocument, analysis: unclassifiableAnalysis });
+    renderCard(true, {
+      ...cashoutUpload,
+      analyses: [unclassifiableAnalysis],
+    });
 
     expect(
       screen.getByText("Extraction failed (unclassifiable_document)"),
@@ -366,8 +377,8 @@ describe("DocumentCard", () => {
   it("hides manual entry from a needs-verification document", () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {
-      ...cashoutDocument,
-      analysis: needsVerificationAnalysis,
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
     });
 
     expect(
@@ -382,7 +393,7 @@ describe("DocumentCard", () => {
       model: null,
     };
     getAnalysisMock.mockResolvedValue(manualAnalysis);
-    renderCard(false, { ...cashoutDocument, analysis: manualAnalysis });
+    renderCard(false, { ...cashoutUpload, analyses: [manualAnalysis] });
 
     expect(screen.getByText(/Entered manually — verified/)).toBeDefined();
   });
@@ -398,8 +409,8 @@ describe("DocumentCard", () => {
   it("corrects the classification and re-runs the extraction", async () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {
-      ...cashoutDocument,
-      analysis: needsVerificationAnalysis,
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
     });
 
     fireEvent.click(
@@ -420,9 +431,9 @@ describe("DocumentCard", () => {
       within(dialog).getByRole("button", { name: "Re-run extraction" }),
     );
 
-    await waitFor(() => expect(extractDocumentMock).toHaveBeenCalledOnce());
-    expect(extractDocumentMock.mock.calls[0]).toEqual([
-      "document-1",
+    await waitFor(() => expect(retryExtractionMock).toHaveBeenCalledOnce());
+    expect(retryExtractionMock.mock.calls[0]).toEqual([
+      "analysis-1",
       { classification: "touchbistro_report" },
     ]);
     // The mutation lands the extracting analysis in the cache: the card is
@@ -433,8 +444,8 @@ describe("DocumentCard", () => {
   it("keeps the unchanged classification from re-running", () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(true, {
-      ...cashoutDocument,
-      analysis: needsVerificationAnalysis,
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
     });
 
     fireEvent.click(
@@ -455,8 +466,8 @@ describe("DocumentCard", () => {
   it("hides the classification correction when not editable", () => {
     getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
     renderCard(false, {
-      ...cashoutDocument,
-      analysis: needsVerificationAnalysis,
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
     });
 
     expect(
@@ -465,7 +476,7 @@ describe("DocumentCard", () => {
   });
 
   it("stops polling and refreshes the page when the analysis is gone", async () => {
-    // The document (and its analysis) was deleted elsewhere mid-extraction —
+    // The upload (and its analysis) was deleted elsewhere mid-extraction —
     // another tab, or an admin. The 404 is permanent: polling the dead
     // reference must stop, and the detail refresh removes the card.
     vi.useFakeTimers();
@@ -485,8 +496,8 @@ describe("DocumentCard", () => {
         }),
       );
       const { queryClient } = renderCard(true, {
-        ...cashoutDocument,
-        analysis: extractingAnalysis,
+        ...cashoutUpload,
+        analyses: [extractingAnalysis],
       });
       const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -503,21 +514,21 @@ describe("DocumentCard", () => {
     }
   });
 
-  it("refreshes the page when removing an already-removed document", async () => {
-    deleteDocumentMock.mockRejectedValue(
+  it("refreshes the page when removing an already-removed upload", async () => {
+    deleteUploadMock.mockRejectedValue(
       new ApiError(404, {
         kind: "NOT_FOUND",
-        code: "DOCUMENT_NOT_FOUND",
+        code: "UPLOAD_NOT_FOUND",
         ctx: {},
       }),
     );
     const { queryClient } = renderCard(true);
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove document" }));
-    const dialog = screen.getByRole("dialog", { name: "Remove document?" });
+    fireEvent.click(screen.getByRole("button", { name: "Remove upload" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove this upload?" });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Remove document" }),
+      within(dialog).getByRole("button", { name: "Remove upload" }),
     );
 
     // The refresh drops the dead card instead of leaving it with a failure.
@@ -528,10 +539,125 @@ describe("DocumentCard", () => {
     );
   });
 
+  it("previews the crop the extraction read and keeps the original one link away", () => {
+    // The crop is what the AI read, so it is what the cashier checks the
+    // extraction against; the photo it was cut from stays reachable.
+    const croppedAnalysis: CashoutDocumentAnalysis = {
+      ...analysis,
+      croppedContentType: "image/jpeg",
+    };
+    getAnalysisMock.mockResolvedValue(croppedAnalysis);
+    renderCard(false, {
+      ...cashoutUpload,
+      contentType: "image/jpeg",
+      analyses: [croppedAnalysis],
+    });
+
+    expect(screen.getByAltText("receipt.pdf").getAttribute("src")).toBe(
+      "/api/cashout/analyses/analysis-1/cropped",
+    );
+    expect(
+      screen.getByRole("link", { name: "View original" }).getAttribute("href"),
+    ).toBe("/api/cashout/uploads/upload-1/content");
+  });
+
+  it("previews the original when the extraction read the whole image", () => {
+    renderCard(false, { ...cashoutUpload, contentType: "image/jpeg" });
+
+    expect(screen.getByAltText("receipt.pdf").getAttribute("src")).toBe(
+      "/api/cashout/uploads/upload-1/content",
+    );
+  });
+
+  it("shows one panel per document found in the upload, each with its own crop", async () => {
+    // Two receipts in one photo: the extraction found both, and each is
+    // verified on its own from its own crop.
+    const firstFound: CashoutDocumentAnalysis = {
+      ...needsVerificationAnalysis,
+      croppedContentType: "image/jpeg",
+    };
+    const secondFound: CashoutDocumentAnalysis = {
+      ...needsVerificationAnalysis,
+      id: "analysis-2",
+      position: 2,
+      croppedContentType: "image/jpeg",
+    };
+    getAnalysisMock.mockImplementation((id) =>
+      Promise.resolve(id === "analysis-2" ? secondFound : firstFound),
+    );
+    renderCard(true, {
+      ...cashoutUpload,
+      contentType: "image/jpeg",
+      analyses: [secondFound, firstFound],
+    });
+
+    expect(screen.getByText("2 documents found in this upload")).toBeDefined();
+    // Reading order, whatever order the detail listed them in.
+    const labels = screen
+      .getAllByText(/^Document \d of 2$/)
+      .map((element) => element.textContent);
+    expect(labels).toEqual(["Document 1 of 2", "Document 2 of 2"]);
+    expect(screen.getByAltText("Document 1").getAttribute("src")).toBe(
+      "/api/cashout/analyses/analysis-1/cropped",
+    );
+    expect(screen.getByAltText("Document 2").getAttribute("src")).toBe(
+      "/api/cashout/analyses/analysis-2/cropped",
+    );
+    // The upload's own preview is the first document found.
+    expect(screen.getByAltText("receipt.pdf").getAttribute("src")).toBe(
+      "/api/cashout/analyses/analysis-1/cropped",
+    );
+
+    // Retrying targets the panel's own analysis.
+    const retries = screen.getAllByRole("button", { name: "Retry extraction" });
+    expect(retries).toHaveLength(2);
+    fireEvent.click(retries[1]!);
+    await waitFor(() => expect(retryExtractionMock).toHaveBeenCalledOnce());
+    expect(retryExtractionMock.mock.calls[0]?.[0]).toBe("analysis-2");
+  });
+
+  it("starts the upload over to detect its documents again", async () => {
+    getAnalysisMock.mockResolvedValue(needsVerificationAnalysis);
+    const { queryClient } = renderCard(true, {
+      ...cashoutUpload,
+      analyses: [needsVerificationAnalysis],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Detect documents again" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Detect documents again?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Detect again" }),
+    );
+
+    await waitFor(() => expect(restartUploadMock).toHaveBeenCalledOnce());
+    expect(restartUploadMock.mock.calls[0]?.[0]).toBe("upload-1");
+    // The fresh first analysis is cached for the panel the detail refresh
+    // brings in.
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData(cashoutKeys.analysis("analysis-3")),
+      ).toMatchObject({ id: "analysis-3", status: "extracting" }),
+    );
+  });
+
+  it("does not offer detecting again once an analysis is verified", () => {
+    // Starting over would discard the cashier's confirmation, so the backend
+    // refuses it; the card does not offer it.
+    renderCard(true);
+
+    expect(
+      screen.queryByRole("button", { name: "Detect documents again" }),
+    ).toBeNull();
+  });
+
   it("falls back to the file icon when the image preview fails to load", () => {
-    // The stored file can be gone even though the document row survives; the
+    // The stored file can be gone even though the upload row survives; the
     // thumbnail must not render as a broken image.
-    renderCard(false, { ...cashoutDocument, contentType: "image/jpeg" });
+    renderCard(false, { ...cashoutUpload, contentType: "image/jpeg" });
 
     fireEvent.error(screen.getByAltText("receipt.pdf"));
 

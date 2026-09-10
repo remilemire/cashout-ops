@@ -1,0 +1,26 @@
+# backend/typings/pypdfium2/__init__.pyi
+#
+# pypdfium2 ships no type information. This covers only the surface
+# app/document_cropping/pdf.py uses; extend it if that surface grows.
+
+from PIL import Image
+
+class PdfiumError(RuntimeError): ...
+
+class PdfBitmap:
+    def to_pil(self) -> Image.Image: ...
+
+class PdfPage:
+    def render(self, scale: float = 1, rotation: int = 0) -> PdfBitmap: ...
+    def close(self) -> None: ...
+
+class PdfDocument:
+    def __init__(
+        self,
+        input: bytes | str,
+        password: str | None = None,
+        autoclose: bool = False,
+    ) -> None: ...
+    def __len__(self) -> int: ...
+    def __getitem__(self, index: int) -> PdfPage: ...
+    def close(self) -> None: ...

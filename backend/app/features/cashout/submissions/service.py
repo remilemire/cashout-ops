@@ -84,9 +84,9 @@ async def delete_submission(
 ) -> None:
     """Delete a submission (employee or admin); a completed one never can be.
 
-    A PROCESSING submission with no traces at all — no documents, no
+    A PROCESSING submission with no traces at all — no uploads, no
     reconciled data, never completed — is removed outright. Anything else is
-    soft-deleted (deleted_at stamped): the row, its documents, analyses, and
+    soft-deleted (deleted_at stamped): the row, its uploads, analyses, and
     stored files survive, but every lookup excludes it.
     """
     submission = await _get_submission_for_actor(
@@ -103,7 +103,7 @@ async def delete_submission(
 
     storage_keys = await repository.list_storage_keys(db, submission_id=submission.id)
     has_traces = (
-        bool(storage_keys)  # one key per document
+        bool(storage_keys)  # at least one key per upload
         or data is not None
         or submission.first_completed_at is not None
     )
@@ -113,7 +113,7 @@ async def delete_submission(
 
     await repository.delete_submission(db, submission)
 
-    # Vacuously empty here (no traces means no documents), kept so a future
+    # Vacuously empty here (no traces means no uploads), kept so a future
     # hard-delete path cannot leak stored files.
     for storage_key in storage_keys:
         await storage.delete(storage_key)
@@ -156,18 +156,22 @@ async def complete_submission(
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
 
-    documents = await repository.list_documents_with_analysis(
+    uploads = await repository.list_uploads_with_analyses(
         db, submission_id=submission.id
     )
-    if not documents:
+    if not uploads:
         raise AppError("SUBMISSION_EMPTY")
 
+    # Every analysis of every upload — each document found in an upload
+    # is verified on its own — and no upload without one.
     analyses: list[CashoutDocumentAnalysis] = []
-    for document in documents:
-        analysis = document.analysis
-        if analysis is None or analysis.status is not DocumentAnalysisStatus.VERIFIED:
+    for upload in uploads:
+        if not upload.analyses:
             raise AppError("SUBMISSION_UNVERIFIED")
-        analyses.append(analysis)
+        for analysis in upload.analyses:
+            if analysis.status is not DocumentAnalysisStatus.VERIFIED:
+                raise AppError("SUBMISSION_UNVERIFIED")
+            analyses.append(analysis)
 
     data = await data_service.reconcile(
         db,

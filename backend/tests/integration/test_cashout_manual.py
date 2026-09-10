@@ -3,7 +3,7 @@
 # Manual document entry: adding a document with typed-in details (no AI
 # involved), and converting a failed or unverified analysis into a manual
 # one. The AI-driven intake path is covered in test_cashout /
-# test_cashout_documents / test_cashout_analyses.
+# test_cashout_uploads / test_cashout_analyses.
 
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ from tests.support.cashout import (
     SERVER_SUMMARY_EXTRACTED,
     complete_submission,
     configure_server_summary,
+    create_manual_upload,
     create_submission,
-    enter_manual_document,
+    create_upload,
+    enter_manual_analysis,
     manual_entry_body,
     poll_analysis,
     touchbistro_manual_entry_body,
     unverify_analysis,
-    upload_document,
-    upload_manual_document,
     verify_analysis,
 )
 from tests.support.documents import SAMPLE_PDF_UPLOAD
@@ -37,7 +37,7 @@ from tests.support.fakes import FakeAIClient
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 
-# A second document with different bytes, for tests that need a non-duplicate.
+# A second file with different bytes, for tests that need a non-duplicate.
 OTHER_PDF_UPLOAD = ("other.pdf", b"%PDF-1.4 other fake bytes", "application/pdf")
 THIRD_PDF_UPLOAD = ("third.pdf", b"%PDF-1.4 third fake bytes", "application/pdf")
 
@@ -50,7 +50,7 @@ async def test_manual_upload_lands_verified_without_ai(
     cashier_id = (await cashier_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
 
-    analysis = await upload_manual_document(
+    analysis = await create_manual_upload(
         cashier_client, submission_id, body=manual_entry_body()
     )
 
@@ -85,7 +85,7 @@ async def test_manual_upload_lands_verified_without_ai(
 
     # A fully manual cashout completes like any other — once the TouchBistro
     # report the figures are reconciled from is on it too.
-    await upload_manual_document(
+    await create_manual_upload(
         cashier_client,
         submission_id,
         body=touchbistro_manual_entry_body(),
@@ -104,7 +104,7 @@ async def test_manual_upload_rejects_an_unrecognized_classification(
     # value outside the enum (`unknown` is no longer one of them) is refused
     # as an invalid option.
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": SAMPLE_PDF_UPLOAD},
         data={"payload": json.dumps(manual_entry_body(classification="unknown"))},
         headers=csrf_headers(cashier_client),
@@ -117,11 +117,11 @@ async def test_manual_upload_rejects_an_unrecognized_classification(
     assert issue["code"] == "enum"
     assert issue["path"] == ["classification"]
 
-    # Rejected before the document was stored.
+    # Rejected before the upload was stored.
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert detail["documents"] == []
+    assert detail["uploads"] == []
 
 
 async def test_manual_upload_rejects_invalid_data(
@@ -132,7 +132,7 @@ async def test_manual_upload_rejects_invalid_data(
     # Missing required field, non-numeric money, and an extra field: each
     # surfaces as its own issue at the (camelCased) data path.
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": SAMPLE_PDF_UPLOAD},
         data={
             "payload": json.dumps(
@@ -157,39 +157,37 @@ async def test_manual_upload_rejects_invalid_data(
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert detail["documents"] == []
+    assert detail["uploads"] == []
 
 
-async def test_manual_upload_rejects_duplicate_document(
+async def test_manual_upload_rejects_duplicate_file(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # The same bytes again, this time via manual entry: the checksum check
     # applies to both intake routes.
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": SAMPLE_PDF_UPLOAD},
         data={"payload": json.dumps(manual_entry_body())},
         headers=csrf_headers(cashier_client),
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "DOCUMENT_DUPLICATE"
+    assert response.json()["code"] == "UPLOAD_DUPLICATE"
 
 
 async def test_manual_upload_after_completion_conflicts(
     cashier_client: AsyncClient,
 ) -> None:
     submission_id = await create_submission(cashier_client)
-    await upload_manual_document(
-        cashier_client, submission_id, body=manual_entry_body()
-    )
-    await upload_manual_document(
+    await create_manual_upload(cashier_client, submission_id, body=manual_entry_body())
+    await create_manual_upload(
         cashier_client,
         submission_id,
         body=touchbistro_manual_entry_body(),
@@ -198,7 +196,7 @@ async def test_manual_upload_after_completion_conflicts(
     await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": THIRD_PDF_UPLOAD},
         data={"payload": json.dumps(manual_entry_body())},
         headers=csrf_headers(cashier_client),
@@ -219,13 +217,13 @@ async def test_convert_failed_analysis_to_manual(
         AIErrorCode.CONTENT_REFUSED, "declined: raw provider text"
     )
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
 
     # Instead of retrying the AI, the cashier types the values in.
-    entered = await enter_manual_document(
-        cashier_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        cashier_client, created["id"], manual_entry_body()
     )
 
     assert entered["id"] == created["id"]
@@ -254,12 +252,12 @@ async def test_convert_unclassified_analysis_to_manual(
         CashoutDocumentClassification
     ](value=None, confidence=0.3)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.FAILED.value
 
-    entered = await enter_manual_document(
-        cashier_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        cashier_client, created["id"], manual_entry_body()
     )
 
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
@@ -283,11 +281,11 @@ async def test_convert_verified_analysis_conflicts(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(cashier_client),
     )
@@ -306,7 +304,7 @@ async def test_convert_while_extracting_conflicts(
     # Upload without draining the outbox: the analysis is still EXTRACTING,
     # owned by the (not-yet-run) background job.
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": SAMPLE_PDF_UPLOAD},
         headers=csrf_headers(cashier_client),
     )
@@ -314,7 +312,7 @@ async def test_convert_while_extracting_conflicts(
     created = response.json()
 
     blocked = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(cashier_client),
     )
@@ -329,7 +327,7 @@ async def test_unverify_manual_analysis_reopens_for_editing(
     # A manual entry re-enters the ordinary verification loop: unverify keeps
     # the entered data (and the manual markers) so the form can re-render.
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_manual_document(
+    analysis = await create_manual_upload(
         cashier_client, submission_id, body=manual_entry_body()
     )
 
@@ -367,19 +365,19 @@ async def test_manual_entry_requires_employee_or_admin(
     configure_server_summary(ai_client)
     admin_id = (await admin_client.get("/api/users/me")).json()["id"]
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
-    # Plain staff can neither add a manual document to someone else's cashout
+    # Plain staff can neither add a manual upload to someone else's cashout
     # nor convert one of its analyses.
     other = await make_client(email="other@test.com")
     upload_forbidden = await other.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": OTHER_PDF_UPLOAD},
         data={"payload": json.dumps(manual_entry_body())},
         headers=csrf_headers(other),
     )
     convert_forbidden = await other.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+        f"/api/cashout/analyses/{created['id']}/manual",
         json=manual_entry_body(),
         headers=csrf_headers(other),
     )
@@ -389,8 +387,8 @@ async def test_manual_entry_requires_employee_or_admin(
     assert convert_forbidden.json()["code"] == "FORBIDDEN"
 
     # An admin can, on anyone's submission — recorded as the verifier.
-    entered = await enter_manual_document(
-        admin_client, created["cashoutDocumentId"], manual_entry_body()
+    entered = await enter_manual_analysis(
+        admin_client, created["id"], manual_entry_body()
     )
     assert entered["status"] == DocumentAnalysisStatus.VERIFIED.value
     assert entered["verifiedByUserId"] == admin_id
@@ -416,7 +414,7 @@ async def test_commit_failure_surfaces_as_error_not_phantom_success(
 
     ai_client.error = AIAnalysisError(AIErrorCode.CONTENT_REFUSED, "boom")
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # The incident's stale schema: provider NOT NULL. The manual conversion
     # nulls provider, violating it — but only at commit, since nothing
@@ -431,7 +429,7 @@ async def test_commit_failure_surfaces_as_error_not_phantom_success(
         await db.commit()
     try:
         response = await cashier_client.post(
-            f"/api/cashout/documents/{created['cashoutDocumentId']}/manual",
+            f"/api/cashout/analyses/{created['id']}/manual",
             json=manual_entry_body(),
             headers=csrf_headers(cashier_client),
         )

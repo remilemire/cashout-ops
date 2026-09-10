@@ -58,5 +58,6 @@
   },
   "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
   "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "python.analysis.stubPath": "backend/typings",
   "python.analysis.typeCheckingMode": "strict"
 }

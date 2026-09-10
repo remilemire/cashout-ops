@@ -9,9 +9,9 @@ import { cashoutApi, cashoutKeys } from "@/api/cashout";
 import { ApiError, isNotFound } from "@/api/client";
 import { isAdminRole, SELECTABLE_TIPOUT_DEPARTMENTS } from "@/api/types";
 import type {
-  CashoutDocument,
+  CashoutUpload,
   ErrorCode,
-  ManualDocumentInput,
+  ManualEntryInput,
   TipoutDepartment,
 } from "@/api/types";
 import { useAuth } from "@/auth/useAuth";
@@ -30,8 +30,8 @@ import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
 
 import { DataCard } from "./DataCard";
-import { DocumentCard } from "./DocumentCard";
-import { ManualDocumentDialog } from "./ManualDocumentDialog";
+import { UploadCard } from "./UploadCard";
+import { ManualEntryDialog } from "./ManualEntryDialog";
 import { UploadZone } from "./UploadZone";
 import { SubmissionStatusBadge } from "./status";
 
@@ -50,7 +50,7 @@ export function SubmissionPage() {
     enabled: submissionId !== "",
   });
 
-  // A 404 from any action means the cashout (or a document on it) was deleted
+  // A 404 from any action means the cashout (or an upload on it) was deleted
   // elsewhere — another tab, or an admin. Refetch so the page reports the
   // death instead of keeping stale, unactionable state.
   const refreshIfGone = (error: unknown) => {
@@ -62,8 +62,8 @@ export function SubmissionPage() {
     }
   };
 
-  const upload = useMutation({
-    mutationFn: (file: File) => cashoutApi.uploadDocument(submissionId, file),
+  const createUpload = useMutation({
+    mutationFn: (file: File) => cashoutApi.createUpload(submissionId, file),
     onSuccess: (analysis) => {
       queryClient.setQueryData(cashoutKeys.analysis(analysis.id), analysis);
       void queryClient.invalidateQueries({
@@ -74,8 +74,8 @@ export function SubmissionPage() {
   });
 
   const manualUpload = useMutation({
-    mutationFn: ({ file, input }: { file: File; input: ManualDocumentInput }) =>
-      cashoutApi.uploadManualDocument(submissionId, file, input),
+    mutationFn: ({ file, input }: { file: File; input: ManualEntryInput }) =>
+      cashoutApi.createManualUpload(submissionId, file, input),
     onSuccess: (analysis) => {
       queryClient.setQueryData(cashoutKeys.analysis(analysis.id), analysis);
       void queryClient.invalidateQueries({
@@ -180,12 +180,20 @@ export function SubmissionPage() {
   // Only an admin can reopen a completed cashout — never the employee alone.
   const canUnsubmit =
     user != null && isAdminRole(user.role) && submission.status === "completed";
-  const documents = inUploadOrder(submission.documents);
-  const verifiedCount = documents.filter(
-    (doc) => doc.analysis?.status === "verified",
+  const uploads = inUploadOrder(submission.uploads);
+  // Every document found in every upload counts on its own; completing needs
+  // all of them verified, and an upload with nothing found yet holds it up.
+  const analyses = uploads.flatMap((upload) => upload.analyses);
+  const verifiedCount = analyses.filter(
+    (analysis) => analysis.status === "verified",
   ).length;
   const allVerified =
-    documents.length > 0 && verifiedCount === documents.length;
+    uploads.length > 0 &&
+    uploads.every(
+      (upload) =>
+        upload.analyses.length > 0 &&
+        upload.analyses.every((analysis) => analysis.status === "verified"),
+    );
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -231,9 +239,9 @@ export function SubmissionPage() {
         }
         action={
           <div className="flex items-center gap-2">
-            {documents.length > 0 && submission.status === "processing" && (
+            {uploads.length > 0 && submission.status === "processing" && (
               <Badge tone={allVerified ? "success" : "neutral"}>
-                {verifiedCount}/{documents.length} verified
+                {verifiedCount}/{analyses.length} verified
               </Badge>
             )}
             <SubmissionStatusBadge status={submission.status} />
@@ -267,14 +275,12 @@ export function SubmissionPage() {
 
       {submission.data && <DataCard data={submission.data} />}
 
-      {documents.length === 0 && !editable && (
-        <EmptyState title="No documents" />
-      )}
+      {uploads.length === 0 && !editable && <EmptyState title="No uploads" />}
 
-      {documents.map((document) => (
-        <DocumentCard
-          key={document.id}
-          document={document}
+      {uploads.map((upload) => (
+        <UploadCard
+          key={upload.id}
+          upload={upload}
           submissionId={submission.id}
           editable={editable}
         />
@@ -282,14 +288,14 @@ export function SubmissionPage() {
 
       {editable && (
         <UploadZone
-          onFile={(file) => upload.mutate(file)}
-          pending={upload.isPending}
-          error={upload.error}
+          onFile={(file) => createUpload.mutate(file)}
+          pending={createUpload.isPending}
+          error={createUpload.error}
           onManualEntry={() => setManualOpen(true)}
         />
       )}
 
-      {editable && documents.length > 0 && (
+      {editable && uploads.length > 0 && (
         <CompletePrompt
           allVerified={allVerified}
           initialSelected={selectableDepartments(
@@ -301,7 +307,7 @@ export function SubmissionPage() {
         />
       )}
 
-      <ManualDocumentDialog
+      <ManualEntryDialog
         withFile
         open={manualOpen}
         onClose={() => setManualOpen(false)}
@@ -348,14 +354,14 @@ export function SubmissionPage() {
 }
 
 /**
- * The documents oldest-first. The detail payload carries them in no
- * guaranteed order, and a document whose analysis was just re-extracted or
- * verified can come back in a different position — which reshuffles the cards
- * under the cashier mid-verification. Ids break a tie between two documents
- * created in the same instant, so the order is total.
+ * The uploads oldest-first. The detail payload carries them in no guaranteed
+ * order, and an upload whose analysis was just re-extracted or verified can
+ * come back in a different position — which reshuffles the cards under the
+ * cashier mid-verification. Ids break a tie between two uploads created in
+ * the same instant, so the order is total.
  */
-function inUploadOrder(documents: CashoutDocument[]): CashoutDocument[] {
-  return [...documents].sort(
+function inUploadOrder(uploads: CashoutUpload[]): CashoutUpload[] {
+  return [...uploads].sort(
     (a, b) =>
       Date.parse(a.createdAt) - Date.parse(b.createdAt) ||
       a.id.localeCompare(b.id),

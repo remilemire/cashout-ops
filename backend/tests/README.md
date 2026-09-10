@@ -36,11 +36,15 @@ tests/
   support/
     api.py               OWNER_EMAIL, csrf_headers, login
     factories.py         direct DB seeding: create_user
-    cashout.py           workflow drivers: create_submission, upload_document,
-                         poll_analysis, verify_analysis, complete_submission,
+    cashout.py           workflow drivers: create_submission, create_upload,
+                         poll_analysis, retry_extraction, enter_manual_analysis,
+                         verify_analysis, complete_submission,
                          configure_server_summary
-    documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads
-    fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient
+    documents.py         SAMPLE_PDF_UPLOAD / SAMPLE_PNG_UPLOAD payloads, and the
+                         decodable SAMPLE_PHOTO_UPLOAD, SAMPLE_TWO_RECEIPTS_UPLOAD,
+                         and SAMPLE_RECEIPT_PDF_UPLOAD with their text boxes
+    fakes/               FakeAIClient, FakeDocumentStorage, FakeEmailClient,
+                         FakeTextDetector
       sdk/               SDK-shaped fakes for the provider adapter unit tests
     fixtures/            fixture modules loaded via pytest_plugins (db, redis,
                          integrations, app, clients)
@@ -56,10 +60,11 @@ postgres_url (session) ──> schema (session) ──sets──> _db_state (ses
 clean_tables (autouse, function) ─reads─> _db_state    # no-op if DB never provisioned
 redis_url (session) ──sets──> _redis_state (session) ──> redis_client
 clean_redis (autouse, function) ─reads─> _redis_state  # no-op if Redis never provisioned
-ai_client + storage ─> processor ─┬─> app (fresh create_app per test)
-email_client + redis_client ──────┘      └─> client / make_client
-                                              └─> cashier_client / admin_client
-                                                  / owner_client
+text_detector ─> cropper ─┐
+ai_client + storage ──────┴─> processor ─┬─> app (fresh create_app per test)
+email_client + redis_client ─────────────┘      └─> client / make_client
+                                                     └─> cashier_client / admin_client
+                                                         / owner_client
 ```
 
 - `app` is a fresh `create_app()` instance per test with the database, Redis,
@@ -94,7 +99,8 @@ email_client + redis_client ──────┘      └─> client / make_cli
   need a wider loop scope — don't).
 - Mutating requests need `csrf_headers(client)`; the helpers in
   `support/cashout.py` handle this already.
-- The AI provider, object storage, and email are always faked; the extraction
-  stack between them (`DocumentAIClient`, processor, registry) is real.
+- The AI provider, object storage, email, and text detector are always faked;
+  the extraction stack between them (`DocumentAIClient`, the cropper, the
+  processor, registry) is real.
 - Schema comes from `registry.metadata.create_all`, so migrations are not
   exercised by this suite.

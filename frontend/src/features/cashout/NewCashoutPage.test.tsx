@@ -26,8 +26,8 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       ...actual.cashoutApi,
       createSubmission: vi.fn(),
       updateSubmission: vi.fn(),
-      uploadDocument: vi.fn(),
-      uploadManualDocument: vi.fn(),
+      createUpload: vi.fn(),
+      createManualUpload: vi.fn(),
     },
   };
 });
@@ -52,8 +52,8 @@ vi.mock("@/components/dialog", () => ({
 
 const createSubmissionMock = vi.mocked(cashoutApi.createSubmission);
 const updateSubmissionMock = vi.mocked(cashoutApi.updateSubmission);
-const uploadDocumentMock = vi.mocked(cashoutApi.uploadDocument);
-const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
+const createUploadMock = vi.mocked(cashoutApi.createUpload);
+const createManualUploadMock = vi.mocked(cashoutApi.createManualUpload);
 
 const submission: CashoutSubmission = {
   id: "submission-1",
@@ -82,6 +82,7 @@ function localToday(): string {
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
+  position: 1,
   createdAt: "2026-07-17T00:00:00Z",
   provider: "anthropic",
   model: "test-model",
@@ -90,6 +91,7 @@ const analysis: CashoutDocumentAnalysis = {
   classificationConfidence: null,
   schemaName: null,
   schemaVersion: null,
+  croppedContentType: null,
   extractedDataJson: null,
   extractionConfidence: null,
   issues: null,
@@ -99,7 +101,7 @@ const analysis: CashoutDocumentAnalysis = {
   verifiedDataJson: null,
   verifiedByUserId: null,
   verifiedAt: null,
-  cashoutDocumentId: "document-1",
+  cashoutUploadId: "upload-1",
 };
 
 const pdf = new File(["%PDF-1.4"], "receipt.pdf", {
@@ -133,8 +135,8 @@ function renderPage() {
 beforeEach(() => {
   createSubmissionMock.mockReset();
   updateSubmissionMock.mockReset();
-  uploadDocumentMock.mockReset();
-  uploadManualDocumentMock.mockReset();
+  createUploadMock.mockReset();
+  createManualUploadMock.mockReset();
   // Echo the requested day: a retry compares the created submission's day
   // against the picker, and the fixture's fixed day would otherwise differ
   // from today and trigger a spurious re-date.
@@ -146,8 +148,8 @@ beforeEach(() => {
     ...submission,
     businessDate: input.businessDate,
   }));
-  uploadDocumentMock.mockResolvedValue(analysis);
-  uploadManualDocumentMock.mockResolvedValue({
+  createUploadMock.mockResolvedValue(analysis);
+  createManualUploadMock.mockResolvedValue({
     ...analysis,
     status: "verified",
     provider: null,
@@ -168,7 +170,7 @@ describe("NewCashoutPage", () => {
     });
 
     await waitFor(() =>
-      expect(uploadDocumentMock).toHaveBeenCalledWith("submission-1", pdf),
+      expect(createUploadMock).toHaveBeenCalledWith("submission-1", pdf),
     );
     expect(await screen.findByText("Cashout detail")).toBeDefined();
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
@@ -207,7 +209,7 @@ describe("NewCashoutPage", () => {
   });
 
   it("reuses the created submission when the first upload is retried", async () => {
-    uploadDocumentMock.mockRejectedValueOnce(
+    createUploadMock.mockRejectedValueOnce(
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
@@ -228,13 +230,13 @@ describe("NewCashoutPage", () => {
 
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
     expect(updateSubmissionMock).not.toHaveBeenCalled();
-    expect(uploadDocumentMock).toHaveBeenCalledTimes(2);
-    expect(uploadDocumentMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
+    expect(createUploadMock).toHaveBeenCalledTimes(2);
+    expect(createUploadMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
   });
 
   it("keeps the date editable after a failed first upload", async () => {
     // The submission exists now, but its day stays open until completion.
-    uploadDocumentMock.mockRejectedValueOnce(
+    createUploadMock.mockRejectedValueOnce(
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
@@ -254,7 +256,7 @@ describe("NewCashoutPage", () => {
   });
 
   it("re-dates the created submission when the day changes before the retry", async () => {
-    uploadDocumentMock.mockRejectedValueOnce(
+    createUploadMock.mockRejectedValueOnce(
       new ApiError(500, {
         kind: "INTERNAL",
         code: "INTERNAL",
@@ -280,7 +282,7 @@ describe("NewCashoutPage", () => {
     expect(updateSubmissionMock).toHaveBeenCalledWith("submission-1", {
       businessDate: "2026-08-20",
     });
-    expect(uploadDocumentMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
+    expect(createUploadMock).toHaveBeenNthCalledWith(2, "submission-1", pdf);
   });
 
   it("creates the submission through the manual-entry flow", async () => {
@@ -304,11 +306,9 @@ describe("NewCashoutPage", () => {
       within(dialog).getByRole("button", { name: "Add details" }),
     );
 
-    await waitFor(() =>
-      expect(uploadManualDocumentMock).toHaveBeenCalledOnce(),
-    );
+    await waitFor(() => expect(createManualUploadMock).toHaveBeenCalledOnce());
     expect(createSubmissionMock).toHaveBeenCalledTimes(1);
-    expect(uploadManualDocumentMock).toHaveBeenCalledWith("submission-1", pdf, {
+    expect(createManualUploadMock).toHaveBeenCalledWith("submission-1", pdf, {
       classification: "touchbistro_report",
       data: {
         food_net_sales: "",

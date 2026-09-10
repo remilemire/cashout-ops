@@ -240,6 +240,7 @@ def test_groups_load_from_their_prefixed_environment_variables(
     monkeypatch.setenv("AUTH_SESSION_TTL_DAYS", "3")
     monkeypatch.setenv("BOOTSTRAP_OWNER_FULL_NAME", "Configured Owner")
     monkeypatch.setenv("STORAGE_LOCAL_DIR", "var/documents")
+    monkeypatch.setenv("OCR_DETECTION_MAX_SIDE", "960")
     monkeypatch.setenv("RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR", "7")
 
     config = Settings()
@@ -248,6 +249,7 @@ def test_groups_load_from_their_prefixed_environment_variables(
     assert config.auth.SESSION_TTL_DAYS == 3
     assert config.bootstrap.OWNER_FULL_NAME == "Configured Owner"
     assert config.storage.LOCAL_DIR == Path("var/documents")
+    assert config.ocr.DETECTION_MAX_SIDE == 960
     assert config.rate_limit.UPLOADS_PER_USER_PER_HOUR == 7
 
 

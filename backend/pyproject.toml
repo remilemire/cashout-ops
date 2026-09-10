@@ -11,9 +11,14 @@ dependencies = [
     "google-genai>=2.11.0",
     "gunicorn>=26.0.0",
     "itsdangerous>=2.2.0",
+    "numpy>=2",
+    "onnxruntime>=1.29",
     "openai>=2.45.0",
+    "opencv-python-headless>=4.10",
+    "pillow>=11",
     "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.2",
+    "pypdfium2>=5",
     "python-dotenv>=1.2.2",
     "redis>=5",
     "resend>=2.34.0",
@@ -37,6 +42,10 @@ entrypoint = "app.main:app"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+# The vendored text-detection model ships with the package (see models/NOTICE).
+"app.integrations.ocr" = ["models/*.onnx", "models/NOTICE"]
 
 [tool.ruff.lint]
 extend-select = ["I"]

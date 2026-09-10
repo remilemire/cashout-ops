@@ -17,11 +17,11 @@ from app.errors import AppError, RateLimitedError, error_responses, init_error_h
     ("error", "status", "body"),
     [
         (
-            AppError("DOCUMENT_TOO_LARGE", "private diagnostic", ctx={"maxSizeMb": 7}),
+            AppError("UPLOAD_TOO_LARGE", "private diagnostic", ctx={"maxSizeMb": 7}),
             400,
             {
                 "kind": "BAD_REQUEST",
-                "code": "DOCUMENT_TOO_LARGE",
+                "code": "UPLOAD_TOO_LARGE",
                 "ctx": {"maxSizeMb": 7},
             },
         ),

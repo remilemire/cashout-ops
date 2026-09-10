@@ -1,4 +1,4 @@
-// frontend/src/features/cashout/ManualDocumentDialog.tsx
+// frontend/src/features/cashout/ManualEntryDialog.tsx
 
 import { Check, FolderOpen } from "lucide-react";
 import { useRef, useState } from "react";
@@ -8,7 +8,7 @@ import {
   CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
   type CashoutDocumentClassification,
-  type ManualDocumentInput,
+  type ManualEntryInput,
 } from "@/api/types";
 import { Dialog } from "@/components/dialog";
 import { Button, ErrorBanner, TextField } from "@/components/ui";
@@ -35,7 +35,7 @@ function classificationOrDefault(
  * values in — no AI extraction runs. Presentational; the caller owns the
  * mutation and closes the dialog on success.
  */
-export function ManualDocumentDialog({
+export function ManualEntryDialog({
   open,
   onClose,
   withFile,
@@ -46,12 +46,12 @@ export function ManualDocumentDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  /** Whether a file must be attached (new document vs. existing one). */
+  /** Whether a file must be attached (new upload vs. existing analysis). */
   withFile: boolean;
   initialClassification?: CashoutDocumentClassification | null;
   pending: boolean;
   error: unknown;
-  onSubmit: (input: ManualDocumentInput, file: File | null) => void;
+  onSubmit: (input: ManualEntryInput, file: File | null) => void;
 }) {
   const [classification, setClassification] =
     useState<CashoutDocumentClassification>(() =>

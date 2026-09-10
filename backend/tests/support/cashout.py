@@ -142,14 +142,14 @@ async def create_submission(
     return response.json()["id"]
 
 
-async def upload_document(
+async def create_upload(
     client: AsyncClient,
     submission_id: str,
     *,
     drain: OutboxDrain,
     file: tuple[str, bytes, str] = SAMPLE_PDF_UPLOAD,
 ) -> dict[str, Any]:
-    """Upload a document and drain the outbox so its extraction runs.
+    """Upload a file and drain the outbox so its extraction runs.
 
     Returns the upload response — the freshly created EXTRACTING analysis.
     The enqueued extraction has completed by the time this returns (as the
@@ -157,7 +157,7 @@ async def upload_document(
     the outcome.
     """
     response = await client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": file},
         headers=csrf_headers(client),
     )
@@ -166,20 +166,20 @@ async def upload_document(
     return response.json()
 
 
-async def upload_manual_document(
+async def create_manual_upload(
     client: AsyncClient,
     submission_id: str,
     *,
     body: dict[str, Any],
     file: tuple[str, bytes, str] = SAMPLE_PDF_UPLOAD,
 ) -> dict[str, Any]:
-    """Upload a document with manually entered details.
+    """Upload a file with its document's manually entered details.
 
     Returns the created analysis — already VERIFIED: nothing was enqueued, so
     there is no outbox to drain and nothing to poll.
     """
     response = await client.post(
-        f"/api/cashout/submissions/{submission_id}/documents/manual",
+        f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": file},
         data={"payload": json.dumps(body)},
         headers=csrf_headers(client),
@@ -188,11 +188,11 @@ async def upload_manual_document(
     return response.json()
 
 
-async def enter_manual_document(
-    client: AsyncClient, document_id: str, body: dict[str, Any]
+async def enter_manual_analysis(
+    client: AsyncClient, analysis_id: str, body: dict[str, Any]
 ) -> dict[str, Any]:
     response = await client.post(
-        f"/api/cashout/documents/{document_id}/manual",
+        f"/api/cashout/analyses/{analysis_id}/manual",
         json=body,
         headers=csrf_headers(client),
     )
@@ -200,8 +200,29 @@ async def enter_manual_document(
     return response.json()
 
 
+async def retry_extraction(
+    client: AsyncClient,
+    analysis_id: str,
+    *,
+    drain: OutboxDrain,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-run one analysis's extraction and drain the outbox so it completes.
+
+    Returns the analysis as reset — EXTRACTING; poll it for the outcome.
+    """
+    response = await client.post(
+        f"/api/cashout/analyses/{analysis_id}/extract",
+        json=body,
+        headers=csrf_headers(client),
+    )
+    assert response.status_code == 200, response.text
+    await drain()
+    return response.json()
+
+
 async def poll_analysis(client: AsyncClient, analysis_id: str) -> dict[str, Any]:
-    """One poll is deterministic here: `upload_document` drained the outbox,
+    """One poll is deterministic here: `create_upload` drained the outbox,
     so the extraction outcome is already recorded."""
     response = await client.get(f"/api/cashout/analyses/{analysis_id}")
     assert response.status_code == 200, response.text
@@ -269,9 +290,9 @@ async def upload_reconcilable_documents(
     bytes twice in one submission are rejected as a duplicate.
     """
     configure_touchbistro(ai_client)
-    touchbistro = await upload_document(client, submission_id, drain=drain)
+    touchbistro = await create_upload(client, submission_id, drain=drain)
     configure_server_summary(ai_client)
-    summary = await upload_document(
+    summary = await create_upload(
         client, submission_id, drain=drain, file=SAMPLE_PNG_UPLOAD
     )
     return touchbistro, summary
@@ -327,17 +348,18 @@ __all__ = [
     "completion_body",
     "configure_server_summary",
     "configure_touchbistro",
+    "create_manual_upload",
     "create_submission",
-    "enter_manual_document",
+    "create_upload",
+    "enter_manual_analysis",
     "manual_entry_body",
     "poll_analysis",
     "prepare_completable_submission",
+    "retry_extraction",
     "touchbistro_manual_entry_body",
     "unsubmit_submission",
     "unverify_analysis",
     "update_business_date",
-    "upload_document",
-    "upload_manual_document",
     "upload_reconcilable_documents",
     "verify_analysis",
 ]

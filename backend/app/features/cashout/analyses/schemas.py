@@ -8,6 +8,7 @@ from typing import Any
 from app.core.providers import AIProvider
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.cashout.extraction.types import CashoutDocumentClassification
+from app.lib.documents import DocumentContentType
 
 from .types import DocumentAnalysisStatus
 
@@ -15,6 +16,9 @@ from .types import DocumentAnalysisStatus
 class CashoutDocumentAnalysisOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
+    # Reading order among the document's analyses (1-based): the order the
+    # documents were found in the upload.
+    position: int
     # Null for a manually entered analysis (no AI involved).
     provider: AIProvider | None = None
     model: str | None = None
@@ -28,13 +32,17 @@ class CashoutDocumentAnalysisOut(BaseOut):
     extracted_data_json: dict[str, Any] | None = None
     extraction_confidence: float | None = None
     issues: list[dict[str, Any]] | None = None
+    # Set when the extraction read a crop — this analysis's document among
+    # those found in the upload — rather than the whole upload; the crop is
+    # served by the analysis's cropped endpoint.
+    cropped_content_type: DocumentContentType | None = None
     error_code: str | None = None
     error_message: str | None = None
     completed_at: UtcDateTime | None = None
     verified_data_json: dict[str, Any] | None = None
     verified_by_user_id: uuid.UUID | None = None
     verified_at: UtcDateTime | None = None
-    cashout_document_id: uuid.UUID
+    cashout_upload_id: uuid.UUID
 
 
 class CashoutAnalysisVerify(BaseIn):
@@ -42,7 +50,7 @@ class CashoutAnalysisVerify(BaseIn):
     verified_data: dict[str, Any] | None = None
 
 
-class CashoutDocumentExtract(BaseIn):
+class CashoutAnalysisExtract(BaseIn):
     # A corrected classification: the rerun skips AI classification and
     # extracts as this type. Omit (or null) for an ordinary retry — a full
     # classify + extract.
@@ -60,8 +68,8 @@ class CashoutDocumentManualEntry(BaseIn):
 
 
 __all__ = [
+    "CashoutAnalysisExtract",
     "CashoutAnalysisVerify",
     "CashoutDocumentAnalysisOut",
-    "CashoutDocumentExtract",
     "CashoutDocumentManualEntry",
 ]

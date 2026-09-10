@@ -87,7 +87,10 @@ class GeminiAIClient:
             raise AIAnalysisError(AIErrorCode.INVALID_RESPONSE, str(exc)) from exc
 
 
-def _to_contents(content: AIContent) -> list[str | types.Part]:
+def _to_contents(content: AIContent) -> types.ContentUnion:
+    # Declared as the SDK's own union rather than a concrete list: `PartUnion`
+    # widens when Pillow is importable, and list invariance would otherwise
+    # reject our narrower element type.
     if isinstance(content, str):
         return [content]
     return [_to_part(content)]

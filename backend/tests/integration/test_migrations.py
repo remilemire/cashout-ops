@@ -13,9 +13,9 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -870,5 +870,299 @@ def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
             "display_order",
         ]
         assert view_columns[-2:] == ["manager_tipout", "manager_tipout_rate"]
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_adds_the_optional_analysis_crop(migrated_url: str) -> None:
+    """Analyses gain the columns for the crop they read; earlier rows stay
+    uncropped.
+
+    An analysis from before cropping read its document whole, which is a
+    state the application handles anyway (a PDF, a photo with no detectable
+    text): the new columns are nullable and the backfill is simply null, so
+    such an analysis keeps serving no crop until a re-extraction makes one.
+    """
+    # The last revision before analyses could record a crop.
+    _upgrade(migrated_url, "b8e1d47c5a92")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'image/jpeg', 'key', 'photo.jpg', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status,
+                         classification, schema_name, schema_version,
+                         extracted_data_json, completed_at)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'needs_verification',
+                            'server_summary_report', 'ServerSummaryReportData', 1,
+                            '{"grand_total": "1.00"}'::jsonb, now());
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        nullability = _analysis_nullability(migrated_url)
+        assert nullability["cropped_storage_key"] is True
+        assert nullability["cropped_content_type"] is True
+        assert nullability["crop_bounds"] is True
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT cropped_storage_key, cropped_content_type, crop_bounds"
+                    " FROM cashout_document_analyses"
+                )
+            ).one()
+            # Two analyses can never share a crop object.
+            unique = conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_constraint WHERE contype = 'u'"
+                    " AND conname = 'cashout_document_analyses_cropped_storage_key_key'"
+                )
+            ).scalar_one()
+        assert tuple(row) == (None, None, None)
+        assert unique == 1
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_allows_several_analyses_per_upload(migrated_url: str) -> None:
+    """An upload may carry one analysis per document found in it.
+
+    The one-analysis-per-upload uniqueness becomes a plain index and every
+    existing analysis is stamped its upload's first (position 1); a second
+    position is accepted, and the same position twice is not.
+    """
+    # The last revision with one analysis per upload.
+    _upgrade(migrated_url, "3e7a1c9d5f42")
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'image/jpeg', 'key', 'photo.jpg', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        with engine.connect() as conn:
+            position = conn.execute(
+                text("SELECT position FROM cashout_document_analyses")
+            ).scalar_one()
+            indexdef = conn.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes WHERE indexname ="
+                    " 'ix_cashout_document_analyses_cashout_upload_id'"
+                )
+            ).scalar_one()
+        assert position == 1
+        assert "UNIQUE" not in indexdef
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_upload_id, position, provider, model, status)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '33333333-3333-3333-3333-333333333333', 2, 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_upload_id, position, provider, model, status)
+                    VALUES ('66666666-6666-6666-6666-666666666666',
+                            '33333333-3333-3333-3333-333333333333', 2, 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+    finally:
+        engine.dispose()
+
+
+def _constraint_and_index_names(url: str, *tables: str) -> set[str]:
+    """Every primary-key, foreign-key, and unique constraint name and every
+    index name on the given tables."""
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            constraints = conn.execute(
+                text(
+                    "SELECT conname FROM pg_constraint WHERE contype IN ('p', 'f', 'u')"
+                    " AND conrelid::regclass::text IN :tables"
+                ).bindparams(bindparam("tables", expanding=True)),
+                {"tables": list(tables)},
+            )
+            names = {row[0] for row in constraints}
+            indexes = conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE tablename IN :tables"
+                ).bindparams(bindparam("tables", expanding=True)),
+                {"tables": list(tables)},
+            )
+            return names | {row[0] for row in indexes}
+    finally:
+        engine.dispose()
+
+
+# The names the rename revision moves between, in both directions. The old
+# ones are what Postgres gave the initial migration's unnamed constraints;
+# the new ones are what create_all gives the renamed model.
+_RENAMED_NAMES = {
+    "cashout_documents_pkey": "cashout_uploads_pkey",
+    "cashout_documents_cashout_submission_id_fkey": (
+        "cashout_uploads_cashout_submission_id_fkey"
+    ),
+    "cashout_documents_uploaded_by_user_id_fkey": (
+        "cashout_uploads_uploaded_by_user_id_fkey"
+    ),
+    "cashout_documents_storage_key_key": "cashout_uploads_storage_key_key",
+    "ix_cashout_documents_cashout_submission_id": (
+        "ix_cashout_uploads_cashout_submission_id"
+    ),
+    "ix_cashout_documents_submission_checksum": (
+        "ix_cashout_uploads_submission_checksum"
+    ),
+    "ix_cashout_documents_uploaded_by_user_id": (
+        "ix_cashout_uploads_uploaded_by_user_id"
+    ),
+    "cashout_document_analyses_cashout_document_id_fkey": (
+        "cashout_document_analyses_cashout_upload_id_fkey"
+    ),
+    "ix_cashout_document_analyses_cashout_document_id": (
+        "ix_cashout_document_analyses_cashout_upload_id"
+    ),
+    "uq_cashout_document_analyses_document_position": (
+        "uq_cashout_document_analyses_upload_position"
+    ),
+}
+
+
+def test_upgrade_head_renames_documents_to_uploads(migrated_url: str) -> None:
+    """The file a cashier submits is an upload: its table, and the analysis's
+    reference to it, say so after `upgrade head`.
+
+    A database holding an upload and its analysis comes out with the row in
+    `cashout_uploads` and `cashout_upload_id` set on the analysis — renamed
+    in place, not rebuilt — and every index and constraint renamed with them,
+    so a migrated database matches a fresh install. The downgrade puts every
+    name back.
+    """
+    # The last revision that still called the upload a document.
+    _upgrade(migrated_url, "a1d4e7f92b36")
+    tables = ("cashout_documents", "cashout_document_analyses")
+    assert set(_RENAMED_NAMES) <= _constraint_and_index_names(migrated_url, *tables)
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01');
+                    INSERT INTO cashout_documents
+                        (id, cashout_submission_id, content_type, storage_key,
+                         original_filename, checksum_sha256, uploaded_by_user_id,
+                         uploaded_at)
+                    VALUES ('33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            'image/jpeg', 'key', 'photo.jpg', 'checksum',
+                            '11111111-1111-1111-1111-111111111111', now());
+                    INSERT INTO cashout_document_analyses
+                        (id, cashout_document_id, provider, model, status)
+                    VALUES ('44444444-4444-4444-4444-444444444444',
+                            '33333333-3333-3333-3333-333333333333', 'anthropic',
+                            'some-model', 'extracting');
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        assert "cashout_documents" not in inspect(engine).get_table_names()
+        with engine.connect() as conn:
+            upload_id = conn.execute(
+                text("SELECT id::text FROM cashout_uploads")
+            ).scalar_one()
+            analysis_upload_id = conn.execute(
+                text("SELECT cashout_upload_id::text FROM cashout_document_analyses")
+            ).scalar_one()
+        assert upload_id == "33333333-3333-3333-3333-333333333333"
+        assert analysis_upload_id == upload_id
+        tables = ("cashout_uploads", "cashout_document_analyses")
+        names = _constraint_and_index_names(migrated_url, *tables)
+        assert set(_RENAMED_NAMES.values()) <= names
+        assert names.isdisjoint(_RENAMED_NAMES)
+
+        _alembic(migrated_url, "downgrade", "a1d4e7f92b36")
+
+        assert "cashout_uploads" not in inspect(engine).get_table_names()
+        with engine.connect() as conn:
+            analysis_document_id = conn.execute(
+                text("SELECT cashout_document_id::text FROM cashout_document_analyses")
+            ).scalar_one()
+        assert analysis_document_id == upload_id
+        tables = ("cashout_documents", "cashout_document_analyses")
+        names = _constraint_and_index_names(migrated_url, *tables)
+        assert set(_RENAMED_NAMES) <= names
+        assert names.isdisjoint(_RENAMED_NAMES.values())
     finally:
         engine.dispose()

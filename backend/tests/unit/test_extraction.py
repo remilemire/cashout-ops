@@ -27,6 +27,7 @@ from app.document_ai import (
 )
 from app.document_ai.errors import AI_ERROR_CODES
 from app.document_ai.hints import collect_field_hints
+from app.document_cropping import CropBounds, DocumentCropper
 from app.features.cashout.extraction import CashoutDocumentProcessor
 from app.features.cashout.extraction import registry as extraction_registry
 from app.features.cashout.extraction.registry import (
@@ -48,11 +49,31 @@ from app.integrations.ai import (
     compose_instructions,
 )
 from app.lib.documents import DocumentContentType
-from tests.support.fakes import FakeAIClient, FakeDocumentStorage
+from tests.support.documents import (
+    SAMPLE_PHOTO_BYTES,
+    SAMPLE_PHOTO_TEXT_BOXES,
+    SAMPLE_RECEIPT_PDF_BYTES,
+)
+from tests.support.fakes import FakeAIClient, FakeDocumentStorage, FakeTextDetector
 
 # ================================
 # ---------- Processor -----------
 # ================================
+
+
+def _cropper(detector: FakeTextDetector | None = None) -> DocumentCropper:
+    # Over a detector that finds nothing, unless the test hands in its own.
+    return DocumentCropper(
+        detector if detector is not None else FakeTextDetector(),
+        detection_max_side=1280,
+        margin=0.03,
+        min_text_boxes=3,
+        max_area_ratio=0.95,
+        split_enabled=True,
+        split_gap=4.0,
+        pdf_dpi=200,
+        pdf_max_pages=10,
+    )
 
 
 def _classification(
@@ -75,7 +96,9 @@ async def _build_processor(
     processor = CashoutDocumentProcessor(
         DocumentAIClient(
             ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
-        )
+        ),
+        cropper=_cropper(),
+        storage=storage,
     )
     ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
     return processor, ref
@@ -136,7 +159,9 @@ async def test_processor_supplied_classification_skips_classify() -> None:
     processor = CashoutDocumentProcessor(
         DocumentAIClient(
             ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
-        )
+        ),
+        cropper=_cropper(),
+        storage=storage,
     )
     ref = DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
 
@@ -187,7 +212,9 @@ async def test_processor_layers_domain_instructions_on_both_calls() -> None:
     processor = CashoutDocumentProcessor(
         DocumentAIClient(
             ai, storage, classification_max_tokens=111, extraction_max_tokens=222
-        )
+        ),
+        cropper=_cropper(),
+        storage=storage,
     )
 
     await processor.process(
@@ -219,17 +246,112 @@ async def test_processor_layers_domain_instructions_on_both_calls() -> None:
 
 def test_processor_exposes_provider_and_model() -> None:
     ai = FakeAIClient(model="fake-model")
+    storage = FakeDocumentStorage()
     processor = CashoutDocumentProcessor(
         DocumentAIClient(
-            ai,
-            FakeDocumentStorage(),
-            classification_max_tokens=512,
-            extraction_max_tokens=2048,
-        )
+            ai, storage, classification_max_tokens=512, extraction_max_tokens=2048
+        ),
+        cropper=_cropper(),
+        storage=storage,
     )
 
     assert processor.provider is AIProvider.ANTHROPIC
     assert processor.model == "fake-model"
+
+
+# ---------- Cropping, coordinated by the processor ----------
+
+
+def _cropping_processor(
+    storage: FakeDocumentStorage, detector: FakeTextDetector
+) -> CashoutDocumentProcessor:
+    return CashoutDocumentProcessor(
+        DocumentAIClient(
+            FakeAIClient(),
+            storage,
+            classification_max_tokens=512,
+            extraction_max_tokens=2048,
+        ),
+        cropper=_cropper(detector),
+        storage=storage,
+    )
+
+
+async def test_processor_crops_the_stored_document_beside_the_original() -> None:
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", SAMPLE_PHOTO_BYTES)
+    detector = FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES)
+    processor = _cropping_processor(storage, detector)
+
+    (crop,) = await processor.crop(
+        DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PNG)
+    )
+
+    # A numbered sibling object in the original's format, cut to the boxes'
+    # union ((160, 120)–(480, 350)) plus its 3% margin.
+    assert crop.ref == DocumentRef(
+        storage_key="doc-key-crop-1", content_type=DocumentContentType.PNG
+    )
+    assert crop.bounds == CropBounds(left=150, top=110, right=490, bottom=360)
+    assert crop.bounds.as_json() == {
+        "left": 150,
+        "top": 110,
+        "right": 490,
+        "bottom": 360,
+    }
+    assert set(storage.objects) == {"doc-key", "doc-key-crop-1"}
+    assert storage.objects["doc-key-crop-1"] != SAMPLE_PHOTO_BYTES
+    assert detector.calls == [(480, 640)]
+
+
+async def test_processor_stores_one_crop_per_document_found() -> None:
+    # A two-page PDF: one crop per page, numbered in reading order, each
+    # recording its page.
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", SAMPLE_RECEIPT_PDF_BYTES)
+    processor = _cropping_processor(storage, FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES))
+
+    crops = await processor.crop(
+        DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
+    )
+
+    assert [crop.ref.storage_key for crop in crops] == [
+        "doc-key-crop-1",
+        "doc-key-crop-2",
+    ]
+    assert [crop.bounds.page for crop in crops] == [1, 2]
+    assert all(crop.ref.content_type is DocumentContentType.PNG for crop in crops)
+    assert crops[1].bounds.as_json()["page"] == 2
+    assert set(storage.objects) == {"doc-key", "doc-key-crop-1", "doc-key-crop-2"}
+
+
+async def test_processor_crops_nothing_when_no_text_is_found() -> None:
+    storage = FakeDocumentStorage()
+    await storage.write("doc-key", SAMPLE_PHOTO_BYTES)
+    processor = _cropping_processor(storage, FakeTextDetector())
+
+    crops = await processor.crop(
+        DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PNG)
+    )
+
+    assert crops == []
+    # Nothing was written beside the original.
+    assert set(storage.objects) == {"doc-key"}
+
+
+async def test_processor_crops_nothing_for_a_missing_original() -> None:
+    # The missing bytes are left to `process`, which reports them as
+    # MISSING_DOCUMENT where the caller already handles that failure.
+    storage = FakeDocumentStorage()
+    detector = FakeTextDetector(SAMPLE_PHOTO_TEXT_BOXES)
+    processor = _cropping_processor(storage, detector)
+
+    crops = await processor.crop(
+        DocumentRef(storage_key="gone-key", content_type=DocumentContentType.PNG)
+    )
+
+    assert crops == []
+    assert detector.calls == []
 
 
 # ================================

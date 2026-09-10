@@ -16,7 +16,7 @@ from .types import CashoutSubmissionStatus
 
 if TYPE_CHECKING:
     from app.features.cashout.data.model import CashoutData
-    from app.features.cashout.documents.model import CashoutDocument
+    from app.features.cashout.uploads.model import CashoutUpload
     from app.features.users.model import User
 
 
@@ -90,7 +90,7 @@ class CashoutSubmission(Base):
         ARRAY(enum_column(TipoutDepartment, "tipout_department")), nullable=True
     )
 
-    # Soft-delete marker: a submission with traces (documents, data, or a
+    # Soft-delete marker: a submission with traces (uploads, data, or a
     # completion on record) is stamped rather than removed, so its history —
     # and every user FK on it — stays intact. NULL means the row is live.
     deleted_at: Mapped[datetime | None] = mapped_column(
@@ -104,13 +104,13 @@ class CashoutSubmission(Base):
 
     # Upload order, oldest first, so every consumer sees a stable list: with
     # no ORDER BY, Postgres returns the rows in physical order, which an
-    # update to a row can change — and the cashier's document cards reshuffle
-    # under them. The id breaks a tie between two documents written in the
+    # update to a row can change — and the cashier's upload cards reshuffle
+    # under them. The id breaks a tie between two uploads written in the
     # same transaction, so the order is total.
-    documents: Mapped[list[CashoutDocument]] = relationship(
+    uploads: Mapped[list[CashoutUpload]] = relationship(
         back_populates="cashout_submission",
         cascade="all, delete-orphan",
-        order_by="(CashoutDocument.created_at, CashoutDocument.id)",
+        order_by="(CashoutUpload.created_at, CashoutUpload.id)",
     )
     data: Mapped[CashoutData | None] = relationship(
         back_populates="submission", passive_deletes="all"

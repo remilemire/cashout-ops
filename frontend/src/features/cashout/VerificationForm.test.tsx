@@ -22,6 +22,7 @@ const verifyMock = vi.mocked(cashoutApi.verifyAnalysis);
 
 const analysis: CashoutDocumentAnalysis = {
   id: "analysis-1",
+  position: 1,
   createdAt: "2026-07-17T00:00:00Z",
   provider: "anthropic",
   model: "test-model",
@@ -30,6 +31,7 @@ const analysis: CashoutDocumentAnalysis = {
   classificationConfidence: 0.95,
   schemaName: "ServerSummaryReportData",
   schemaVersion: 1,
+  croppedContentType: null,
   // grand_total is a Decimal, so the API serializes it as a string; the count
   // stays a JSON number. Both types are exercised by the coercion test below.
   extractedDataJson: {
@@ -44,7 +46,7 @@ const analysis: CashoutDocumentAnalysis = {
   verifiedDataJson: null,
   verifiedByUserId: null,
   verifiedAt: null,
-  cashoutDocumentId: "document-1",
+  cashoutUploadId: "upload-1",
 };
 
 function renderForm(

@@ -20,7 +20,8 @@ const ERROR_MESSAGES = {
     "That sign-in could not be completed. Please try again.",
   OAUTH_ISSUER_NOT_ENABLED: "That sign-in provider is not available.",
   INVALID_SESSION: "Invalid or expired session.",
-  ANALYSIS_NOT_FOUND: "Document analysis not found.",
+  ANALYSIS_NOT_FOUND: "Analysis not found.",
+  CROP_NOT_FOUND: "The cropped document is not available.",
   ANALYSIS_VERIFIED: "This analysis has already been verified.",
   ANALYSIS_NOT_VERIFIED: "Only a verified analysis can be edited.",
   EXTRACTION_IN_PROGRESS: "An extraction is already in progress.",
@@ -35,10 +36,9 @@ const ERROR_MESSAGES = {
     "The TouchBistro card orders do not match the server summary transaction counts. Re-check both before completing.",
   RECONCILE_DOCUMENT_DATA_INVALID:
     "A document's verified details cannot be read. Re-verify it and try again.",
-  DOCUMENT_NOT_FOUND: "Cashout document not found.",
-  DOCUMENT_DUPLICATE:
-    "This document has already been uploaded to this cashout.",
-  UNSUPPORTED_DOCUMENT_TYPE: "Unsupported document content type.",
+  UPLOAD_NOT_FOUND: "Upload not found.",
+  UPLOAD_DUPLICATE: "This file has already been uploaded to this cashout.",
+  UNSUPPORTED_UPLOAD_TYPE: "Unsupported file type.",
   SUBMISSION_NOT_FOUND: "Cashout submission not found.",
   SUBMISSION_COMPLETED: "This cashout has already been completed.",
   SUBMISSION_NOT_COMPLETED: "Only a completed cashout can be unsubmitted.",
@@ -54,10 +54,10 @@ const ERROR_MESSAGES = {
   CANNOT_DELETE_OWNER: "The owner account cannot be deleted.",
   TRANSFER_TARGET_NOT_ADMIN: "Ownership can only be transferred to an admin.",
   OWNER_ALREADY_EXISTS: "There is already an owner.",
-  DOCUMENT_TOO_LARGE: (ctx: ErrorContext) =>
+  UPLOAD_TOO_LARGE: (ctx: ErrorContext) =>
     parameter(ctx, "maxSizeMb") !== undefined
-      ? `Document exceeds the ${parameter(ctx, "maxSizeMb")} MB size limit.`
-      : "Document exceeds the size limit.",
+      ? `The file exceeds the ${parameter(ctx, "maxSizeMb")} MB size limit.`
+      : "The file exceeds the size limit.",
 } satisfies Record<ErrorCode, string | ((ctx: ErrorContext) => string)>;
 
 export function errorMessage(code: ErrorCode, ctx: ErrorContext): string {

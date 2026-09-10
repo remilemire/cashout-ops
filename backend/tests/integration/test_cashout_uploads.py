@@ -1,4 +1,4 @@
-# backend/tests/integration/test_cashout_documents.py
+# backend/tests/integration/test_cashout_uploads.py
 
 from __future__ import annotations
 
@@ -10,18 +10,26 @@ from tests.support.api import csrf_headers
 from tests.support.cashout import (
     complete_submission,
     configure_server_summary,
+    create_manual_upload,
     create_submission,
-    upload_document,
+    create_upload,
+    manual_entry_body,
     upload_reconcilable_documents,
     verify_analysis,
 )
-from tests.support.documents import SAMPLE_PDF_BYTES
-from tests.support.fakes import FakeAIClient, FakeDocumentStorage
+from tests.support.documents import (
+    SAMPLE_PDF_BYTES,
+    SAMPLE_PHOTO_TEXT_BOXES,
+    SAMPLE_PHOTO_UPLOAD,
+    SAMPLE_TWO_RECEIPTS_TEXT_BOXES,
+    SAMPLE_TWO_RECEIPTS_UPLOAD,
+)
+from tests.support.fakes import FakeAIClient, FakeDocumentStorage, FakeTextDetector
 from tests.support.fixtures.clients import ClientFactory
 from tests.support.fixtures.outbox import OutboxDrain
 
 
-async def test_document_content_served_to_owner_and_admin(
+async def test_upload_content_served_to_owner_and_admin(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
@@ -29,8 +37,8 @@ async def test_document_content_served_to_owner_and_admin(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    url = f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
+    url = f"/api/cashout/uploads/{created['cashoutUploadId']}/content"
 
     owner = await cashier_client.get(url)
     assert owner.status_code == 200
@@ -41,29 +49,29 @@ async def test_document_content_served_to_owner_and_admin(
     assert admin.status_code == 200
 
 
-async def test_document_content_with_missing_file_is_not_found(
+async def test_upload_content_with_missing_file_is_not_found(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
     drain_outbox: OutboxDrain,
 ) -> None:
     # The row can outlive its stored bytes (the backing store lost them). To
-    # the viewer the document is gone: a 404 under the shared contract, not an
+    # the viewer the upload is gone: a 404 under the shared contract, not an
     # uncaught storage error surfacing as a 500.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     storage.objects.clear()
 
     response = await cashier_client.get(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
+        f"/api/cashout/uploads/{created['cashoutUploadId']}/content"
     )
 
     assert response.status_code == 404
-    assert response.json()["code"] == "DOCUMENT_NOT_FOUND"
+    assert response.json()["code"] == "UPLOAD_NOT_FOUND"
 
 
-async def test_delete_document_from_processing_submission(
+async def test_delete_upload_from_processing_submission(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -71,11 +79,11 @@ async def test_delete_document_from_processing_submission(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
 
     response = await cashier_client.delete(
-        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        f"/api/cashout/uploads/{analysis['cashoutUploadId']}",
         headers=csrf_headers(cashier_client),
     )
 
@@ -85,14 +93,14 @@ async def test_delete_document_from_processing_submission(
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert detail["documents"] == []
+    assert detail["uploads"] == []
     missing_analysis = await cashier_client.get(
         f"/api/cashout/analyses/{analysis['id']}"
     )
     assert missing_analysis.status_code == 404
 
 
-async def test_delete_document_after_completion_conflicts(
+async def test_delete_upload_after_completion_conflicts(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -107,7 +115,7 @@ async def test_delete_document_after_completion_conflicts(
     await complete_submission(cashier_client, submission_id)
 
     response = await cashier_client.delete(
-        f"/api/cashout/documents/{touchbistro['cashoutDocumentId']}",
+        f"/api/cashout/uploads/{touchbistro['cashoutUploadId']}",
         headers=csrf_headers(cashier_client),
     )
 
@@ -116,11 +124,11 @@ async def test_delete_document_after_completion_conflicts(
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert len(detail["documents"]) == 2
+    assert len(detail["uploads"]) == 2
     assert storage.objects
 
 
-async def test_delete_document_requires_employee_or_admin(
+async def test_delete_upload_requires_employee_or_admin(
     cashier_client: AsyncClient,
     admin_client: AsyncClient,
     ai_client: FakeAIClient,
@@ -130,12 +138,12 @@ async def test_delete_document_requires_employee_or_admin(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
-    # Plain staff cannot remove a document from someone else's cashout.
+    # Plain staff cannot remove an upload from someone else's cashout.
     other = await make_client(email="other@test.com")
     forbidden = await other.delete(
-        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        f"/api/cashout/uploads/{analysis['cashoutUploadId']}",
         headers=csrf_headers(other),
     )
     assert forbidden.status_code == 403
@@ -143,19 +151,19 @@ async def test_delete_document_requires_employee_or_admin(
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert len(detail["documents"]) == 1
+    assert len(detail["uploads"]) == 1
     assert storage.objects
 
     # An admin can.
     response = await admin_client.delete(
-        f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+        f"/api/cashout/uploads/{analysis['cashoutUploadId']}",
         headers=csrf_headers(admin_client),
     )
     assert response.status_code == 204, response.text
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert detail["documents"] == []
+    assert detail["uploads"] == []
     assert storage.objects == {}
 
 
@@ -165,16 +173,16 @@ async def test_upload_rejects_unsupported_content_type(
     submission_id = await create_submission(cashier_client)
 
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": ("notes.txt", b"plain text", "text/plain")},
         headers=csrf_headers(cashier_client),
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "UNSUPPORTED_DOCUMENT_TYPE"
+    assert response.json()["code"] == "UNSUPPORTED_UPLOAD_TYPE"
 
 
-async def test_upload_rejects_oversized_document(
+async def test_upload_rejects_oversized_file(
     cashier_client: AsyncClient,
     storage: FakeDocumentStorage,
     monkeypatch: pytest.MonkeyPatch,
@@ -186,19 +194,19 @@ async def test_upload_rejects_oversized_document(
     oversized = SAMPLE_PDF_BYTES + b"\0" * settings.storage.MAX_DOCUMENT_SIZE_BYTES
 
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": ("oversized.pdf", oversized, "application/pdf")},
         headers=csrf_headers(cashier_client),
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "DOCUMENT_TOO_LARGE"
+    assert response.json()["code"] == "UPLOAD_TOO_LARGE"
     assert response.json()["ctx"] == {"maxSizeMb": 1}
     # Rejected before its bytes were written to storage.
     assert len(storage.objects) == stored_before
 
 
-async def test_upload_rejects_duplicate_document(
+async def test_upload_rejects_duplicate_file(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -206,18 +214,18 @@ async def test_upload_rejects_duplicate_document(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await create_upload(cashier_client, submission_id, drain=drain_outbox)
     stored_before = len(storage.objects)
 
     # Same bytes again (filename doesn't matter): rejected by checksum.
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": ("renamed.pdf", SAMPLE_PDF_BYTES, "application/pdf")},
         headers=csrf_headers(cashier_client),
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "DOCUMENT_DUPLICATE"
+    assert response.json()["code"] == "UPLOAD_DUPLICATE"
     # The duplicate was rejected before its bytes were written to storage.
     assert len(storage.objects) == stored_before
 
@@ -226,4 +234,56 @@ async def test_upload_rejects_duplicate_document(
     other_submission_id = await create_submission(
         cashier_client, business_date="2026-08-28"
     )
-    await upload_document(cashier_client, other_submission_id, drain=drain_outbox)
+    await create_upload(cashier_client, other_submission_id, drain=drain_outbox)
+
+
+async def test_delete_upload_removes_the_crops_its_analyses_read(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    storage: FakeDocumentStorage,
+    text_detector: FakeTextDetector,
+    drain_outbox: OutboxDrain,
+) -> None:
+    # Each crop lives beside the original and is recorded on its analysis;
+    # the cascade removes the analysis rows, and the upload's delete must
+    # take every stored crop with it.
+    configure_server_summary(ai_client)
+    text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
+    submission_id = await create_submission(cashier_client)
+    created = await create_upload(
+        cashier_client,
+        submission_id,
+        drain=drain_outbox,
+        file=SAMPLE_TWO_RECEIPTS_UPLOAD,
+    )
+    assert len(storage.objects) == 3
+
+    response = await cashier_client.delete(
+        f"/api/cashout/uploads/{created['cashoutUploadId']}",
+        headers=csrf_headers(cashier_client),
+    )
+
+    assert response.status_code == 204
+    assert storage.objects == {}
+
+
+async def test_manual_upload_stores_only_the_original(
+    cashier_client: AsyncClient,
+    storage: FakeDocumentStorage,
+    text_detector: FakeTextDetector,
+) -> None:
+    # Cropping is the first extraction's job, and no extraction runs for a
+    # manual entry: the upload is stored whole and previews as such.
+    text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
+    submission_id = await create_submission(cashier_client)
+
+    analysis = await create_manual_upload(
+        cashier_client,
+        submission_id,
+        body=manual_entry_body(),
+        file=SAMPLE_PHOTO_UPLOAD,
+    )
+
+    assert analysis["croppedContentType"] is None
+    assert len(storage.objects) == 1
+    assert text_detector.calls == []

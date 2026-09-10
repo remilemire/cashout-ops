@@ -103,7 +103,7 @@ async def delete_submission(
     """Delete an incomplete submission; a completed one cannot be deleted.
 
     The submission's employee or an admin may cancel it. A submission with
-    no traces (no documents, no data, never completed) is removed outright;
+    no traces (no uploads, no data, never completed) is removed outright;
     anything else is soft-deleted and simply disappears from the API.
     """
     await submissions_service.delete_submission(
@@ -137,7 +137,7 @@ async def get_submission(
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutSubmissionDetailOut:
-    """Return a submission with its documents (analyses included) and data.
+    """Return a submission with its uploads (analyses included) and data.
 
     Accessible to the submission's employee or an admin.
     """

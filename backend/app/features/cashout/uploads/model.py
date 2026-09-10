@@ -1,4 +1,4 @@
-# backend/app/features/cashout/documents/model.py
+# backend/app/features/cashout/uploads/model.py
 
 from __future__ import annotations
 
@@ -18,13 +18,21 @@ if TYPE_CHECKING:
     from app.features.users.model import User
 
 
-class CashoutDocument(Base):
-    __tablename__ = "cashout_documents"
+class CashoutUpload(Base):
+    """One file a cashier submitted to a cashout: the stored bytes, their
+    type, checksum, and filename.
+
+    An upload holds one or more printed documents (two receipts in one photo,
+    the pages of a PDF); each document found in it is represented by one
+    analysis, not by a row of its own.
+    """
+
+    __tablename__ = "cashout_uploads"
     # Name the unique index explicitly: cashout/errors.py maps it to
-    # DOCUMENT_DUPLICATE, and a unique-index violation reports the index name.
+    # UPLOAD_DUPLICATE, and a unique-index violation reports the index name.
     __table_args__ = (
         Index(
-            "ix_cashout_documents_submission_checksum",
+            "ix_cashout_uploads_submission_checksum",
             "cashout_submission_id",
             "checksum_sha256",
             unique=True,
@@ -53,7 +61,8 @@ class CashoutDocument(Base):
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # SHA-256 of the stored bytes: audits what the AI analyzed and rejects
-    # duplicate uploads within a submission (unique with the submission id).
+    # the same file uploaded twice to a submission (unique with the
+    # submission id).
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
@@ -64,11 +73,16 @@ class CashoutDocument(Base):
     )
 
     cashout_submission: Mapped[CashoutSubmission] = relationship(
-        back_populates="documents"
+        back_populates="uploads"
     )
 
     uploaded_by: Mapped[User] = relationship()
 
-    analysis: Mapped[CashoutDocumentAnalysis | None] = relationship(
-        back_populates="cashout_document", cascade="all, delete-orphan"
+    # One per document found in the upload, in the order they were found;
+    # empty only between the upload and its first analysis being created,
+    # which the intake workflow does in the same transaction.
+    analyses: Mapped[list[CashoutDocumentAnalysis]] = relationship(
+        back_populates="cashout_upload",
+        cascade="all, delete-orphan",
+        order_by="CashoutDocumentAnalysis.position",
     )

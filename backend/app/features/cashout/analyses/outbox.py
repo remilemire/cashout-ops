@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from app.integrations.ai import AIClient
+    from app.integrations.ocr import TextDetector
     from app.integrations.storage import DocumentStorageClient
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ type OutboxMessageType = Literal["cashout.run_extraction"]
 
 
 class RunExtraction(BaseModel):
-    document_id: UUID
+    analysis_id: UUID
     # A user-corrected classification to extract as, skipping AI
     # classification; None runs the full classify + extract pipeline.
     classification: CashoutDocumentClassification | None = None
@@ -47,7 +48,7 @@ outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
 
 
 class RunExtractionOutboxHandler:
-    """Runs the AI extraction for an uploaded document."""
+    """Runs the AI extraction for one analysis of an uploaded document."""
 
     message = _run_extraction_message
 
@@ -56,11 +57,12 @@ class RunExtractionOutboxHandler:
         sessionmaker: async_sessionmaker[AsyncSession],
         ai: AIClient,
         storage: DocumentStorageClient,
+        text_detector: TextDetector | None,
     ) -> None:
         self._sessionmaker = sessionmaker
         # Built here rather than handed in: the processor holds no resource,
         # so there is nothing for the composition root to own on its behalf.
-        self._processor = build_cashout_document_processor(ai, storage)
+        self._processor = build_cashout_document_processor(ai, storage, text_detector)
 
     async def handle(self, payload: RunExtraction) -> None:
         # Imported at call time: the outbox catalog imports cashout's root
@@ -71,7 +73,7 @@ class RunExtractionOutboxHandler:
 
         await run_extraction(
             self._sessionmaker,
-            document_id=payload.document_id,
+            analysis_id=payload.analysis_id,
             processor=self._processor,
             classification=payload.classification,
         )
@@ -80,8 +82,8 @@ class RunExtractionOutboxHandler:
         # run_extraction already marks its analysis FAILED on any error, so
         # there is nothing to clean up here beyond making the loss visible.
         logger.error(
-            "Extraction outbox message dead-lettered for document %s",
-            payload.document_id,
+            "Extraction outbox message dead-lettered for analysis %s",
+            payload.analysis_id,
         )
 
 

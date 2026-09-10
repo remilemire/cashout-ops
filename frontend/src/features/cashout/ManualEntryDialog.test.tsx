@@ -1,4 +1,4 @@
-// frontend/src/features/cashout/ManualDocumentDialog.test.tsx
+// frontend/src/features/cashout/ManualEntryDialog.test.tsx
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/api/client";
 
-import { ManualDocumentDialog } from "./ManualDocumentDialog";
+import { ManualEntryDialog } from "./ManualEntryDialog";
 
 vi.mock("@/components/dialog", () => ({
   Dialog: ({
@@ -37,11 +37,11 @@ const TOUCHBISTRO_LABELS = [
 ];
 
 function renderDialog(
-  overrides: Partial<Parameters<typeof ManualDocumentDialog>[0]> = {},
+  overrides: Partial<Parameters<typeof ManualEntryDialog>[0]> = {},
 ) {
   const onSubmit = vi.fn();
   const utils = render(
-    <ManualDocumentDialog
+    <ManualEntryDialog
       open
       onClose={vi.fn()}
       withFile={false}
@@ -54,7 +54,7 @@ function renderDialog(
   return { onSubmit, ...utils };
 }
 
-describe("ManualDocumentDialog", () => {
+describe("ManualEntryDialog", () => {
   it("offers every document type", () => {
     renderDialog();
 
