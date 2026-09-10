@@ -93,7 +93,7 @@ These are designed but not yet finished in code. Tracked here so the gap between
 
 ## Project structure
 
-The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/integrations`, and `app/document_ai`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly. Each module that owns a request-bound resource exposes its FastAPI dependency in a `dependencies.py` beside it (e.g. `infrastructure/db/dependencies.py`'s `get_db`, `features/auth/dependencies.py`'s `get_current_user`).
+The backend is organized **by feature** under `app/features/<feature>/`; cross-cutting concerns live in `app/core`, `app/infrastructure`, `app/lib`, `app/security`, `app/errors`, `app/integrations`, `app/document_ai`, and `app/document_cropping`. Within a feature, `service.py` owns the workflow and `repository.py` owns all database access (the Redis-backed auth sub-features use a `store.py` instead); services never touch the session or Redis directly. Each module that owns a request-bound resource exposes its FastAPI dependency in a `dependencies.py` beside it (e.g. `infrastructure/db/dependencies.py`'s `get_db`, `features/auth/dependencies.py`'s `get_current_user`).
 
 ```
 .
