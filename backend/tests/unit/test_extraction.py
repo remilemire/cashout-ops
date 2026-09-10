@@ -289,11 +289,16 @@ async def test_processor_crops_the_stored_document_beside_the_original() -> None
 
     # A numbered sibling object in the original's format, cut to the boxes'
     # union ((160, 120)–(480, 350)) plus its 3% margin.
-    assert crop.storage_key == "doc-key-crop-1"
-    assert crop.content_type is DocumentContentType.PNG
+    assert crop.ref == DocumentRef(
+        storage_key="doc-key-crop-1", content_type=DocumentContentType.PNG
+    )
     assert crop.bounds == CropBounds(left=150, top=110, right=490, bottom=360)
-    assert crop.page is None
-    assert crop.bounds_json() == {"left": 150, "top": 110, "right": 490, "bottom": 360}
+    assert crop.bounds.as_json() == {
+        "left": 150,
+        "top": 110,
+        "right": 490,
+        "bottom": 360,
+    }
     assert set(storage.objects) == {"doc-key", "doc-key-crop-1"}
     assert storage.objects["doc-key-crop-1"] != SAMPLE_PHOTO_BYTES
     assert detector.calls == [(480, 640)]
@@ -310,10 +315,13 @@ async def test_processor_stores_one_crop_per_document_found() -> None:
         DocumentRef(storage_key="doc-key", content_type=DocumentContentType.PDF)
     )
 
-    assert [crop.storage_key for crop in crops] == ["doc-key-crop-1", "doc-key-crop-2"]
-    assert [crop.page for crop in crops] == [1, 2]
-    assert all(crop.content_type is DocumentContentType.PNG for crop in crops)
-    assert crops[1].bounds_json()["page"] == 2
+    assert [crop.ref.storage_key for crop in crops] == [
+        "doc-key-crop-1",
+        "doc-key-crop-2",
+    ]
+    assert [crop.bounds.page for crop in crops] == [1, 2]
+    assert all(crop.ref.content_type is DocumentContentType.PNG for crop in crops)
+    assert crops[1].bounds.as_json()["page"] == 2
     assert set(storage.objects) == {"doc-key", "doc-key-crop-1", "doc-key-crop-2"}
 
 

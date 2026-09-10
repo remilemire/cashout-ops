@@ -36,7 +36,7 @@ async def delete_document(
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
-    """Remove a document (and its analysis) from an incomplete submission.
+    """Remove a document (and its analyses) from an incomplete submission.
 
     The submission's employee or an admin may remove documents, and only
     while the submission is still `PROCESSING`.

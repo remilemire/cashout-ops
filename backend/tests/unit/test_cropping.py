@@ -132,10 +132,8 @@ async def test_crops_to_the_union_of_the_boxes_plus_a_margin() -> None:
     # The union is 220 wide and 160 tall; 3% of the larger side is 7 pixels
     # of margin on every side.
     assert cropped.bounds == CropBounds(left=93, top=93, right=327, bottom=267)
-    assert (cropped.width, cropped.height) == (234, 174)
-    assert cropped.content_type is DocumentContentType.PNG
-    assert cropped.page is None
-    assert _decoded(cropped.data).size == (234, 174)
+    assert cropped.content.content_type is DocumentContentType.PNG
+    assert _decoded(cropped.content.data).size == (234, 174)
 
 
 async def test_the_margin_is_clamped_to_the_image() -> None:
@@ -164,8 +162,8 @@ async def test_the_crop_keeps_the_sources_format(
 
     (cropped,) = await cropper.crop(_content(_image_bytes(content_type), content_type))
 
-    assert cropped.content_type is content_type
-    assert _decoded(cropped.data).format == _FORMATS[content_type]
+    assert cropped.content.content_type is content_type
+    assert _decoded(cropped.content.data).format == _FORMATS[content_type]
 
 
 async def test_the_exif_rotation_is_applied_before_detecting() -> None:
@@ -189,7 +187,7 @@ async def test_the_exif_rotation_is_applied_before_detecting() -> None:
 
     assert detector.calls == [(640, 480)]
     assert cropped.bounds == CropBounds(left=70, top=90, right=410, bottom=270)
-    crop = _decoded(cropped.data)
+    crop = _decoded(cropped.content.data)
     assert crop.size == (340, 180)
     # The rotation was baked into the pixels: no orientation tag rides along
     # to rotate the crop a second time.
@@ -208,7 +206,7 @@ async def test_detects_on_a_downscaled_copy_and_scales_the_boxes_back() -> None:
     assert detector.calls == [(960, 1280)]
     # Twice the union (200, 200)–(640, 520), then 3% of 440 = 13 of margin.
     assert cropped.bounds == CropBounds(left=187, top=187, right=653, bottom=533)
-    assert _decoded(cropped.data).size == (466, 346)
+    assert _decoded(cropped.content.data).size == (466, 346)
 
 
 # ================================
@@ -235,7 +233,7 @@ async def test_splits_two_receipts_side_by_side_on_a_table() -> None:
         CropBounds(left=63, top=113, right=307, bottom=311),
         CropBounds(left=483, top=113, right=727, bottom=311),
     ]
-    assert all(crop.page is None for crop in crops)
+    assert all(crop.bounds.page is None for crop in crops)
 
 
 async def test_splits_two_receipts_stacked_on_a_table() -> None:
@@ -331,14 +329,14 @@ async def test_a_pdf_is_cropped_page_by_page() -> None:
     # Each page was rendered at its own size and detected on.
     assert len(detector.calls) == 2
     assert all(abs(h - 480) <= 1 and abs(w - 640) <= 1 for h, w in detector.calls)
-    assert [crop.page for crop in crops] == [1, 2]
     # Rendered print is lossless: the crops are PNG whatever the source.
-    assert all(crop.content_type is DocumentContentType.PNG for crop in crops)
-    assert all(_decoded(crop.data).format == "PNG" for crop in crops)
-    assert all(
-        crop.bounds == CropBounds(left=93, top=93, right=327, bottom=267)
-        for crop in crops
-    )
+    assert all(crop.content.content_type is DocumentContentType.PNG for crop in crops)
+    assert all(_decoded(crop.content.data).format == "PNG" for crop in crops)
+    # Each crop records its page beside its rectangle.
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=93, top=93, right=327, bottom=267, page=1),
+        CropBounds(left=93, top=93, right=327, bottom=267, page=2),
+    ]
 
 
 async def test_a_pdf_page_that_is_all_print_is_still_cropped() -> None:
@@ -365,7 +363,7 @@ async def test_pdf_pages_past_the_limit_are_ignored() -> None:
         _content(_pdf([_RECEIPT_PAGE, _RECEIPT_PAGE]), DocumentContentType.PDF)
     )
 
-    assert [crop.page for crop in crops] == [1]
+    assert [crop.bounds.page for crop in crops] == [1]
     assert len(detector.calls) == 1
 
 

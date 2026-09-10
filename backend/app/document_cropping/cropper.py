@@ -26,7 +26,7 @@ import asyncio
 import io
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import replace
 from typing import Any, Literal
 
 import numpy as np
@@ -38,6 +38,7 @@ from app.integrations.ocr import TextBox, TextDetectionError, TextDetector
 from app.lib.documents import DocumentContent, DocumentContentType
 
 from .pdf import PdfRenderError, render_pdf_pages
+from .types import CropBounds, DocumentCrop
 
 logger = logging.getLogger(__name__)
 
@@ -56,45 +57,6 @@ _BACKGROUND_CONTRAST = 30
 
 type _Axis = Literal["x", "y"]
 type _Luminance = NDArray[np.uint8]
-
-
-@dataclass(frozen=True)
-class CropBounds:
-    """The crop's rectangle in the upright source image (after its EXIF
-    rotation is applied), or in the rendered page for a PDF: left/top
-    inclusive, right/bottom exclusive."""
-
-    left: int
-    top: int
-    right: int
-    bottom: int
-
-    @property
-    def width(self) -> int:
-        return self.right - self.left
-
-    @property
-    def height(self) -> int:
-        return self.bottom - self.top
-
-    def as_json(self) -> dict[str, int]:
-        return {
-            "left": self.left,
-            "top": self.top,
-            "right": self.right,
-            "bottom": self.bottom,
-        }
-
-
-@dataclass(frozen=True)
-class CroppedDocument:
-    data: bytes
-    content_type: DocumentContentType
-    bounds: CropBounds
-    width: int
-    height: int
-    # The 1-based page the crop was cut from, for a PDF; None for an image.
-    page: int | None = None
 
 
 class DocumentCropper:
@@ -127,7 +89,7 @@ class DocumentCropper:
         self._pdf_dpi = pdf_dpi
         self._pdf_max_pages = pdf_max_pages
 
-    async def crop(self, content: DocumentContent) -> list[CroppedDocument]:
+    async def crop(self, content: DocumentContent) -> list[DocumentCrop]:
         """The documents found in the upload, in reading order — page by
         page for a PDF — or nothing when there is nothing to crop to.
 
@@ -169,7 +131,7 @@ class DocumentCropper:
         else:
             return []
 
-        crops: list[CroppedDocument] = []
+        crops: list[DocumentCrop] = []
         for page, image, whole_is_pointless in sources:
             try:
                 regions = await self._find_documents(
@@ -187,13 +149,9 @@ class DocumentCropper:
                     output_type,
                 )
                 crops.append(
-                    CroppedDocument(
-                        data=data,
-                        content_type=output_type,
-                        bounds=bounds,
-                        width=bounds.width,
-                        height=bounds.height,
-                        page=page,
+                    DocumentCrop(
+                        content=DocumentContent(data=data, content_type=output_type),
+                        bounds=replace(bounds, page=page),
                     )
                 )
         return crops
@@ -456,9 +414,4 @@ def _encode(image: Image.Image, content_type: DocumentContentType) -> bytes:
     return buffer.getvalue()
 
 
-__all__ = [
-    "CropBounds",
-    "CroppedDocument",
-    "DocumentCropper",
-    "build_document_cropper",
-]
+__all__ = ["DocumentCropper", "build_document_cropper"]

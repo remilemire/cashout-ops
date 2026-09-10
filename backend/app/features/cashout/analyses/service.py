@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.document_ai import DocumentAIError, DocumentAIErrorCode, DocumentRef
 from app.errors import AppError
 from app.features.cashout.documents.model import CashoutDocument
-from app.features.cashout.extraction import CashoutDocumentProcessor, DocumentCrop
+from app.features.cashout.extraction import (
+    CashoutDocumentProcessor,
+    StoredDocumentCrop,
+)
 from app.features.cashout.extraction.registry import parse_manual_document_data
 from app.features.cashout.extraction.schemas import CashoutDocumentSchema
 from app.features.cashout.extraction.types import CashoutDocumentClassification
@@ -104,7 +107,7 @@ async def restart_extraction(
     )
 
 
-async def retry_analysis(
+async def retry_extraction(
     db: AsyncSession,
     *,
     analysis_id: UUID,
@@ -524,10 +527,10 @@ async def _enqueue_extraction(
     )
 
 
-def _record_crop(analysis: CashoutDocumentAnalysis, crop: DocumentCrop) -> None:
-    analysis.cropped_storage_key = crop.storage_key
-    analysis.cropped_content_type = crop.content_type
-    analysis.crop_bounds = crop.bounds_json()
+def _record_crop(analysis: CashoutDocumentAnalysis, crop: StoredDocumentCrop) -> None:
+    analysis.cropped_storage_key = crop.ref.storage_key
+    analysis.cropped_content_type = crop.ref.content_type
+    analysis.crop_bounds = crop.bounds.as_json()
 
 
 def _extraction_source(
@@ -550,7 +553,7 @@ def _ensure_replaceable(analysis: CashoutDocumentAnalysis) -> None:
     running job: neither can be reset for a retry, discarded for a restart,
     or overwritten manually."""
     if analysis.status is DocumentAnalysisStatus.VERIFIED:
-        raise AppError("ANALYSIS_VERIFIED", "This document has already been verified.")
+        raise AppError("ANALYSIS_VERIFIED", "This analysis has already been verified.")
     if analysis.status is DocumentAnalysisStatus.EXTRACTING:
         raise AppError("EXTRACTION_IN_PROGRESS")
 
@@ -619,7 +622,7 @@ def _record_manual(
 __all__ = [
     "start_extraction",
     "restart_extraction",
-    "retry_analysis",
+    "retry_extraction",
     "record_manual_entry",
     "replace_with_manual_entry",
     "run_extraction",

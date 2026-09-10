@@ -231,7 +231,7 @@ async def enter_manual_analysis(
     whose extraction is still in progress. The crop the analysis read stays
     its preview.
     """
-    analysis = await workflows.enter_manual_analysis(
+    analysis = await workflows.replace_with_manual_entry(
         db,
         analysis_id=analysis_id,
         classification=payload.classification,
@@ -278,7 +278,7 @@ async def extract_analysis(
     straight into that type's schema; the recorded classification confidence
     is then null. Without one, the full classify + extract pipeline runs.
     """
-    analysis = await workflows.retry_analysis(
+    analysis = await workflows.retry_extraction(
         db,
         analysis_id=analysis_id,
         user=current_user,

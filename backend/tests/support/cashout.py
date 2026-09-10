@@ -200,14 +200,14 @@ async def enter_manual_analysis(
     return response.json()
 
 
-async def retry_analysis(
+async def retry_extraction(
     client: AsyncClient,
     analysis_id: str,
     *,
     drain: OutboxDrain,
     body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Re-run one analysis and drain the outbox so the rerun completes.
+    """Re-run one analysis's extraction and drain the outbox so it completes.
 
     Returns the analysis as reset — EXTRACTING; poll it for the outcome.
     """
@@ -353,7 +353,7 @@ __all__ = [
     "manual_entry_body",
     "poll_analysis",
     "prepare_completable_submission",
-    "retry_analysis",
+    "retry_extraction",
     "touchbistro_manual_entry_body",
     "unsubmit_submission",
     "unverify_analysis",

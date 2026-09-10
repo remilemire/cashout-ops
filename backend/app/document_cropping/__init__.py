@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from .cropper import (
-    CropBounds,
-    CroppedDocument,
-    DocumentCropper,
-    build_document_cropper,
-)
+from .cropper import DocumentCropper, build_document_cropper
+from .types import CropBounds, DocumentCrop
 
 __all__ = [
     "CropBounds",
-    "CroppedDocument",
+    "DocumentCrop",
     "DocumentCropper",
     "build_document_cropper",
 ]

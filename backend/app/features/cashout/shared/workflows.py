@@ -114,7 +114,7 @@ async def restart_extraction(
     )
 
 
-async def retry_analysis(
+async def retry_extraction(
     db: AsyncSession,
     *,
     analysis_id: UUID,
@@ -123,7 +123,7 @@ async def retry_analysis(
     classification: CashoutDocumentClassification | None = None,
 ) -> CashoutDocumentAnalysis:
     # Pure delegation, as above.
-    return await analyses_service.retry_analysis(
+    return await analyses_service.retry_extraction(
         db,
         analysis_id=analysis_id,
         user=user,
@@ -132,7 +132,7 @@ async def retry_analysis(
     )
 
 
-async def enter_manual_analysis(
+async def replace_with_manual_entry(
     db: AsyncSession,
     *,
     analysis_id: UUID,
@@ -157,6 +157,6 @@ __all__ = [
     "upload_document",
     "upload_manual_document",
     "restart_extraction",
-    "retry_analysis",
-    "enter_manual_analysis",
+    "retry_extraction",
+    "replace_with_manual_entry",
 ]

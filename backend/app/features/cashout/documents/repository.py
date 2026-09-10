@@ -41,9 +41,11 @@ async def delete_document(db: AsyncSession, document: CashoutDocument) -> None:
 
 
 async def list_crop_storage_keys(db: AsyncSession, *, document_id: UUID) -> list[str]:
-    """The stored crops the document's analyses read (see analyses.model):
-    objects that go with the document, and that the cascade alone would
-    strand in storage."""
+    """The storage keys of the crops recorded on the document's analyses.
+
+    Deleting the document cascades to its analysis rows, not to the objects
+    they point at, so the caller deletes these from storage itself.
+    """
     keys = await db.scalars(
         select(CashoutDocumentAnalysis.cropped_storage_key).where(
             CashoutDocumentAnalysis.cashout_document_id == document_id,

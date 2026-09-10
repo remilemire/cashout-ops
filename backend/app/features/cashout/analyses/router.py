@@ -49,7 +49,8 @@ async def get_analysis(
 _CROPPED_CONTENT_OK: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "The crop of the document this analysis read.",
-        # Never a PDF: only images are cropped.
+        # A crop is always an image: an image's crop keeps its format, and a
+        # PDF's crops are cut from its rendered pages and stored as PNG.
         "content": {
             member.value: {}
             for member in DocumentContentType
@@ -75,9 +76,10 @@ async def get_cropped_document(
 
     The crop is the printed area text detection found on the first
     extraction — what the AI read, and what to check the extraction
-    against. An analysis that read the document whole (`croppedContentType`
-    null: a PDF, no detectable text, cropping off, or not yet extracted) has
-    none, and the document's own content endpoint has the original.
+    against. An analysis that read the upload whole (`croppedContentType`
+    null: no detectable text, cropping off, a manual entry, or not yet
+    extracted) has none, and the document's own content endpoint has the
+    original.
     Accessible to the submission's employee or an admin.
     """
     content, original_filename = await analyses_service.get_cropped_document(
