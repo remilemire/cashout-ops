@@ -17,14 +17,3 @@ def hash_secret_token(token: str) -> str:
     not protect short codes if their stored hashes are exposed.
     """
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def hash_identifier(identifier: str) -> str:
-    """Hash a normalized identifier into a stable Redis key component.
-
-    This keeps plaintext identifiers out of key names, not out of stored
-    values or command logs. Low-entropy identifiers such as email addresses
-    can be recovered by enumeration; this is not a confidentiality control.
-    Callers must normalize the identifier before hashing it.
-    """
-    return hashlib.sha256(identifier.encode()).hexdigest()

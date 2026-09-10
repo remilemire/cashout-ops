@@ -6,6 +6,7 @@ delivers the plaintext code after initiation commits.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -18,7 +19,7 @@ from app.features.auth.shared import accounts
 from app.features.users import service as users_service
 from app.infrastructure.outbox import service as outbox_service
 from app.infrastructure.redis import Redis
-from app.security.crypto import hash_identifier, hash_secret_token
+from app.security.crypto import hash_secret_token
 
 from . import store
 from .model import StoredEmailChallenge
@@ -39,7 +40,7 @@ def email_key(email: str) -> str:
     Hashing keeps the address out of key names, but does not conceal it from
     readers of the stored challenge or from offline enumeration.
     """
-    return hash_identifier(normalize_email(email))
+    return hashlib.sha256(normalize_email(email).encode()).hexdigest()
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
