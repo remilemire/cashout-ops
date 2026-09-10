@@ -123,7 +123,9 @@ export function AdjustmentForm({
             label="Note (optional)"
             value={values.note}
             error={fieldError("note")}
-            onChange={(event) => onChange({ ...values, note: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...values, note: event.target.value })
+            }
           />
         </>
       )}

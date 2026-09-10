@@ -506,9 +506,7 @@ describe("SubmissionPage", () => {
       ),
     ).toBeDefined();
     // Only an admin can record the deposit that explains the gap.
-    expect(
-      screen.queryByRole("combobox", { name: /Adjustment/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /Adjustment/ })).toBeNull();
     expect(screen.queryByLabelText("Deposit amount")).toBeNull();
   });
 
@@ -519,9 +517,7 @@ describe("SubmissionPage", () => {
 
     fireEvent.click(await screen.findByLabelText("Kitchen"));
     // The form is a remedy for one refusal: nothing to see before it.
-    expect(
-      screen.queryByRole("combobox", { name: /Adjustment/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /Adjustment/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
 
     // Discreet until a kind is chosen: the select alone, no deposit fields.
@@ -529,9 +525,7 @@ describe("SubmissionPage", () => {
     expect(screen.queryByLabelText("Deposit amount")).toBeNull();
     fireEvent.change(kind, { target: { value: "deposit" } });
 
-    expect(
-      screen.getByText(/exceed the summaries by \$234\.56/),
-    ).toBeDefined();
+    expect(screen.getByText(/exceed the summaries by \$234\.56/)).toBeDefined();
     fireEvent.change(screen.getByLabelText("Deposit amount"), {
       target: { value: "234.56" },
     });
