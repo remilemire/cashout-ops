@@ -10,6 +10,13 @@ transaction counts to its card orders. A cashout whose documents disagree is
 not reconciled at all: completion fails with what does not add up rather than
 storing figures no document supports.
 
+The one allowance is a deposit: an amount the report counts among its card
+payments that no terminal summary shows, because it was never rung through a
+terminal that day. An admin may subtract it from the report's card payments
+before the amounts are compared — the summaries then have to add up to what
+remains. The count check stays as it is, and so do the figures returned: the
+report's card payments are stored as the report states them.
+
 Pure: no session and no I/O, so the rules can be read (and tested) on their
 own. The data service persists what this returns.
 """
@@ -21,7 +28,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import assert_never
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from app.errors import AppError
 from app.features.cashout.analyses.model import CashoutDocumentAnalysis
@@ -55,12 +62,16 @@ class ReconciledFigures:
 
 def reconcile_figures(
     analyses: Sequence[CashoutDocumentAnalysis],
+    *,
+    deposit_total: Decimal = Decimal(0),
 ) -> ReconciledFigures:
     """Cross-check a submission's verified analyses and return its figures.
 
     Callers pass verified analyses only (completion refuses the submission
-    otherwise). Raises an `AppError` from the data error codes for the first
-    rule the cashout breaks.
+    otherwise). `deposit_total` is an admin's adjustment: subtracted from the
+    report's card payments before they are compared to the summaries, and
+    nothing else. Raises an `AppError` from the data error codes for the
+    first rule the cashout breaks.
     """
     touchbistro_analyses: list[CashoutDocumentAnalysis] = []
     summary_analyses: list[CashoutDocumentAnalysis] = []
@@ -104,11 +115,23 @@ def reconcile_figures(
     # a shift that took no card payments at all — the same rule, not an
     # exemption from it.
     card_payments = sum((summary.grand_total for summary in summaries), Decimal(0))
-    if card_payments != report.card_payment_total:
+    if card_payments != report.card_payment_total - deposit_total:
+        # Both sides are public: the admin deciding whether a deposit
+        # explains the gap needs to see it. Decimals go out as strings so
+        # the cents survive JSON exactly.
+        ctx: dict[str, JsonValue] = {
+            "cardPaymentTotal": str(report.card_payment_total),
+            "serverSummaryTotal": str(card_payments),
+        }
+        applied = ""
+        if deposit_total:
+            ctx["depositTotal"] = str(deposit_total)
+            applied = f" less a {deposit_total} deposit"
         raise AppError(
             "RECONCILE_CARD_PAYMENT_MISMATCH",
             f"Server summary grand totals {card_payments} do not match"
-            f" TouchBistro card payments {report.card_payment_total}.",
+            f" TouchBistro card payments {report.card_payment_total}{applied}.",
+            ctx=ctx,
         )
 
     transactions = sum(summary.grand_total_transaction_count for summary in summaries)
@@ -120,7 +143,8 @@ def reconcile_figures(
         )
 
     # The cross-check passed, so the TouchBistro report stands for the whole
-    # cashout: its fields are the source columns, one for one.
+    # cashout: its fields are the source columns, one for one — the card
+    # payments included, deposit and all, as the report states them.
     return ReconciledFigures(
         food_net_sales=report.food_net_sales,
         drink_net_sales=report.drink_net_sales,

@@ -179,6 +179,12 @@ async def complete_submission(
     it takes exactly one TouchBistro report, and the server summaries filed
     with it must add up to that report's card payments and card orders. A
     cashout that does not add up stays open with a `RECONCILE_*` conflict.
+
+    The optional `adjustment` is admin-only (`FORBIDDEN` from anyone else):
+    a deposit the report counts among its card payments but no terminal
+    summary shows, subtracted from the report's card payments before the
+    cross-check, with an optional note. Both are recorded on the cashout
+    data; the stored card payments stay the report's own figure.
     """
     submission = await submissions_service.complete_submission(
         db, payload=payload, submission_id=submission_id, user=current_user

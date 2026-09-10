@@ -6,10 +6,24 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from app.core.schemas import BaseOut, UtcDateTime
+from pydantic import Field
+
+from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.users.schemas import UserOut
 
 from .types import TipoutDepartment
+
+
+class CashoutAdjustmentIn(BaseIn):
+    """An admin's correction to the cross-check.
+
+    A deposit the TouchBistro report counts among its card payments but no
+    terminal server summary shows: subtracted from the report's card payments
+    before they are compared to the summaries. The note says why.
+    """
+
+    deposit_total: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    note: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 class CashoutDataOut(BaseOut):
@@ -48,6 +62,13 @@ class CashoutDataOut(BaseOut):
     cash_owed_to_house: Decimal | None = None
     cash_owed_to_employee: Decimal | None = None
 
+    # An admin's adjustment to the cross-check, kept so the row explains its
+    # figures: the deposit subtracted from the report's card payments before
+    # comparing them to the summaries, and the note left with it. Null when
+    # none was needed. card_payment_total stays the report's own figure.
+    deposit_total: Decimal | None = None
+    adjustment_note: str | None = None
+
     submission_id: uuid.UUID
 
 
@@ -68,6 +89,7 @@ class CashoutDataListOut(CashoutDataOut):
 
 
 __all__ = [
+    "CashoutAdjustmentIn",
     "CashoutDataListOut",
     "CashoutDataOut",
     "CashoutDataSubmissionOut",

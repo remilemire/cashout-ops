@@ -195,7 +195,7 @@ Migration history is currently managed pragmatically rather than as a permanentl
 * Keep ORM models and migrations consistent.
 * Inspect existing migrations before deciding whether a change belongs in the initial migration or a new revision.
 * Do not generate a migration automatically when no persisted schema changed.
-* `reporting.cashout_data` is a view over `cashout_data`, `cashout_submissions`, and `users`, introduced by migration `9b2f6e1d4a73`, currently defined by `b8e1d47c5a92`, and readable by the `reporting_reader` role. It feeds the management Google Sheet, which reads its first nine columns by position, so keep their order and append new columns at the end.
+* `reporting.cashout_data` is a view over `cashout_data`, `cashout_submissions`, and `users`, introduced by migration `9b2f6e1d4a73`, currently defined by `e5a3c7d19f84`, and readable by the `reporting_reader` role. It feeds the management Google Sheet, which reads its first nine columns by position, so keep their order and append new columns at the end.
 * Postgres refuses to drop a column a view reads. A migration that drops or rebuilds such a column must `drop_view` the view first and `create_view` it afterwards, using `view_defined_in(<revision>, "cashout_data_view")` from `migrations/views.py` to take the definition from the revision that last defined it rather than copying it.
 * A change to the view's own SELECT ships as a new `ReplaceableView` in a new revision: its upgrade drops the old definition and creates the new one, and its downgrade does the reverse.
 * The migration tests run the chain to head, so a forgotten drop fails the suite instead of the deploy.

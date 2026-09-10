@@ -1,12 +1,14 @@
 # backend/tests/unit/test_reconciliation.py
 
-"""Reconciliation's version-aware read of stored analysis payloads.
+"""Reconciliation's version-aware read of stored analysis payloads, and the
+deposit adjustment's exact effect on the cross-check.
 
 The cross-check rules themselves are covered end-to-end in
 tests/integration/test_cashout_data.py; these tests cover what only the pure
 layer shows — verified data written under an older schema version is lifted
-through the registered upcasts before validation, and a version this build
-cannot read surfaces as the completion conflict, not a crash.
+through the registered upcasts before validation, a version this build
+cannot read surfaces as the completion conflict, not a crash, and a deposit
+moves the comparison without moving the figures.
 """
 
 from __future__ import annotations
@@ -143,3 +145,64 @@ def test_unknown_version_verified_data_is_a_completion_conflict() -> None:
     with pytest.raises(AppError) as exc_info:
         reconcile_figures(analyses)
     assert exc_info.value.code == "RECONCILE_DOCUMENT_DATA_INVALID"
+
+
+# ================================
+# ----- Deposit adjustment -------
+# ================================
+
+
+def _pair_short_by_234_56() -> list[CashoutDocumentAnalysis]:
+    """The report's 1234.56 of card payments against a summary of 1000.00:
+    the count still matches, so only the amount check is at stake."""
+    return [
+        _analysis(
+            CashoutDocumentClassification.TOUCHBISTRO_REPORT,
+            _TOUCHBISTRO_VERIFIED,
+            schema_version=TouchBistroReportData.SCHEMA_VERSION,
+        ),
+        _analysis(
+            CashoutDocumentClassification.SERVER_SUMMARY_REPORT,
+            {**_SUMMARY_VERIFIED, "grand_total": "1000.00"},
+            schema_version=ServerSummaryReportData.SCHEMA_VERSION,
+        ),
+    ]
+
+
+def test_a_deposit_that_closes_the_gap_reconciles() -> None:
+    # The report counts a 234.56 deposit among its card payments that no
+    # terminal summary shows. Subtracting it makes the summaries add up —
+    # and the stored card payments stay the report's own figure, deposit
+    # included; the adjustment only changed the comparison.
+    figures = reconcile_figures(
+        _pair_short_by_234_56(), deposit_total=Decimal("234.56")
+    )
+
+    assert figures.card_payment_total == Decimal("1234.56")
+
+
+def test_a_deposit_that_does_not_close_the_gap_still_conflicts() -> None:
+    with pytest.raises(AppError) as exc_info:
+        reconcile_figures(_pair_short_by_234_56(), deposit_total=Decimal("100.00"))
+
+    exc = exc_info.value
+    assert exc.code == "RECONCILE_CARD_PAYMENT_MISMATCH"
+    # Every side of the comparison is public, as strings so the cents survive
+    # JSON exactly — the admin deciding on a deposit needs to see them.
+    assert exc.ctx == {
+        "cardPaymentTotal": "1234.56",
+        "serverSummaryTotal": "1000.00",
+        "depositTotal": "100.00",
+    }
+
+
+def test_a_mismatch_without_a_deposit_reports_no_deposit() -> None:
+    with pytest.raises(AppError) as exc_info:
+        reconcile_figures(_pair_short_by_234_56())
+
+    exc = exc_info.value
+    assert exc.code == "RECONCILE_CARD_PAYMENT_MISMATCH"
+    assert exc.ctx == {
+        "cardPaymentTotal": "1234.56",
+        "serverSummaryTotal": "1000.00",
+    }

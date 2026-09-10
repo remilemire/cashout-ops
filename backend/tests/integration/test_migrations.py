@@ -857,7 +857,8 @@ def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
         # supplies the rate on every row it writes.
         assert rate_default is None
         # The sheet's nine columns stay where they were; the manager's two
-        # are appended after everything else.
+        # are appended after them, side by side (later revisions append
+        # their own columns after these, so they need not be the last).
         assert view_columns[:9] == [
             "employee_name",
             "business_date",
@@ -869,7 +870,9 @@ def test_upgrade_head_adds_the_manager_department(migrated_url: str) -> None:
             "cash_owed_to_employee",
             "display_order",
         ]
-        assert view_columns[-2:] == ["manager_tipout", "manager_tipout_rate"]
+        manager_at = view_columns.index("manager_tipout")
+        assert manager_at >= 9
+        assert view_columns[manager_at + 1] == "manager_tipout_rate"
     finally:
         engine.dispose()
 
@@ -1164,5 +1167,97 @@ def test_upgrade_head_renames_documents_to_uploads(migrated_url: str) -> None:
         names = _constraint_and_index_names(migrated_url, *tables)
         assert set(_RENAMED_NAMES) <= names
         assert names.isdisjoint(_RENAMED_NAMES.values())
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_appends_the_adjustment_columns(migrated_url: str) -> None:
+    """Data rows gain the two nullable adjustment columns; earlier rows carry
+    none.
+
+    A cashout closed before the deposit adjustment existed needed none, so
+    `deposit_total` and `adjustment_note` come up null on it, and the
+    reporting view grows the two appended columns without moving the sheet's
+    nine.
+    """
+    # The last revision before the adjustment columns.
+    _upgrade(migrated_url, "d26f1f11dc6a")
+    assert "deposit_total" not in _data_nullability(migrated_url)
+
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO users (id, full_name, email)
+                    VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                            'cashier@test.com');
+                    INSERT INTO cashout_submissions
+                        (id, employee_user_id, submitted_at, business_date,
+                         tipout_departments)
+                    VALUES ('22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111', now(),
+                            '2026-09-01',
+                            ARRAY['expo', 'manager']::tipout_department[]);
+                    INSERT INTO cashout_data
+                        (id, submission_id, food_net_sales, drink_net_sales,
+                         total_net_sales, card_payment_total,
+                         cash_payment_total, card_tip_total,
+                         tipout_departments, bar_tipout_rate,
+                         kitchen_tipout_rate, expo_tipout_rate,
+                         host_tipout_rate, manager_tipout_rate)
+                    VALUES ('55555555-5555-5555-5555-555555555555',
+                            '22222222-2222-2222-2222-222222222222',
+                            800.00, 400.00, 1200.00, 1234.56, 150.00, 180.00,
+                            ARRAY['expo', 'manager']::tipout_department[],
+                            0.0500, 0.0300, 0.0100, 0.0100, 0.0100);
+                    """
+                )
+            )
+
+        _upgrade(migrated_url, "head")
+
+        nullability = _data_nullability(migrated_url)
+        assert nullability["deposit_total"] is True
+        assert nullability["adjustment_note"] is True
+
+        with engine.connect() as conn:
+            deposit_total, adjustment_note, card_payment_total = conn.execute(
+                text(
+                    "SELECT deposit_total, adjustment_note, card_payment_total"
+                    " FROM cashout_data"
+                )
+            ).one()
+            view_columns = [
+                row[0]
+                for row in conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns"
+                        " WHERE table_schema = 'reporting'"
+                        " AND table_name = 'cashout_data'"
+                        " ORDER BY ordinal_position"
+                    )
+                )
+            ]
+        # No adjustment on a cashout closed before there was such a thing;
+        # its card payments are untouched.
+        assert deposit_total is None
+        assert adjustment_note is None
+        assert str(card_payment_total) == "1234.56"
+        # The sheet's nine columns stay where they were; the adjustment's
+        # two are appended after everything else.
+        assert view_columns[:9] == [
+            "employee_name",
+            "business_date",
+            "kitchen_tipout",
+            "bar_tipout",
+            "expo_tipout",
+            "host_tipout",
+            "cash_owed_to_house",
+            "cash_owed_to_employee",
+            "display_order",
+        ]
+        assert view_columns[-2:] == ["deposit_total", "adjustment_note"]
     finally:
         engine.dispose()

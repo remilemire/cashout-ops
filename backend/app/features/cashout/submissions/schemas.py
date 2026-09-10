@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
-from app.features.cashout.data.schemas import CashoutDataOut
+from app.features.cashout.data.schemas import CashoutAdjustmentIn, CashoutDataOut
 from app.features.cashout.data.types import TipoutDepartment
 from app.features.cashout.uploads.schemas import CashoutUploadOut
 from app.features.users.schemas import UserOut
@@ -53,6 +53,9 @@ class CashoutSubmissionComplete(BaseIn):
     # The cashier's selection. Reconciliation adds the manager regardless, so
     # naming it here is allowed but never required.
     tipout_departments: set[TipoutDepartment]
+    # Admin-only: a deposit subtracted from the report's card payments before
+    # the cross-check. The service refuses it from anyone else.
+    adjustment: CashoutAdjustmentIn | None = None
 
 
 __all__ = [

@@ -12,7 +12,11 @@ from app.errors import AppError
 from app.features.cashout.analyses.model import CashoutDocumentAnalysis
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
 from app.features.cashout.data import service as data_service
-from app.features.cashout.shared.access import ensure_can_view, is_admin
+from app.features.cashout.shared.access import (
+    ensure_can_adjust,
+    ensure_can_view,
+    is_admin,
+)
 from app.features.users.model import User
 from app.integrations.storage import DocumentStorageClient
 
@@ -149,7 +153,13 @@ async def complete_submission(
     submission_id: UUID,
     user: User,
 ) -> CashoutSubmission:
-    """Reconcile the verified analyses into a CashoutData and close the cashout."""
+    """Reconcile the verified analyses into a CashoutData and close the cashout.
+
+    An admin may record an adjustment with it — a deposit the TouchBistro
+    report counts among its card payments but no terminal summary shows,
+    subtracted before the cross-check. The cashier cannot: a cashout that
+    does not add up stays open until an admin decides the gap is explained.
+    """
     submission = await _get_submission_for_actor(
         db, submission_id=submission_id, actor=user
     )
@@ -173,11 +183,15 @@ async def complete_submission(
                 raise AppError("SUBMISSION_UNVERIFIED")
             analyses.append(analysis)
 
+    if payload.adjustment is not None:
+        ensure_can_adjust(user)
+
     data = await data_service.reconcile(
         db,
         submission_id=submission.id,
         analyses=analyses,
         tipout_departments=payload.tipout_departments,
+        adjustment=payload.adjustment,
     )
     submission.status = CashoutSubmissionStatus.COMPLETED
     # Snapshot the departments the row was reconciled with (the selection

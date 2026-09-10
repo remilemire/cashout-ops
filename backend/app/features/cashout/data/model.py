@@ -7,7 +7,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ARRAY, Computed, DateTime, ForeignKey, Numeric, Uuid, func
+from sqlalchemy import (
+    ARRAY,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    Text,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.models import Base, enum_column
@@ -110,6 +119,14 @@ class CashoutData(Base):
     card_payment_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     cash_payment_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     card_tip_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # An admin's adjustment to the cross-check: the deposit subtracted from the
+    # report's card payments before comparing them to the summaries, and the
+    # note left with it — kept so the row explains its figures. Null when none
+    # was needed. Read by no generated column: card_payment_total stays the
+    # report's own figure, deposit included.
+    deposit_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    adjustment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Which departments this cashout tips out to: the cashier's selection
     # plus the manager, which service.reconcile adds to every cashout. A

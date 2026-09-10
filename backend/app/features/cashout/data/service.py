@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.features.cashout.analyses.model import CashoutDocumentAnalysis
 from . import repository
 from .model import CashoutData
 from .reconciliation import reconcile_figures
+from .schemas import CashoutAdjustmentIn
 from .types import TipoutDepartment
 
 
@@ -22,12 +24,19 @@ async def reconcile(
     submission_id: UUID,
     analyses: Sequence[CashoutDocumentAnalysis],
     tipout_departments: set[TipoutDepartment],
+    adjustment: CashoutAdjustmentIn | None,
 ) -> CashoutData:
     """Build the submission's data row from its verified analyses and add it.
 
     The source figures come from `reconciliation`, which cross-checks the
     documents against each other first — a cashout that does not add up
     raises there and never reaches a row.
+
+    `adjustment` is an admin's correction to that cross-check (the caller
+    decides who may supply one): its deposit is subtracted from the report's
+    card payments before they are compared to the summaries, and the deposit
+    and its note are kept on the row so it explains its figures. The stored
+    card payments stay the report's own figure.
 
     `tipout_departments` is the cashier's selection. The manager tips out on
     every cashout, so it is added here whatever the selection says — this is
@@ -38,7 +47,10 @@ async def reconcile(
     closes against the rates in force at that moment, and editing them
     afterwards must not restate it.
     """
-    figures = reconcile_figures(analyses)
+    figures = reconcile_figures(
+        analyses,
+        deposit_total=adjustment.deposit_total if adjustment else Decimal(0),
+    )
     departments = {*tipout_departments, TipoutDepartment.MANAGER}
 
     rates = settings.tipout
@@ -50,6 +62,8 @@ async def reconcile(
         card_payment_total=figures.card_payment_total,
         cash_payment_total=figures.cash_payment_total,
         card_tip_total=figures.card_tip_total,
+        deposit_total=adjustment.deposit_total if adjustment else None,
+        adjustment_note=adjustment.note if adjustment else None,
         # Sorted so the stored order does not depend on set iteration order.
         tipout_departments=sorted(departments),
         bar_tipout_rate=rates.BAR_RATE,

@@ -3,7 +3,8 @@
 """The single authorization rule for cashout submissions.
 
 A submission belongs to its employee; admins (and the owner) have full
-control over every cashout, so acting and viewing share the same rule.
+control over every cashout, so acting and viewing share the same rule. One
+act is theirs alone: adjusting a cashout's reconciliation.
 Pure policy — no database access, no service imports.
 """
 
@@ -30,4 +31,12 @@ def ensure_can_view(submission: CashoutSubmission, user: User) -> None:
         )
 
 
-__all__ = ["ensure_can_view", "is_admin"]
+def ensure_can_adjust(user: User) -> None:
+    """Only an admin may correct the cross-check a cashout closes against."""
+    if not is_admin(user):
+        raise AppError(
+            "FORBIDDEN", "Only an admin can adjust a cashout's reconciliation."
+        )
+
+
+__all__ = ["ensure_can_adjust", "ensure_can_view", "is_admin"]

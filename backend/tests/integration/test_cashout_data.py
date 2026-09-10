@@ -45,16 +45,51 @@ async def _complete_a_cashout(
     return submission_id
 
 
-async def _try_complete(client: AsyncClient, submission_id: str) -> dict[str, Any]:
+async def _try_complete(
+    client: AsyncClient, submission_id: str, *, body: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """POST the completion and return the response body, whatever it is."""
     response = await client.post(
         f"/api/cashout/submissions/{submission_id}/complete",
-        json=completion_body(),
+        json=body if body is not None else completion_body(),
         headers=csrf_headers(client),
     )
-    body: dict[str, Any] = response.json()
-    body["_status"] = response.status_code
-    return body
+    payload: dict[str, Any] = response.json()
+    payload["_status"] = response.status_code
+    return payload
+
+
+def _adjusted_completion_body(
+    deposit_total: str, *, note: str | None = "Party deposit"
+) -> dict[str, Any]:
+    """The completion payload with an admin's deposit adjustment on it."""
+    adjustment: dict[str, Any] = {"depositTotal": deposit_total}
+    if note is not None:
+        adjustment["note"] = note
+    return {**completion_body(), "adjustment": adjustment}
+
+
+async def _prepare_deposit_mismatch(
+    client: AsyncClient, *, ai_client: FakeAIClient, drain: OutboxDrain
+) -> str:
+    """A verified cashout whose summary is 234.56 short of the report.
+
+    The summary is verified with a grand total that no longer adds up to
+    the report's 1234.56 of card payments — the count still matches, so
+    this is the amount check alone. The shape of a deposit the report
+    counts among its card payments that no terminal ever saw.
+    """
+    submission_id = await create_submission(client)
+    touchbistro, summary = await upload_reconcilable_documents(
+        client, submission_id, ai_client=ai_client, drain=drain
+    )
+    await verify_analysis(client, touchbistro["id"])
+    await verify_analysis(
+        client,
+        summary["id"],
+        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1000.00"}},
+    )
+    return submission_id
 
 
 async def _complete_with_touchbistro_overrides(
@@ -261,6 +296,10 @@ async def test_completion_takes_its_figures_from_the_touchbistro_report(
     assert row["cardPaymentTotal"] == "1234.56"
     assert row["cashPaymentTotal"] == "150.00"
     assert row["cardTipTotal"] == "180.00"
+
+    # The documents added up on their own, so no adjustment is recorded.
+    assert row["depositTotal"] is None
+    assert row["adjustmentNote"] is None
 
     # 400.00 * 0.0500 and 800.00 * 0.0300; the manager's 1200.00 * 0.0100 is
     # on every cashout; the unselected departments stay null.
@@ -489,23 +528,123 @@ async def test_complete_with_mismatched_card_payments_conflicts(
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
 ) -> None:
-    submission_id = await create_submission(cashier_client)
-    touchbistro, summary = await upload_reconcilable_documents(
-        cashier_client, submission_id, ai_client=ai_client, drain=drain_outbox
-    )
-    await verify_analysis(cashier_client, touchbistro["id"])
-    # Verified with a grand total that no longer adds up to the report's card
-    # payments — the count still matches, so this is the amount check alone.
-    await verify_analysis(
-        cashier_client,
-        summary["id"],
-        {"verifiedData": {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1000.00"}},
+    submission_id = await _prepare_deposit_mismatch(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
     )
 
     body = await _try_complete(cashier_client, submission_id)
 
     assert body["_status"] == 409
     assert body["code"] == "RECONCILE_CARD_PAYMENT_MISMATCH"
+    # Both sides are public, so an admin can see whether a deposit explains
+    # the gap; with none applied there is no deposit to report.
+    assert body["ctx"] == {
+        "cardPaymentTotal": "1234.56",
+        "serverSummaryTotal": "1000.00",
+    }
+
+
+# ================================
+# ----- Deposit adjustment -------
+# ================================
+
+
+async def test_admin_completes_a_deposit_mismatch_with_an_adjustment(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    submission_id = await _prepare_deposit_mismatch(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
+    )
+
+    body = await _try_complete(
+        admin_client, submission_id, body=_adjusted_completion_body("234.56")
+    )
+
+    assert body["_status"] == 200, body
+    assert body["status"] == "completed"
+
+    (row,) = (await admin_client.get("/api/cashout/data")).json()
+    # The adjustment is recorded so the row explains itself; the stored card
+    # payments stay the report's own figure — the deposit only changed the
+    # cross-check.
+    assert row["depositTotal"] == "234.56"
+    assert row["adjustmentNote"] == "Party deposit"
+    assert row["cardPaymentTotal"] == "1234.56"
+
+    detail = (
+        await admin_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["data"]["depositTotal"] == "234.56"
+    assert detail["data"]["adjustmentNote"] == "Party deposit"
+
+
+async def test_adjustment_is_admin_only(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    submission_id = await _prepare_deposit_mismatch(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
+    )
+
+    body = await _try_complete(
+        cashier_client, submission_id, body=_adjusted_completion_body("234.56")
+    )
+
+    assert body["_status"] == 403
+    assert body["code"] == "FORBIDDEN"
+    # Refused before anything was reconciled: the cashout is still open.
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == "processing"
+    assert detail["data"] is None
+
+
+async def test_adjustment_that_does_not_close_the_gap_conflicts(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    submission_id = await _prepare_deposit_mismatch(
+        cashier_client, ai_client=ai_client, drain=drain_outbox
+    )
+
+    body = await _try_complete(
+        admin_client, submission_id, body=_adjusted_completion_body("100.00")
+    )
+
+    assert body["_status"] == 409
+    assert body["code"] == "RECONCILE_CARD_PAYMENT_MISMATCH"
+    # The deposit that was tried is reported back with the two sides.
+    assert body["ctx"] == {
+        "cardPaymentTotal": "1234.56",
+        "serverSummaryTotal": "1000.00",
+        "depositTotal": "100.00",
+    }
+
+
+async def test_adjustment_rejects_a_non_positive_deposit(
+    cashier_client: AsyncClient,
+    admin_client: AsyncClient,
+) -> None:
+    # Body validation comes before everything else, so a bare cashout is
+    # enough: a deposit of nothing is not an adjustment.
+    submission_id = await create_submission(cashier_client)
+
+    body = await _try_complete(
+        admin_client, submission_id, body=_adjusted_completion_body("0")
+    )
+
+    assert body["_status"] == 422
+    assert body["code"] == "VALIDATION_FAILED"
+    assert [issue["path"] for issue in body["issues"]] == [
+        ["adjustment", "depositTotal"]
+    ]
 
 
 async def test_complete_with_mismatched_transaction_counts_conflicts(
