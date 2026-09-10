@@ -64,9 +64,9 @@ _CROPPED_CONTENT_OK: dict[int | str, dict[str, Any]] = {
     "/analyses/{analysis_id}/cropped",
     response_class=Response,
     responses=_CROPPED_CONTENT_OK
-    | error_responses("ANALYSIS_NOT_FOUND", "DOCUMENT_NOT_FOUND", "VALIDATION_FAILED"),
+    | error_responses("ANALYSIS_NOT_FOUND", "CROP_NOT_FOUND", "VALIDATION_FAILED"),
 )
-async def get_cropped_document(
+async def get_crop(
     analysis_id: AnalysisId,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -78,11 +78,11 @@ async def get_cropped_document(
     extraction — what the AI read, and what to check the extraction
     against. An analysis that read the upload whole (`croppedContentType`
     null: no detectable text, cropping off, a manual entry, or not yet
-    extracted) has none, and the document's own content endpoint has the
+    extracted) has none, and the upload's own content endpoint has the
     original.
     Accessible to the submission's employee or an admin.
     """
-    content, original_filename = await analyses_service.get_cropped_document(
+    content, original_filename = await analyses_service.get_crop(
         db, analysis_id=analysis_id, user=current_user, storage=storage
     )
     filename = original_filename.replace('"', "")

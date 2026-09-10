@@ -85,7 +85,7 @@ export function VerificationForm({
         queryKey: cashoutKeys.submission(submissionId),
       });
     },
-    // The analysis (or its document or submission) was deleted elsewhere:
+    // The analysis (or its upload or submission) was deleted elsewhere:
     // refresh the detail so the dead form disappears instead of failing.
     onError: (error) => {
       if (isNotFound(error)) {

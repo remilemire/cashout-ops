@@ -6,11 +6,11 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { cashoutApi, cashoutKeys } from "@/api/cashout";
-import type { CashoutSubmission, ManualDocumentInput } from "@/api/types";
+import type { CashoutSubmission, ManualEntryInput } from "@/api/types";
 import { PageHeader, TextField } from "@/components/ui";
 import { formatDateTime, localISODate } from "@/lib/format";
 
-import { ManualDocumentDialog } from "./ManualDocumentDialog";
+import { ManualEntryDialog } from "./ManualEntryDialog";
 import { UploadZone } from "./UploadZone";
 import { SubmissionStatusBadge } from "./status";
 
@@ -26,7 +26,7 @@ export function NewCashoutPage() {
   const [today] = useState(() => localISODate());
   const [businessDate, setBusinessDate] = useState(today);
 
-  // The submission is created lazily with the first document, so an abandoned
+  // The submission is created lazily with the first upload, so an abandoned
   // page leaves nothing behind. A failed first upload reuses the created one,
   // re-dated first if the day was changed in the meantime.
   const ensureSubmissionId = async (): Promise<string> => {
@@ -50,10 +50,7 @@ export function NewCashoutPage() {
   const initialUpload = useMutation({
     mutationFn: async (file: File) => {
       const targetSubmissionId = await ensureSubmissionId();
-      const analysis = await cashoutApi.uploadDocument(
-        targetSubmissionId,
-        file,
-      );
+      const analysis = await cashoutApi.createUpload(targetSubmissionId, file);
       return { analysis, submissionId: targetSubmissionId };
     },
     onSuccess: ({ analysis, submissionId: createdSubmissionId }) => {
@@ -68,10 +65,10 @@ export function NewCashoutPage() {
       input,
     }: {
       file: File;
-      input: ManualDocumentInput;
+      input: ManualEntryInput;
     }) => {
       const targetSubmissionId = await ensureSubmissionId();
-      const analysis = await cashoutApi.uploadManualDocument(
+      const analysis = await cashoutApi.createManualUpload(
         targetSubmissionId,
         file,
         input,
@@ -119,7 +116,7 @@ export function NewCashoutPage() {
         onManualEntry={() => setManualOpen(true)}
       />
 
-      <ManualDocumentDialog
+      <ManualEntryDialog
         withFile
         open={manualOpen}
         onClose={() => setManualOpen(false)}

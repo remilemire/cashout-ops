@@ -42,7 +42,7 @@ class CashoutDocumentAnalysisOut(BaseOut):
     verified_data_json: dict[str, Any] | None = None
     verified_by_user_id: uuid.UUID | None = None
     verified_at: UtcDateTime | None = None
-    cashout_document_id: uuid.UUID
+    cashout_upload_id: uuid.UUID
 
 
 class CashoutAnalysisVerify(BaseIn):

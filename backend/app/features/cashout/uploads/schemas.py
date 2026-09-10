@@ -1,4 +1,4 @@
-# backend/app/features/cashout/documents/schemas.py
+# backend/app/features/cashout/uploads/schemas.py
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from app.features.cashout.analyses.schemas import CashoutDocumentAnalysisOut
 from app.lib.documents import DocumentContentType
 
 
-class CashoutDocumentOut(BaseOut):
+class CashoutUploadOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
     content_type: DocumentContentType
@@ -22,4 +22,4 @@ class CashoutDocumentOut(BaseOut):
     analyses: list[CashoutDocumentAnalysisOut] = []
 
 
-__all__ = ["CashoutDocumentOut"]
+__all__ = ["CashoutUploadOut"]

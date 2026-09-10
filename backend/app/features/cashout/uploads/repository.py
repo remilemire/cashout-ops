@@ -1,6 +1,6 @@
-# backend/app/features/cashout/documents/repository.py
+# backend/app/features/cashout/uploads/repository.py
 
-"""Database access for cashout documents; only the documents service imports this."""
+"""Database access for cashout uploads; only the uploads service imports this."""
 
 from __future__ import annotations
 
@@ -18,37 +18,35 @@ from app.features.cashout.submissions.repository import (
     get_submission as get_live_submission,
 )
 
-from .model import CashoutDocument
+from .model import CashoutUpload
 
 
-async def get_document(
-    db: AsyncSession, *, document_id: UUID
-) -> CashoutDocument | None:
-    return await db.get(CashoutDocument, document_id)
+async def get_upload(db: AsyncSession, *, upload_id: UUID) -> CashoutUpload | None:
+    return await db.get(CashoutUpload, upload_id)
 
 
-async def add_document(db: AsyncSession, document: CashoutDocument) -> None:
+async def add_upload(db: AsyncSession, upload: CashoutUpload) -> None:
     # Flush before writing to storage: the (submission, checksum) unique index
     # rejects a duplicate upload before its bytes land in the object store.
-    db.add(document)
+    db.add(upload)
     await db.flush()
 
 
-async def delete_document(db: AsyncSession, document: CashoutDocument) -> None:
-    await db.delete(document)
+async def delete_upload(db: AsyncSession, upload: CashoutUpload) -> None:
+    await db.delete(upload)
     # Flush so a database failure surfaces before the stored bytes are gone.
     await db.flush()
 
 
-async def list_crop_storage_keys(db: AsyncSession, *, document_id: UUID) -> list[str]:
-    """The storage keys of the crops recorded on the document's analyses.
+async def list_crop_storage_keys(db: AsyncSession, *, upload_id: UUID) -> list[str]:
+    """The storage keys of the crops recorded on the upload's analyses.
 
-    Deleting the document cascades to its analysis rows, not to the objects
+    Deleting the upload cascades to its analysis rows, not to the objects
     they point at, so the caller deletes these from storage itself.
     """
     keys = await db.scalars(
         select(CashoutDocumentAnalysis.cropped_storage_key).where(
-            CashoutDocumentAnalysis.cashout_document_id == document_id,
+            CashoutDocumentAnalysis.cashout_upload_id == upload_id,
             CashoutDocumentAnalysis.cropped_storage_key.is_not(None),
         )
     )
@@ -56,9 +54,9 @@ async def list_crop_storage_keys(db: AsyncSession, *, document_id: UUID) -> list
 
 
 __all__ = [
-    "get_document",
-    "add_document",
-    "delete_document",
+    "get_upload",
+    "add_upload",
+    "delete_upload",
     "list_crop_storage_keys",
     "get_live_submission",
 ]

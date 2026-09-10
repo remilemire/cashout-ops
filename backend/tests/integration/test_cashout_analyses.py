@@ -23,9 +23,9 @@ from tests.support.cashout import (
     completion_body,
     configure_server_summary,
     create_submission,
+    create_upload,
     poll_analysis,
     unverify_analysis,
-    upload_document,
     upload_reconcilable_documents,
     verify_analysis,
 )
@@ -50,7 +50,7 @@ async def test_verify_without_corrections_confirms_extraction(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
 
     verified = await verify_analysis(cashier_client, analysis["id"])
@@ -109,7 +109,7 @@ async def test_unverify_preserves_corrections_for_reediting(
     # revert to the extracted value.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
 
     corrected = {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1300.00"}
@@ -140,7 +140,7 @@ async def test_retry_extraction_clears_stale_correction(
     # extraction; a re-run must not carry it into the fresh one.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
 
     corrected = {**SERVER_SUMMARY_EXTRACTED, "grand_total": "1300.00"}
@@ -169,7 +169,7 @@ async def test_unverify_non_verified_analysis_conflicts(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     # Extracted but never verified: nothing to send back.
 
     response = await cashier_client.post(
@@ -215,7 +215,7 @@ async def test_unverify_requires_employee_or_admin(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     # Plain staff cannot edit someone else's cashout.
@@ -245,7 +245,7 @@ async def test_unclassifiable_document_fails_for_retry(
     ](value=None, confidence=0.3)
 
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # A document the AI can't place has nothing to verify: the analysis fails
     # like any other extraction failure, so the cashier has to act on it.
@@ -301,7 +301,7 @@ async def test_failed_extraction_and_retry(
     )
 
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     # The provider failure is recorded on the analysis as FAILED, under the
     # document-AI code the general AI refusal maps to.
@@ -351,7 +351,7 @@ async def test_extraction_with_missing_file_fails_as_missing_document(
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": SAMPLE_PDF_UPLOAD},
         headers=csrf_headers(cashier_client),
     )
@@ -379,13 +379,13 @@ async def test_extraction_skipped_when_submission_cancelled_before_dispatch(
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
     created = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": SAMPLE_PDF_UPLOAD},
         headers=csrf_headers(cashier_client),
     )
     assert created.status_code == 201, created.text
 
-    # Cancelling a cashout that holds documents soft-deletes it; the enqueued
+    # Cancelling a cashout that holds uploads soft-deletes it; the enqueued
     # extraction still dispatches, but must not burn an AI call analyzing a
     # cashout nothing can reach anymore.
     cancelled = await cashier_client.delete(
@@ -412,7 +412,7 @@ async def test_retry_extraction_from_needs_verification(
     # re-run too (e.g. the cashier wants a fresh read of the document).
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     analysis = await poll_analysis(cashier_client, created["id"])
     assert analysis["status"] == DocumentAnalysisStatus.NEEDS_VERIFICATION.value
 
@@ -436,7 +436,7 @@ async def test_verify_twice_conflicts(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     response = await cashier_client.post(
@@ -471,7 +471,7 @@ async def test_extraction_crops_the_document_and_reads_the_crop(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
 
@@ -479,9 +479,9 @@ async def test_extraction_crops_the_document_and_reads_the_crop(
     assert analysis["status"] == "needs_verification"
     assert analysis["croppedContentType"] == "image/png"
 
-    # The original is untouched, and still what the document endpoint serves.
+    # The original is untouched, and still what the upload endpoint serves.
     original = await cashier_client.get(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/content"
+        f"/api/cashout/uploads/{created['cashoutUploadId']}/content"
     )
     assert original.content == SAMPLE_PHOTO_BYTES
 
@@ -511,7 +511,7 @@ async def test_retry_reads_the_stored_crop_without_detecting_again(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
     crop_content = DocumentContent(
@@ -546,7 +546,7 @@ async def test_extraction_without_detectable_text_reads_the_original(
     # there is no crop to serve.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
 
@@ -558,10 +558,10 @@ async def test_extraction_without_detectable_text_reads_the_original(
 
     cropped = await cashier_client.get(f"/api/cashout/analyses/{created['id']}/cropped")
     assert cropped.status_code == 404
-    assert cropped.json()["code"] == "DOCUMENT_NOT_FOUND"
+    assert cropped.json()["code"] == "CROP_NOT_FOUND"
 
 
-async def test_cropped_document_with_missing_file_is_not_found(
+async def test_crop_with_missing_file_is_not_found(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -571,7 +571,7 @@ async def test_cropped_document_with_missing_file_is_not_found(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
     del storage.objects[_cropped_key(storage)]
@@ -581,7 +581,7 @@ async def test_cropped_document_with_missing_file_is_not_found(
     )
 
     assert response.status_code == 404
-    assert response.json()["code"] == "DOCUMENT_NOT_FOUND"
+    assert response.json()["code"] == "CROP_NOT_FOUND"
 
 
 async def test_extraction_survives_a_failed_detection(
@@ -596,7 +596,7 @@ async def test_extraction_survives_a_failed_detection(
     configure_server_summary(ai_client)
     text_detector.error = TextDetectionError("model down")
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
 
@@ -619,7 +619,7 @@ async def test_a_failed_extraction_keeps_its_crop(
     ai_client.error = AIAnalysisError(AIErrorCode.SERVICE_UNAVAILABLE, "down")
     text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PHOTO_UPLOAD
     )
 
@@ -633,12 +633,12 @@ async def test_a_failed_extraction_keeps_its_crop(
 # ---------- Several documents in one upload ----------
 
 
-async def _document_analyses(
+async def _upload_analyses(
     client: AsyncClient, submission_id: str
 ) -> list[dict[str, Any]]:
     detail = (await client.get(f"/api/cashout/submissions/{submission_id}")).json()
-    (document,) = detail["documents"]
-    return document["analyses"]
+    (upload,) = detail["uploads"]
+    return upload["analyses"]
 
 
 async def _crop(client: AsyncClient, analysis_id: str) -> bytes:
@@ -657,7 +657,7 @@ async def test_an_upload_holding_two_documents_gets_an_analysis_each(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client,
         submission_id,
         drain=drain_outbox,
@@ -666,7 +666,7 @@ async def test_an_upload_holding_two_documents_gets_an_analysis_each(
 
     # The upload's own analysis took the first receipt; the job added a
     # sibling for the second and queued its extraction, which the drain ran.
-    analyses = await _document_analyses(cashier_client, submission_id)
+    analyses = await _upload_analyses(cashier_client, submission_id)
     assert [analysis["position"] for analysis in analyses] == [1, 2]
     assert analyses[0]["id"] == created["id"]
     for analysis in analyses:
@@ -700,14 +700,14 @@ async def test_a_pdf_gets_an_analysis_per_page(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_PHOTO_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    await upload_document(
+    await create_upload(
         cashier_client,
         submission_id,
         drain=drain_outbox,
         file=SAMPLE_RECEIPT_PDF_UPLOAD,
     )
 
-    analyses = await _document_analyses(cashier_client, submission_id)
+    analyses = await _upload_analyses(cashier_client, submission_id)
     assert [analysis["position"] for analysis in analyses] == [1, 2]
     # A page's crop is a render, stored as PNG whatever the upload was.
     for analysis in analyses:
@@ -722,7 +722,7 @@ async def test_a_pdf_gets_an_analysis_per_page(
     assert len(storage.objects) == 3
 
 
-async def test_restarting_a_document_detects_its_documents_again(
+async def test_restarting_an_upload_detects_its_documents_again(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -732,19 +732,19 @@ async def test_restarting_a_document_detects_its_documents_again(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client,
         submission_id,
         drain=drain_outbox,
         file=SAMPLE_TWO_RECEIPTS_UPLOAD,
     )
-    before = await _document_analyses(cashier_client, submission_id)
+    before = await _upload_analyses(cashier_client, submission_id)
     assert len(before) == 2
 
     # Starting over: every analysis and its crop go, one fresh analysis
     # comes back, and the job finds both documents again.
     restarted = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/uploads/{created['cashoutUploadId']}/extract",
         headers=csrf_headers(cashier_client),
     )
     assert restarted.status_code == 200, restarted.text
@@ -755,7 +755,7 @@ async def test_restarting_a_document_detects_its_documents_again(
     assert fresh["id"] not in {analysis["id"] for analysis in before}
     await drain_outbox()
 
-    after = await _document_analyses(cashier_client, submission_id)
+    after = await _upload_analyses(cashier_client, submission_id)
     assert [analysis["position"] for analysis in after] == [1, 2]
     assert after[0]["id"] == fresh["id"]
     assert {analysis["id"] for analysis in after}.isdisjoint(
@@ -775,19 +775,19 @@ async def test_restart_is_refused_while_an_analysis_is_verified(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(
+    created = await create_upload(
         cashier_client,
         submission_id,
         drain=drain_outbox,
         file=SAMPLE_TWO_RECEIPTS_UPLOAD,
     )
-    first, second = await _document_analyses(cashier_client, submission_id)
+    first, second = await _upload_analyses(cashier_client, submission_id)
     await verify_analysis(cashier_client, second["id"])
 
-    # A verified sibling settles the document: starting over would discard
+    # A verified sibling settles the upload: starting over would discard
     # the cashier's confirmation.
     response = await cashier_client.post(
-        f"/api/cashout/documents/{created['cashoutDocumentId']}/extract",
+        f"/api/cashout/uploads/{created['cashoutUploadId']}/extract",
         headers=csrf_headers(cashier_client),
     )
 
@@ -811,13 +811,13 @@ async def test_completion_requires_every_analysis_verified(
     configure_server_summary(ai_client)
     text_detector.boxes = SAMPLE_TWO_RECEIPTS_TEXT_BOXES
     submission_id = await create_submission(cashier_client)
-    await upload_document(
+    await create_upload(
         cashier_client,
         submission_id,
         drain=drain_outbox,
         file=SAMPLE_TWO_RECEIPTS_UPLOAD,
     )
-    first, _ = await _document_analyses(cashier_client, submission_id)
+    first, _ = await _upload_analyses(cashier_client, submission_id)
     await verify_analysis(cashier_client, first["id"])
 
     # One of the two documents in the upload is still unverified.

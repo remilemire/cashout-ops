@@ -46,7 +46,7 @@ const analysis: CashoutDocumentAnalysis = {
   verifiedDataJson: null,
   verifiedByUserId: null,
   verifiedAt: null,
-  cashoutDocumentId: "document-1",
+  cashoutUploadId: "upload-1",
 };
 
 function renderForm(

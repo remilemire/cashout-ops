@@ -1,4 +1,4 @@
-# backend/app/features/cashout/documents/router.py
+# backend/app/features/cashout/uploads/router.py
 
 from __future__ import annotations
 
@@ -15,41 +15,41 @@ from app.integrations.storage import DocumentStorageClient
 from app.integrations.storage.dependencies import get_document_storage
 from app.lib.documents import DocumentContentType
 
-from . import service as documents_service
+from . import service as uploads_service
 
 router = APIRouter()
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
-DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
+UploadId = Annotated[UUID, Path(description="Cashout upload ID.")]
 
 
 @router.delete(
-    "/documents/{document_id}",
+    "/uploads/{upload_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(
-        "DOCUMENT_NOT_FOUND", "SUBMISSION_COMPLETED", "VALIDATION_FAILED"
+        "UPLOAD_NOT_FOUND", "SUBMISSION_COMPLETED", "VALIDATION_FAILED"
     ),
 )
-async def delete_document(
-    document_id: DocumentId,
+async def delete_upload(
+    upload_id: UploadId,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> None:
-    """Remove a document (and its analyses) from an incomplete submission.
+    """Remove an upload (and its analyses) from an incomplete submission.
 
-    The submission's employee or an admin may remove documents, and only
-    while the submission is still `PROCESSING`.
+    The submission's employee or an admin may remove uploads, and only while
+    the submission is still `PROCESSING`.
     """
-    await documents_service.delete_document(
+    await uploads_service.delete_upload(
         db,
-        document_id=document_id,
+        upload_id=upload_id,
         user=current_user,
         storage=storage,
     )
 
 
-_DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
+_UPLOAD_CONTENT_OK: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "The original uploaded bytes.",
         "content": {member.value: {} for member in DocumentContentType},
@@ -58,28 +58,28 @@ _DOCUMENT_CONTENT_OK: dict[int | str, dict[str, Any]] = {
 
 
 @router.get(
-    "/documents/{document_id}/content",
+    "/uploads/{upload_id}/content",
     response_class=Response,
-    responses=_DOCUMENT_CONTENT_OK
-    | error_responses("DOCUMENT_NOT_FOUND", "VALIDATION_FAILED"),
+    responses=_UPLOAD_CONTENT_OK
+    | error_responses("UPLOAD_NOT_FOUND", "VALIDATION_FAILED"),
 )
-async def get_document_content(
-    document_id: DocumentId,
+async def get_upload_content(
+    upload_id: UploadId,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> Response:
-    """Serve the original uploaded document (image or PDF), inline.
+    """Serve the original uploaded file (image or PDF), inline.
 
     Accessible to the submission's employee or an admin.
     """
-    document, data = await documents_service.get_document_content(
-        db, document_id=document_id, user=current_user, storage=storage
+    upload, data = await uploads_service.get_upload_content(
+        db, upload_id=upload_id, user=current_user, storage=storage
     )
-    filename = document.original_filename.replace('"', "")
+    filename = upload.original_filename.replace('"', "")
     return Response(
         content=data,
-        media_type=document.content_type.value,
+        media_type=upload.content_type.value,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 

@@ -37,9 +37,9 @@ class StorageSettings(SettingsGroup):
         default=None, validation_alias="S3_ENDPOINT_URL"
     )
 
-    # Upload ceiling for a single document, in megabytes. The upload endpoint
+    # Upload ceiling for a single file, in megabytes. The upload endpoint
     # stops reading a request body once it passes this, and the service rejects
-    # the upload (DOCUMENT_TOO_LARGE). Configured in MB because that is how the
+    # the upload (UPLOAD_TOO_LARGE). Configured in MB because that is how the
     # limit is communicated to users; code reads MAX_DOCUMENT_SIZE_BYTES.
     MAX_DOCUMENT_SIZE_MB: int = 20
 

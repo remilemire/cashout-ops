@@ -21,7 +21,7 @@ from tests.support.api import csrf_headers
 from tests.support.cashout import (
     configure_server_summary,
     create_submission,
-    upload_document,
+    create_upload,
 )
 from tests.support.documents import SAMPLE_PDF_BYTES, SAMPLE_PNG_UPLOAD
 from tests.support.factories import create_user
@@ -192,7 +192,7 @@ async def test_verify_code_per_ip_is_limited(client: AsyncClient) -> None:
 # ================================
 
 
-async def test_upload_documents_per_user_is_limited(
+async def test_uploads_per_user_is_limited(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     make_client: ClientFactory,
@@ -205,13 +205,13 @@ async def test_upload_documents_per_user_is_limited(
 
     # Two uploads with distinct bytes (duplicate checksums are rejected)
     # spend the whole quota.
-    await upload_document(cashier_client, submission_id, drain=drain_outbox)
-    await upload_document(
+    await create_upload(cashier_client, submission_id, drain=drain_outbox)
+    await create_upload(
         cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
     )
 
     response = await cashier_client.post(
-        f"/api/cashout/submissions/{submission_id}/documents",
+        f"/api/cashout/submissions/{submission_id}/uploads",
         files={"file": ("third.pdf", SAMPLE_PDF_BYTES + b" third", "application/pdf")},
         headers=csrf_headers(cashier_client),
     )
@@ -225,7 +225,7 @@ async def test_upload_documents_per_user_is_limited(
     # The quota is keyed per user: another cashier still uploads freely.
     other = await make_client(email="other-cashier@test.com")
     other_submission_id = await create_submission(other)
-    await upload_document(other, other_submission_id, drain=drain_outbox)
+    await create_upload(other, other_submission_id, drain=drain_outbox)
 
 
 async def test_extract_per_user_is_limited(
@@ -237,7 +237,7 @@ async def test_extract_per_user_is_limited(
     monkeypatch.setattr(settings.rate_limit, "EXTRACTS_PER_USER_PER_HOUR", 1)
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     url = f"/api/cashout/analyses/{created['id']}/extract"
 
     first = await cashier_client.post(url, headers=csrf_headers(cashier_client))

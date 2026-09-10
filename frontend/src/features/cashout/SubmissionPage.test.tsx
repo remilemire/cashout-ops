@@ -29,7 +29,7 @@ vi.mock("@/api/cashout", async (importOriginal) => {
       updateSubmission: vi.fn(),
       unsubmitSubmission: vi.fn(),
       completeSubmission: vi.fn(),
-      uploadManualDocument: vi.fn(),
+      createManualUpload: vi.fn(),
     },
   };
 });
@@ -58,7 +58,7 @@ const getSubmissionMock = vi.mocked(cashoutApi.getSubmission);
 const updateSubmissionMock = vi.mocked(cashoutApi.updateSubmission);
 const unsubmitSubmissionMock = vi.mocked(cashoutApi.unsubmitSubmission);
 const completeSubmissionMock = vi.mocked(cashoutApi.completeSubmission);
-const uploadManualDocumentMock = vi.mocked(cashoutApi.uploadManualDocument);
+const createManualUploadMock = vi.mocked(cashoutApi.createManualUpload);
 const useAuthMock = vi.mocked(useAuth);
 
 // jsdom doesn't implement window.scrollTo; completing the cashout calls it.
@@ -92,7 +92,7 @@ const completedSubmission: CashoutSubmissionDetail = {
   tipoutDepartments: ["kitchen", "manager"],
   updatedAt: "2026-07-16T02:00:00Z",
   employee,
-  documents: [],
+  uploads: [],
   data: {
     id: "data-1",
     createdAt: "2026-07-16T02:00:00Z",
@@ -127,9 +127,9 @@ const verifiedSubmission: CashoutSubmissionDetail = {
   firstCompletedAt: null,
   tipoutDepartments: null,
   data: null,
-  documents: [
+  uploads: [
     {
-      id: "document-1",
+      id: "upload-1",
       createdAt: "2026-07-16T01:00:00Z",
       contentType: "application/pdf",
       originalFilename: "report.pdf",
@@ -159,7 +159,7 @@ const verifiedSubmission: CashoutSubmissionDetail = {
           verifiedDataJson: { total_net_sales: "1500.00" },
           verifiedByUserId: employee.id,
           verifiedAt: "2026-07-16T01:02:00Z",
-          cashoutDocumentId: "document-1",
+          cashoutUploadId: "upload-1",
         },
       ],
     },
@@ -196,7 +196,7 @@ beforeEach(() => {
   updateSubmissionMock.mockReset();
   unsubmitSubmissionMock.mockReset();
   completeSubmissionMock.mockReset();
-  uploadManualDocumentMock.mockReset();
+  createManualUploadMock.mockReset();
   useAuthMock.mockReset();
   scrollToMock.mockClear();
   getSubmissionMock.mockResolvedValue(completedSubmission);
@@ -362,12 +362,12 @@ describe("SubmissionPage", () => {
 
   it("uploads a manually entered document while editable", async () => {
     getSubmissionMock.mockResolvedValue(verifiedSubmission);
-    uploadManualDocumentMock.mockResolvedValue({
-      ...verifiedSubmission.documents[0]!.analyses[0]!,
+    createManualUploadMock.mockResolvedValue({
+      ...verifiedSubmission.uploads[0]!.analyses[0]!,
       id: "analysis-2",
       provider: null,
       model: null,
-      cashoutDocumentId: "document-2",
+      cashoutUploadId: "upload-2",
     });
     renderPage();
 
@@ -389,10 +389,8 @@ describe("SubmissionPage", () => {
       within(dialog).getByRole("button", { name: "Add details" }),
     );
 
-    await waitFor(() =>
-      expect(uploadManualDocumentMock).toHaveBeenCalledOnce(),
-    );
-    expect(uploadManualDocumentMock).toHaveBeenCalledWith(
+    await waitFor(() => expect(createManualUploadMock).toHaveBeenCalledOnce());
+    expect(createManualUploadMock).toHaveBeenCalledWith(
       "completed-submission",
       file,
       {
@@ -416,26 +414,26 @@ describe("SubmissionPage", () => {
     );
   });
 
-  it("renders the document cards oldest-first, whatever order they arrive in", async () => {
-    // A re-extracted or re-verified document can come back in a different
+  it("renders the upload cards oldest-first, whatever order they arrive in", async () => {
+    // A re-extracted or re-verified upload can come back in a different
     // position; the cards must not reshuffle under the cashier.
-    const first = verifiedSubmission.documents[0]!;
+    const first = verifiedSubmission.uploads[0]!;
     const second = {
       ...first,
-      id: "document-2",
+      id: "upload-2",
       createdAt: "2026-07-16T03:00:00Z",
       originalFilename: "server-summary.pdf",
       analyses: [
         {
           ...first.analyses[0]!,
           id: "analysis-2",
-          cashoutDocumentId: "document-2",
+          cashoutUploadId: "upload-2",
         },
       ],
     };
     getSubmissionMock.mockResolvedValue({
       ...verifiedSubmission,
-      documents: [second, first],
+      uploads: [second, first],
     });
     renderPage();
 

@@ -8,7 +8,7 @@ from datetime import date
 from app.core.schemas import BaseIn, BaseOut, UtcDateTime
 from app.features.cashout.data.schemas import CashoutDataOut
 from app.features.cashout.data.types import TipoutDepartment
-from app.features.cashout.documents.schemas import CashoutDocumentOut
+from app.features.cashout.uploads.schemas import CashoutUploadOut
 from app.features.users.schemas import UserOut
 
 from .types import CashoutSubmissionStatus
@@ -35,7 +35,7 @@ class CashoutSubmissionListOut(CashoutSubmissionOut):
 
 class CashoutSubmissionDetailOut(CashoutSubmissionOut):
     employee: UserOut
-    documents: list[CashoutDocumentOut]
+    uploads: list[CashoutUploadOut]
     data: CashoutDataOut | None = None
 
 

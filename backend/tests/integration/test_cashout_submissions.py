@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
 from app.features.cashout.data.types import TipoutDepartment
-from app.features.cashout.models import CashoutDocument, CashoutSubmission
+from app.features.cashout.models import CashoutSubmission, CashoutUpload
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
 from tests.support.cashout import (
@@ -20,11 +20,11 @@ from tests.support.cashout import (
     completion_body,
     configure_server_summary,
     create_submission,
+    create_upload,
     prepare_completable_submission,
     unsubmit_submission,
     unverify_analysis,
     update_business_date,
-    upload_document,
     upload_reconcilable_documents,
     verify_analysis,
 )
@@ -47,7 +47,7 @@ async def test_list_submissions_scoped_by_role(
     assert {s["id"] for s in admin_list} == {mine, theirs}
 
 
-async def test_submission_detail_lists_documents_oldest_first(
+async def test_submission_detail_lists_uploads_oldest_first(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     drain_outbox: OutboxDrain,
@@ -60,17 +60,17 @@ async def test_submission_detail_lists_documents_oldest_first(
 
     # Backdate the second upload, so creation order is the reverse of
     # insertion order and only a real ORDER BY can tell them apart.
-    document = await db_session.get(CashoutDocument, UUID(second["cashoutDocumentId"]))
-    assert document is not None
-    document.created_at = datetime(2026, 7, 1, tzinfo=UTC)
+    upload = await db_session.get(CashoutUpload, UUID(second["cashoutUploadId"]))
+    assert upload is not None
+    upload.created_at = datetime(2026, 7, 1, tzinfo=UTC)
     await db_session.commit()
 
     detail = (
         await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     ).json()
-    assert [document["id"] for document in detail["documents"]] == [
-        second["cashoutDocumentId"],
-        first["cashoutDocumentId"],
+    assert [upload["id"] for upload in detail["uploads"]] == [
+        second["cashoutUploadId"],
+        first["cashoutUploadId"],
     ]
 
 
@@ -89,13 +89,13 @@ async def test_delete_empty_processing_submission(
     assert response.content == b""
     missing = await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
     assert missing.status_code == 404
-    # No traces (no documents, no data, never completed): a hard delete —
+    # No traces (no uploads, no data, never completed): a hard delete —
     # the row itself is gone, not merely stamped.
     stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
     assert (await db_session.execute(stmt)).scalar_one_or_none() is None
 
 
-async def test_delete_processing_submission_with_documents_soft_deletes(
+async def test_delete_processing_submission_with_uploads_soft_deletes(
     cashier_client: AsyncClient,
     ai_client: FakeAIClient,
     storage: FakeDocumentStorage,
@@ -104,7 +104,7 @@ async def test_delete_processing_submission_with_documents_soft_deletes(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    analysis = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    analysis = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     assert storage.objects
 
     response = await cashier_client.delete(
@@ -125,15 +125,15 @@ async def test_delete_processing_submission_with_documents_soft_deletes(
     )
     assert missing_analysis.status_code == 404
 
-    # But it was a soft delete: the submission row is stamped, its document
+    # But it was a soft delete: the submission row is stamped, its upload
     # row survives, and the stored bytes were not cleaned up.
     stmt = select(CashoutSubmission).where(CashoutSubmission.id == UUID(submission_id))
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.deleted_at is not None
-    document_stmt = select(CashoutDocument).where(
-        CashoutDocument.cashout_submission_id == UUID(submission_id)
+    upload_stmt = select(CashoutUpload).where(
+        CashoutUpload.cashout_submission_id == UUID(submission_id)
     )
-    assert (await db_session.execute(document_stmt)).scalar_one() is not None
+    assert (await db_session.execute(upload_stmt)).scalar_one() is not None
     assert storage.objects
 
 
@@ -229,7 +229,7 @@ async def test_admin_unsubmit_reopens_completed_cashout(
     assert detail["data"] is None
     # The analyses stay verified — nothing to re-verify on re-completion.
     assert (
-        detail["documents"][0]["analyses"][0]["status"]
+        detail["uploads"][0]["analyses"][0]["status"]
         == DocumentAnalysisStatus.VERIFIED.value
     )
 
@@ -366,7 +366,7 @@ async def test_delete_unsubmitted_then_emptied_submission_soft_deletes(
 
     for analysis in (touchbistro, summary):
         removed = await cashier_client.delete(
-            f"/api/cashout/documents/{analysis['cashoutDocumentId']}",
+            f"/api/cashout/uploads/{analysis['cashoutUploadId']}",
             headers=csrf_headers(cashier_client),
         )
         assert removed.status_code == 204, removed.text
@@ -418,9 +418,9 @@ async def test_cancelled_cashout_does_not_block_the_day(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client, business_date="2026-08-28")
-    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
-    # Cancelling soft-deletes (the document is a trace), so the row survives —
+    # Cancelling soft-deletes (the upload is a trace), so the row survives —
     # but the unique index is partial, and a stamped row no longer holds the
     # day.
     response = await cashier_client.delete(
@@ -486,10 +486,10 @@ async def test_update_business_date_after_upload(
     drain_outbox: OutboxDrain,
 ) -> None:
     # The first upload used to lock the day. A cashier who picked the wrong
-    # day can now fix it with documents already in.
+    # day can now fix it with uploads already in.
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client, business_date="2026-08-27")
-    await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    await create_upload(cashier_client, submission_id, drain=drain_outbox)
 
     updated = await update_business_date(
         cashier_client, submission_id, business_date="2026-08-28"
@@ -727,7 +727,7 @@ async def test_complete_requires_every_analysis_verified(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    await upload_document(
+    await create_upload(
         cashier_client, submission_id, drain=drain_outbox
     )  # extracted, never verified
 
@@ -749,7 +749,7 @@ async def test_complete_requires_employee_or_admin(
 ) -> None:
     configure_server_summary(ai_client)
     submission_id = await create_submission(cashier_client)
-    created = await upload_document(cashier_client, submission_id, drain=drain_outbox)
+    created = await create_upload(cashier_client, submission_id, drain=drain_outbox)
     await verify_analysis(cashier_client, created["id"])
 
     # Plain staff cannot close out someone else's cashout (admins can — see

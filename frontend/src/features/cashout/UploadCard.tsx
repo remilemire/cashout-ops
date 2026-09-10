@@ -1,4 +1,4 @@
-// frontend/src/features/cashout/DocumentCard.tsx
+// frontend/src/features/cashout/UploadCard.tsx
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -18,10 +18,10 @@ import { isNotFound } from "@/api/client";
 import {
   CASHOUT_DOCUMENT_CLASSIFICATIONS,
   DOCUMENT_CONTENT_TYPES,
-  type CashoutDocument,
+  type CashoutUpload,
   type CashoutDocumentAnalysis,
   type CashoutDocumentClassification,
-  type ManualDocumentInput,
+  type ManualEntryInput,
 } from "@/api/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Dialog } from "@/components/dialog";
@@ -30,7 +30,7 @@ import { formatDateTime } from "@/lib/format";
 
 import { FieldList } from "./FieldList";
 import { CLASSIFICATION_LABELS } from "./fields";
-import { ManualDocumentDialog } from "./ManualDocumentDialog";
+import { ManualEntryDialog } from "./ManualEntryDialog";
 import { VerificationForm } from "./VerificationForm";
 import { AnalysisStatusBadge } from "./status";
 
@@ -41,12 +41,12 @@ import { AnalysisStatusBadge } from "./status";
  * background extraction runs, then renders the state-appropriate step
  * (verify, retry, or the verified summary).
  */
-export function DocumentCard({
-  document,
+export function UploadCard({
+  upload,
   submissionId,
   editable,
 }: {
-  document: CashoutDocument;
+  upload: CashoutUpload;
   submissionId: string;
   editable: boolean;
 }) {
@@ -54,10 +54,10 @@ export function DocumentCard({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
   const [thumbnailBroken, setThumbnailBroken] = useState(false);
-  const analyses = inPositionOrder(document.analyses);
+  const analyses = inPositionOrder(upload.analyses);
   const first = analyses[0];
 
-  // A 404 out of any action on the card: the document, an analysis, or the
+  // A 404 out of any action on the card: the upload, an analysis, or the
   // submission was deleted elsewhere, so refresh instead of leaving stale UI.
   const refreshIfGone = (error: unknown) => {
     if (isNotFound(error)) {
@@ -67,7 +67,7 @@ export function DocumentCard({
     }
   };
 
-  // The analyses are gone (with the document, or with a restart) — drop
+  // The analyses are gone (with the upload, or with a restart) — drop
   // their cache entries so nothing keeps polling a 404.
   const forgetAnalyses = () => {
     for (const analysis of analyses) {
@@ -77,15 +77,15 @@ export function DocumentCard({
     }
   };
 
-  // Replace a document whose extraction failed with a better shot of it
-  // (e.g. cropped after an output-limit failure). Upload before delete: a
-  // rejected upload (unsupported type, too large, identical bytes) leaves
-  // the failed original in place.
+  // Replace an upload whose extraction failed with a better shot of the
+  // document (e.g. cropped after an output-limit failure). Upload before
+  // delete: a rejected upload (unsupported type, too large, identical bytes)
+  // leaves the failed original in place.
   const reuploadRef = useRef<HTMLInputElement>(null);
   const reupload = useMutation({
     mutationFn: async (file: File) => {
-      const uploaded = await cashoutApi.uploadDocument(submissionId, file);
-      await cashoutApi.deleteDocument(document.id);
+      const uploaded = await cashoutApi.createUpload(submissionId, file);
+      await cashoutApi.deleteUpload(upload.id);
       return uploaded;
     },
     onSuccess: (uploaded) => {
@@ -103,7 +103,7 @@ export function DocumentCard({
   // of a wrong split or crop. The fresh first analysis polls as usual; the
   // detail refresh brings in any siblings.
   const restart = useMutation({
-    mutationFn: () => cashoutApi.restartDocument(document.id),
+    mutationFn: () => cashoutApi.restartUpload(upload.id),
     onSuccess: (fresh) => {
       forgetAnalyses();
       queryClient.setQueryData(cashoutKeys.analysis(fresh.id), fresh);
@@ -115,7 +115,7 @@ export function DocumentCard({
   });
 
   const remove = useMutation({
-    mutationFn: () => cashoutApi.deleteDocument(document.id),
+    mutationFn: () => cashoutApi.deleteUpload(upload.id),
     onSuccess: () => {
       forgetAnalyses();
       void queryClient.invalidateQueries({
@@ -125,13 +125,12 @@ export function DocumentCard({
     onError: refreshIfGone,
   });
 
-  const contentUrl = cashoutApi.documentContentUrl(document.id);
+  const contentUrl = cashoutApi.uploadContentUrl(upload.id);
   // The upload's preview is the first document found in it, once there is a
   // crop of it; the original stays one link away. A crop is always an image.
   const croppedUrl = croppedUrlOf(first);
   const previewUrl = croppedUrl ?? contentUrl;
-  const isImage =
-    croppedUrl != null || document.contentType.startsWith("image/");
+  const isImage = croppedUrl != null || upload.contentType.startsWith("image/");
   // Starting over discards every analysis, so it is offered only while none
   // of them is verified or still extracting (the backend refuses otherwise).
   const canRestart =
@@ -159,10 +158,10 @@ export function DocumentCard({
             {isImage && !thumbnailBroken ? (
               <img
                 src={previewUrl}
-                alt={document.originalFilename}
+                alt={upload.originalFilename}
                 loading="lazy"
                 className="size-full object-cover"
-                // The stored file can be gone even though the document row
+                // The stored file can be gone even though the upload row
                 // survives; fall back to the file icon over a broken image.
                 onError={() => setThumbnailBroken(true)}
               />
@@ -174,7 +173,7 @@ export function DocumentCard({
           </a>
 
           <div className="min-w-0 flex-1">
-            <p className="truncate font-medium">{document.originalFilename}</p>
+            <p className="truncate font-medium">{upload.originalFilename}</p>
             {analyses.length > 1 && (
               <p className="text-ink-muted text-xs">
                 {analyses.length} documents found in this upload
@@ -208,8 +207,8 @@ export function DocumentCard({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="Remove document"
-                title="Remove document"
+                aria-label="Remove upload"
+                title="Remove upload"
                 className="text-ink-muted hover:text-danger -my-2 -mr-1 px-2"
                 loading={remove.isPending}
                 onClick={() => setRemoveOpen(true)}
@@ -225,9 +224,7 @@ export function DocumentCard({
         <ErrorBanner error={reupload.error} />
 
         {analyses.length === 0 && (
-          <p className="text-ink-muted text-sm">
-            No analysis for this document.
-          </p>
+          <p className="text-ink-muted text-sm">No analysis for this upload.</p>
         )}
 
         {analyses.map((analysis) => (
@@ -264,16 +261,16 @@ export function DocumentCard({
       <ConfirmDialog
         open={removeOpen}
         onClose={() => setRemoveOpen(false)}
-        title="Remove document?"
-        confirmLabel="Remove document"
-        cancelLabel="Keep document"
+        title="Remove this upload?"
+        confirmLabel="Remove upload"
+        cancelLabel="Keep"
         confirmTone="danger"
         onConfirm={() => {
           remove.mutate();
           setRemoveOpen(false);
         }}
       >
-        This permanently deletes {document.originalFilename} and its extracted
+        This permanently deletes {upload.originalFilename} and its extracted
         data from this cashout. This can&rsquo;t be undone.
       </ConfirmDialog>
 
@@ -288,8 +285,8 @@ export function DocumentCard({
           setRestartOpen(false);
         }}
       >
-        Finds the documents in {document.originalFilename} again and re-reads
-        each of them, replacing every current extraction from it.
+        Finds the documents in {upload.originalFilename} again and re-reads each
+        of them, replacing every current extraction from it.
       </ConfirmDialog>
     </>
   );
@@ -326,7 +323,7 @@ function AnalysisPanel({
     );
 
   // Poll the analysis while the AI extraction runs in the background. A 404
-  // means the analysis (or its document or submission) was deleted elsewhere:
+  // means the analysis (or its upload or submission) was deleted elsewhere:
   // the resource is gone for good, so polling stops rather than retrying a
   // dead reference forever.
   const analysisQuery = useQuery({
@@ -355,7 +352,7 @@ function AnalysisPanel({
   }, [liveStatus, detailStatus, queryClient, submissionId]);
 
   // A dead analysis means the panel itself is stale: refresh the detail so
-  // the removed document disappears (or the page reports the cashout gone).
+  // the removed upload disappears (or the page reports the cashout gone).
   const analysisGone = isNotFound(analysisQuery.error);
   useEffect(() => {
     if (analysisGone) {
@@ -380,7 +377,7 @@ function AnalysisPanel({
   };
 
   const retry = useMutation({
-    mutationFn: () => cashoutApi.retryAnalysis(analysis.id),
+    mutationFn: () => cashoutApi.retryExtraction(analysis.id),
     onSuccess: settle,
     onError: refreshIfGone,
   });
@@ -389,7 +386,7 @@ function AnalysisPanel({
   // chosen type (skipping the AI classify step) and the panel polls as usual.
   const reclassify = useMutation({
     mutationFn: (value: CashoutDocumentClassification) =>
-      cashoutApi.retryAnalysis(analysis.id, { classification: value }),
+      cashoutApi.retryExtraction(analysis.id, { classification: value }),
     onSuccess: settle,
     onError: refreshIfGone,
   });
@@ -397,8 +394,8 @@ function AnalysisPanel({
   // The user types the details in instead of the AI: the backend records the
   // entered values as the verified data (no extraction runs).
   const manualEntry = useMutation({
-    mutationFn: (input: ManualDocumentInput) =>
-      cashoutApi.enterManualAnalysis(analysis.id, input),
+    mutationFn: (input: ManualEntryInput) =>
+      cashoutApi.replaceWithManualEntry(analysis.id, input),
     onSuccess: (updated) => {
       settle(updated);
       setManualOpen(false);
@@ -485,7 +482,7 @@ function AnalysisPanel({
         </div>
       </Dialog>
 
-      <ManualDocumentDialog
+      <ManualEntryDialog
         open={manualOpen}
         onClose={() => setManualOpen(false)}
         withFile={false}

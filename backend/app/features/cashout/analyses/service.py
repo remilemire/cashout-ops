@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.document_ai import DocumentAIError, DocumentAIErrorCode, DocumentRef
 from app.errors import AppError
-from app.features.cashout.documents.model import CashoutDocument
 from app.features.cashout.extraction import (
     CashoutDocumentProcessor,
     StoredDocumentCrop,
@@ -22,6 +21,7 @@ from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.shared.access import ensure_can_view
 from app.features.cashout.submissions.model import CashoutSubmission
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
+from app.features.cashout.uploads.model import CashoutUpload
 from app.features.users.model import User
 from app.infrastructure.outbox import service as outbox_service
 from app.integrations.storage import DocumentNotFoundError, DocumentStorageClient
@@ -39,11 +39,11 @@ logger = logging.getLogger(__name__)
 async def start_extraction(
     db: AsyncSession,
     *,
-    document: CashoutDocument,
+    upload: CashoutUpload,
     processor: CashoutDocumentProcessor,
     storage: DocumentStorageClient,
 ) -> CashoutDocumentAnalysis:
-    """Start the document over: one EXTRACTING analysis, its extraction queued.
+    """Start the upload over: one EXTRACTING analysis, its extraction queued.
 
     The job that runs it detects the documents printed in the upload, gives
     the first to this analysis, and creates a sibling analysis — with its own
@@ -57,7 +57,7 @@ async def start_extraction(
     only once that transaction commits. Clients poll the returned analysis
     and refresh the submission for the siblings.
     """
-    existing = await repository.list_analyses_for_document(db, document_id=document.id)
+    existing = await repository.list_analyses_for_upload(db, upload_id=upload.id)
     for analysis in existing:
         _ensure_replaceable(analysis)
     crop_keys = [
@@ -70,7 +70,7 @@ async def start_extraction(
         await storage.delete(crop_key)
 
     analysis = CashoutDocumentAnalysis(
-        cashout_document_id=document.id,
+        cashout_upload_id=upload.id,
         position=1,
         provider=processor.provider,
         model=processor.model,
@@ -83,27 +83,27 @@ async def start_extraction(
 async def restart_extraction(
     db: AsyncSession,
     *,
-    document_id: UUID,
+    upload_id: UUID,
     user: User,
     processor: CashoutDocumentProcessor,
     storage: DocumentStorageClient,
 ) -> CashoutDocumentAnalysis:
-    """Start a document over — detect its documents again and re-extract them.
+    """Start an upload over — detect its documents again and re-extract them.
 
     Nothing of the current analyses survives (see `start_extraction`), so it
     is refused while any of them is verified or still extracting.
     """
-    document = await _get_document(db, document_id)
+    upload = await _get_upload(db, upload_id)
     submission = await _get_submission_for_actor(
-        db, submission_id=document.cashout_submission_id, actor=user
+        db, submission_id=upload.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
-            "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
+            "SUBMISSION_COMPLETED", "Uploads cannot be analyzed after completion."
         )
 
     return await start_extraction(
-        db, document=document, processor=processor, storage=storage
+        db, upload=upload, processor=processor, storage=storage
     )
 
 
@@ -118,20 +118,20 @@ async def retry_extraction(
     """Reset one analysis in place and queue a fresh extraction of what it read.
 
     The crop it read is kept and read again — detection does not rerun (the
-    document's restart is for that) — unless it read the upload whole, in
+    upload's restart is for that) — unless it read the upload whole, in
     which case the rerun tries once more to find something to crop to. A
     verified analysis cannot be re-run, nor one still extracting. A supplied
     `classification` (a user correcting the AI) rides the message: the
     extraction skips AI classification and records a null confidence.
     """
     analysis = await _get_analysis(db, analysis_id)
-    document = await _get_document(db, analysis.cashout_document_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
     submission = await _get_submission_for_actor(
-        db, submission_id=document.cashout_submission_id, actor=user
+        db, submission_id=upload.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
-            "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
+            "SUBMISSION_COMPLETED", "Uploads cannot be analyzed after completion."
         )
 
     _ensure_replaceable(analysis)
@@ -143,7 +143,7 @@ async def retry_extraction(
 async def record_manual_entry(
     db: AsyncSession,
     *,
-    document: CashoutDocument,
+    upload: CashoutUpload,
     classification: CashoutDocumentClassification,
     data: CashoutDocumentSchema,
     user: User,
@@ -158,7 +158,7 @@ async def record_manual_entry(
     provider/model is what marks the analysis as manual. No extraction ever
     runs for it, so the upload is never cropped or split: it is one document.
     """
-    analysis = CashoutDocumentAnalysis(cashout_document_id=document.id, position=1)
+    analysis = CashoutDocumentAnalysis(cashout_upload_id=upload.id, position=1)
     await repository.add_analysis(db, analysis)
     _record_manual(analysis, classification=classification, data=data, user=user)
     return analysis
@@ -183,13 +183,13 @@ async def replace_with_manual_entry(
     parsed = parse_manual_document_data(classification, data)
 
     analysis = await _get_analysis(db, analysis_id)
-    document = await _get_document(db, analysis.cashout_document_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
     submission = await _get_submission_for_actor(
-        db, submission_id=document.cashout_submission_id, actor=user
+        db, submission_id=upload.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError(
-            "SUBMISSION_COMPLETED", "Documents cannot be analyzed after completion."
+            "SUBMISSION_COMPLETED", "Uploads cannot be analyzed after completion."
         )
 
     _ensure_replaceable(analysis)
@@ -219,27 +219,27 @@ async def run_extraction(
             analysis = await repository.get_analysis(db, analysis_id=analysis_id)
             if analysis is None:
                 # Gone between the enqueue committing and this job running:
-                # the document was removed, or started over — nothing to
+                # the upload was removed, or started over — nothing to
                 # update.
                 return
-            document = await repository.get_document(
-                db, document_id=analysis.cashout_document_id
+            upload = await repository.get_upload(
+                db, upload_id=analysis.cashout_upload_id
             )
-            if document is None:
+            if upload is None:
                 return
             submission = await repository.get_live_submission(
-                db, submission_id=document.cashout_submission_id
+                db, submission_id=upload.cashout_submission_id
             )
             if submission is None:
                 # The submission was cancelled (soft-deleted) after the
-                # extraction was enqueued. The document and its analyses
+                # extraction was enqueued. The upload and its analyses
                 # survive but nothing can reach them anymore, so skip the AI
                 # call rather than analyzing a dead cashout.
                 return
             await _apply_extraction(
                 db,
                 analysis=analysis,
-                document=document,
+                upload=upload,
                 processor=processor,
                 classification=classification,
             )
@@ -271,21 +271,21 @@ async def get_analysis(
     """Poll target for extraction progress; employee or admin."""
     analysis = await _get_analysis(db, analysis_id)
 
-    document = await _get_document(db, analysis.cashout_document_id)
-    submission = await _get_submission(db, document.cashout_submission_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
+    submission = await _get_submission(db, upload.cashout_submission_id)
     ensure_can_view(submission, user)
 
     return analysis
 
 
-async def get_cropped_document(
+async def get_crop(
     db: AsyncSession,
     *,
     analysis_id: UUID,
     user: User,
     storage: DocumentStorageClient,
 ) -> tuple[DocumentContent, str]:
-    """The crop this analysis read, with the document's filename, for
+    """The crop this analysis read, with the upload's filename, for
     viewing; employee or admin.
 
     An analysis that read the upload whole has no crop and is, to this
@@ -294,14 +294,14 @@ async def get_cropped_document(
     """
     analysis = await _get_analysis(db, analysis_id)
 
-    document = await _get_document(db, analysis.cashout_document_id)
-    submission = await _get_submission(db, document.cashout_submission_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
+    submission = await _get_submission(db, upload.cashout_submission_id)
     ensure_can_view(submission, user)
 
     storage_key = analysis.cropped_storage_key
     content_type = analysis.cropped_content_type
     if storage_key is None or content_type is None:
-        raise AppError("DOCUMENT_NOT_FOUND", "This analysis has no cropped document.")
+        raise AppError("CROP_NOT_FOUND", "This analysis has no crop.")
     try:
         data = await storage.read(storage_key)
     except DocumentNotFoundError as exc:
@@ -310,9 +310,9 @@ async def get_cropped_document(
         logger.warning(
             "Stored crop missing for analysis %s (key %s)", analysis.id, storage_key
         )
-        raise AppError("DOCUMENT_NOT_FOUND", "The stored crop is missing.") from exc
+        raise AppError("CROP_NOT_FOUND", "The stored crop is missing.") from exc
     content = DocumentContent(data=data, content_type=content_type)
-    return content, document.original_filename
+    return content, upload.original_filename
 
 
 async def verify_analysis(
@@ -325,9 +325,9 @@ async def verify_analysis(
     """Confirmation of an extraction (employee or admin), optionally corrected."""
     analysis = await _get_analysis(db, analysis_id)
 
-    document = await _get_document(db, analysis.cashout_document_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
     submission = await _get_submission_for_actor(
-        db, submission_id=document.cashout_submission_id, actor=user
+        db, submission_id=upload.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
@@ -371,9 +371,9 @@ async def unverify_analysis(
     """
     analysis = await _get_analysis(db, analysis_id)
 
-    document = await _get_document(db, analysis.cashout_document_id)
+    upload = await _get_upload(db, analysis.cashout_upload_id)
     submission = await _get_submission_for_actor(
-        db, submission_id=document.cashout_submission_id, actor=user
+        db, submission_id=upload.cashout_submission_id, actor=user
     )
     if submission.status is not CashoutSubmissionStatus.PROCESSING:
         raise AppError("SUBMISSION_COMPLETED")
@@ -395,11 +395,11 @@ async def _get_analysis(db: AsyncSession, analysis_id: UUID) -> CashoutDocumentA
     return analysis
 
 
-async def _get_document(db: AsyncSession, document_id: UUID) -> CashoutDocument:
-    document = await repository.get_document(db, document_id=document_id)
-    if document is None:
-        raise AppError("DOCUMENT_NOT_FOUND")
-    return document
+async def _get_upload(db: AsyncSession, upload_id: UUID) -> CashoutUpload:
+    upload = await repository.get_upload(db, upload_id=upload_id)
+    if upload is None:
+        raise AppError("UPLOAD_NOT_FOUND")
+    return upload
 
 
 async def _get_submission(db: AsyncSession, submission_id: UUID) -> CashoutSubmission:
@@ -426,7 +426,7 @@ async def _apply_extraction(
     db: AsyncSession,
     *,
     analysis: CashoutDocumentAnalysis,
-    document: CashoutDocument,
+    upload: CashoutUpload,
     processor: CashoutDocumentProcessor,
     classification: CashoutDocumentClassification | None = None,
 ) -> None:
@@ -434,29 +434,29 @@ async def _apply_extraction(
     classification + extraction over this analysis's own, and persist the
     outcome.
 
-    Detection runs from a document's sole, uncropped analysis: the first
+    Detection runs from an upload's sole, uncropped analysis: the first
     run, or a rerun after earlier runs found nothing to crop to (trying again
     is cheap, and picks up a detector or setting that has changed since).
     The first document found is this analysis's; every further one becomes
     a sibling analysis with its own queued extraction — queued rather than
-    run here, so this job stays within its outbox claim. Once a document has
-    crops, each analysis keeps reading its own; the document's restart is
+    run here, so this job stays within its outbox claim. Once an upload has
+    crops, each analysis keeps reading its own; the upload's restart is
     the way to detect again. Crops are recorded before the AI call, so a
     failed extraction still keeps its crop.
 
     Success lands the analysis in NEEDS_VERIFICATION with its extracted data.
     A document the AI cannot place, like a provider failure, lands it in
     FAILED with error_code/error_message — there is nothing to verify either
-    way, so the cashier retries, replaces the document, or enters its details
+    way, so the cashier retries, replaces the upload, or enters its details
     manually. A supplied `classification` is passed to the processor, which
     skips the AI classify step and reports a null classification confidence.
     """
     original = DocumentRef(
-        storage_key=document.storage_key, content_type=document.content_type
+        storage_key=upload.storage_key, content_type=upload.content_type
     )
     if (
         analysis.cropped_storage_key is None
-        and await repository.count_analyses(db, document_id=document.id) == 1
+        and await repository.count_analyses(db, upload_id=upload.id) == 1
     ):
         crops = await processor.crop(original)
         if crops:
@@ -464,7 +464,7 @@ async def _apply_extraction(
             _record_crop(analysis, first)
             for position, crop in enumerate(others, start=2):
                 sibling = CashoutDocumentAnalysis(
-                    cashout_document_id=document.id,
+                    cashout_upload_id=upload.id,
                     position=position,
                     provider=processor.provider,
                     model=processor.model,
@@ -487,9 +487,9 @@ async def _apply_extraction(
             else logger.warning
         )
         log(
-            "Extraction failed for analysis %s of document %s (%s): %s",
+            "Extraction failed for analysis %s of upload %s (%s): %s",
             analysis.id,
-            document.id,
+            upload.id,
             exc.code.value,
             exc.message,
         )
@@ -627,7 +627,7 @@ __all__ = [
     "replace_with_manual_entry",
     "run_extraction",
     "get_analysis",
-    "get_cropped_document",
+    "get_crop",
     "verify_analysis",
     "unverify_analysis",
 ]

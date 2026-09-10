@@ -7,8 +7,8 @@ import type { ErrorCode, ErrorContext } from "./types";
 
 describe("error messages", () => {
   it("uses context for upload limits and retry timing", () => {
-    expect(errorMessage("DOCUMENT_TOO_LARGE", { maxSizeMb: 7 })).toBe(
-      "Document exceeds the 7 MB size limit.",
+    expect(errorMessage("UPLOAD_TOO_LARGE", { maxSizeMb: 7 })).toBe(
+      "The file exceeds the 7 MB size limit.",
     );
     expect(errorMessage("RATE_LIMITED", { retryAfterSeconds: 120 })).toBe(
       "Too many attempts. Try again in 120 seconds.",
@@ -16,12 +16,12 @@ describe("error messages", () => {
   });
 
   it("keeps useful fallbacks when context is absent or unusable", () => {
-    expect(errorMessage("DOCUMENT_TOO_LARGE", {})).toBe(
-      "Document exceeds the size limit.",
+    expect(errorMessage("UPLOAD_TOO_LARGE", {})).toBe(
+      "The file exceeds the size limit.",
     );
     expect(
-      errorMessage("DOCUMENT_TOO_LARGE", { maxSizeMb: { unexpected: true } }),
-    ).toBe("Document exceeds the size limit.");
+      errorMessage("UPLOAD_TOO_LARGE", { maxSizeMb: { unexpected: true } }),
+    ).toBe("The file exceeds the size limit.");
     expect(errorMessage("RATE_LIMITED", {})).toBe(
       "Too many attempts. Please wait a moment and try again.",
     );

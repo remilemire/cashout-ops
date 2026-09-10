@@ -12,12 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.features.cashout.analyses.model import CashoutDocumentAnalysis
-from app.features.cashout.documents.model import CashoutDocument
+from app.features.cashout.uploads.model import CashoutUpload
 
 from .model import CashoutSubmission
 
 # Soft-deleted submissions (deleted_at set) behave as gone: every submission
-# lookup excludes them, which also strands their documents and analyses —
+# lookup excludes them, which also strands their uploads and analyses —
 # each service path resolves the submission first and now finds nothing.
 # This is the canonical statement of the contract; the sibling repositories
 # re-export get_submission (as get_live_submission) rather than restating the
@@ -45,8 +45,8 @@ async def get_submission_with_details(
     stmt = (
         select(CashoutSubmission)
         .options(
-            selectinload(CashoutSubmission.documents).selectinload(
-                CashoutDocument.analyses
+            selectinload(CashoutSubmission.uploads).selectinload(
+                CashoutUpload.analyses
             ),
             joinedload(CashoutSubmission.data),
             joinedload(CashoutSubmission.employee),
@@ -78,44 +78,44 @@ async def list_submissions(
 async def delete_submission(db: AsyncSession, submission: CashoutSubmission) -> None:
     await db.delete(submission)
     # Surface the cashout_data ON DELETE RESTRICT violation before removing
-    # document objects or returning a successful response.
+    # stored objects or returning a successful response.
     await db.flush()
 
 
-# Roll-up reads over the sibling CashoutDocument model, which submission
+# Roll-up reads over the sibling CashoutUpload model, which submission
 # lifecycle operations need. Reads may cross sub-features; writes stay in the
 # owning repository.
 
 
 async def list_storage_keys(db: AsyncSession, *, submission_id: UUID) -> list[str]:
-    """Every stored object behind the submission's documents: each original,
+    """Every stored object behind the submission's uploads: each original,
     and the crop each of their analyses read (see analyses.model)."""
     originals = await db.scalars(
-        select(CashoutDocument.storage_key).where(
-            CashoutDocument.cashout_submission_id == submission_id
+        select(CashoutUpload.storage_key).where(
+            CashoutUpload.cashout_submission_id == submission_id
         )
     )
     crops = await db.scalars(
         select(CashoutDocumentAnalysis.cropped_storage_key)
         .join(
-            CashoutDocument,
-            CashoutDocumentAnalysis.cashout_document_id == CashoutDocument.id,
+            CashoutUpload,
+            CashoutDocumentAnalysis.cashout_upload_id == CashoutUpload.id,
         )
         .where(
-            CashoutDocument.cashout_submission_id == submission_id,
+            CashoutUpload.cashout_submission_id == submission_id,
             CashoutDocumentAnalysis.cropped_storage_key.is_not(None),
         )
     )
     return [*originals, *(key for key in crops if key is not None)]
 
 
-async def list_documents_with_analyses(
+async def list_uploads_with_analyses(
     db: AsyncSession, *, submission_id: UUID
-) -> Sequence[CashoutDocument]:
+) -> Sequence[CashoutUpload]:
     stmt = (
-        select(CashoutDocument)
-        .options(selectinload(CashoutDocument.analyses))
-        .where(CashoutDocument.cashout_submission_id == submission_id)
+        select(CashoutUpload)
+        .options(selectinload(CashoutUpload.analyses))
+        .where(CashoutUpload.cashout_submission_id == submission_id)
     )
     return (await db.execute(stmt)).scalars().all()
 
@@ -127,5 +127,5 @@ __all__ = [
     "list_submissions",
     "delete_submission",
     "list_storage_keys",
-    "list_documents_with_analyses",
+    "list_uploads_with_analyses",
 ]

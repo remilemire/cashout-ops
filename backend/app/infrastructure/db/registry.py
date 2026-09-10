@@ -13,9 +13,9 @@ from __future__ import annotations
 from app.features.auth.models import ExternalIdentity
 from app.features.cashout.models import (
     CashoutData,
-    CashoutDocument,
     CashoutDocumentAnalysis,
     CashoutSubmission,
+    CashoutUpload,
 )
 from app.features.users.model import User
 from app.infrastructure.db.models import Base
@@ -25,9 +25,9 @@ metadata = Base.metadata
 
 __all__ = [
     "CashoutData",
-    "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
+    "CashoutUpload",
     "ExternalIdentity",
     "OutboxMessage",
     "User",

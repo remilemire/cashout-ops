@@ -28,7 +28,7 @@ from app.lib.documents import DocumentContentType
 from .types import DocumentAnalysisStatus
 
 if TYPE_CHECKING:
-    from app.features.cashout.documents.model import CashoutDocument
+    from app.features.cashout.uploads.model import CashoutUpload
     from app.features.users.model import User
 
 
@@ -38,15 +38,15 @@ class CashoutDocumentAnalysis(Base):
 
     An upload holds one document until its first extraction finds more (two
     receipts in one photo, the pages of a PDF); each becomes its own analysis
-    of the same CashoutDocument, reading its own crop.
+    of the same CashoutUpload, reading its own crop.
     """
 
     __tablename__ = "cashout_document_analyses"
     __table_args__ = (
         UniqueConstraint(
-            "cashout_document_id",
+            "cashout_upload_id",
             "position",
-            name="uq_cashout_document_analyses_document_position",
+            name="uq_cashout_document_analyses_upload_position",
         ),
     )
 
@@ -58,15 +58,15 @@ class CashoutDocumentAnalysis(Base):
     )
 
     # A retry resets the row in place rather than appending an attempt; a
-    # document gains rows only for further documents found in its upload.
-    cashout_document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("cashout_documents.id", ondelete="CASCADE"),
+    # upload gains rows only for further documents found in it.
+    cashout_upload_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cashout_uploads.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     # Reading order among the document's analyses, 1-based: the order the
     # documents were found in the upload (page by page for a PDF). Unique
-    # per document.
+    # per upload.
     position: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
@@ -150,6 +150,6 @@ class CashoutDocumentAnalysis(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    cashout_document: Mapped[CashoutDocument] = relationship(back_populates="analyses")
+    cashout_upload: Mapped[CashoutUpload] = relationship(back_populates="analyses")
 
     verified_by: Mapped[User | None] = relationship()

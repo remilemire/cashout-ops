@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from .analyses.model import CashoutDocumentAnalysis
 from .data.model import CashoutData
-from .documents.model import CashoutDocument
 from .submissions.model import CashoutSubmission
+from .uploads.model import CashoutUpload
 
 __all__ = [
     "CashoutData",
-    "CashoutDocument",
     "CashoutDocumentAnalysis",
     "CashoutSubmission",
+    "CashoutUpload",
 ]

@@ -1,19 +1,20 @@
 # backend/app/features/cashout/router.py
 
-"""The flow, per upload: the cashier uploads it and immediately gets back an
-EXTRACTING analysis; the AI extraction runs in a background task, first
-finding every document printed in the upload (two receipts in one photo, the
-pages of a PDF) and giving each its own analysis, and the client polls each
-analysis until it reaches NEEDS_VERIFICATION (or FAILED — a provider failure,
-or a document the AI could not place as a cashout report — retryable via the
-analysis's extract endpoint; the document's extract endpoint starts the
-upload over, detecting again). The cashier verifies each analysis —
-optionally submitting corrections. Alternatively, a document can be added
-with manually entered details (or a failed/unverified analysis replaced by
-them), skipping AI entirely and landing directly in VERIFIED. Once every
-analysis is verified, completing the submission reconciles them into a
-CashoutData row and closes the cashout (COMPLETED) — or refuses, when the
-documents do not cross-check (see data/reconciliation.py).
+"""The flow, per upload (the file the cashier submits): the cashier uploads it
+and immediately gets back an EXTRACTING analysis; the AI extraction runs in a
+background task, first finding every document printed in the upload (two
+receipts in one photo, the pages of a PDF) and giving each document its own
+analysis, and the client polls each analysis until it reaches
+NEEDS_VERIFICATION (or FAILED — a provider failure, or a document the AI
+could not place as a cashout report — retryable via the analysis's extract
+endpoint; the upload's extract endpoint starts the upload over, detecting its
+documents again). The cashier verifies each analysis — optionally submitting
+corrections. Alternatively, an upload can be added with manually entered
+details (or a failed/unverified analysis replaced by them), skipping AI
+entirely and landing directly in VERIFIED. Once every analysis is verified,
+completing the submission reconciles them into a CashoutData row and closes
+the cashout (COMPLETED) — or refuses, when the documents do not cross-check
+(see data/reconciliation.py).
 """
 
 from __future__ import annotations
@@ -41,12 +42,12 @@ from .analyses.schemas import (
 )
 from .data.router import router as data_router
 from .dependencies import rate_limit_extract, rate_limit_upload
-from .documents.router import router as documents_router
-from .documents.types import DocumentUpload
 from .extraction import CashoutDocumentProcessor
 from .extraction.dependencies import get_cashout_document_processor
 from .shared import workflows
 from .submissions.router import router as submissions_router
+from .uploads.router import router as uploads_router
+from .uploads.types import UploadPayload
 
 # Every cashout route requires a session and (on unsafe methods) CSRF; the
 # sub-routers inherit these along with the shared error responses.
@@ -67,41 +68,41 @@ router = APIRouter(
 
 # The submission lifecycle (create, list, complete, unsubmit, delete).
 router.include_router(submissions_router)
-# Document removal and inline viewing.
-router.include_router(documents_router)
+# Upload removal and inline viewing.
+router.include_router(uploads_router)
 # Analysis polling and verification.
 router.include_router(analyses_router)
 # The reconciled cashout data (admin table).
 router.include_router(data_router)
 
-# The document workflows' HTTP entry points: these routes cross sub-feature
-# URL spaces and coordinate across sub-features, so they live at the namespace
+# The upload workflows' HTTP entry points: these routes cross sub-feature URL
+# spaces and coordinate across sub-features, so they live at the namespace
 # root and call shared/workflows — mirroring auth's root logout → shared/access.
 
 # Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
-DocumentId = Annotated[UUID, Path(description="Cashout document ID.")]
+UploadId = Annotated[UUID, Path(description="Cashout upload ID.")]
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 
 
 @router.post(
-    "/submissions/{submission_id}/documents",
+    "/submissions/{submission_id}/uploads",
     response_model=CashoutDocumentAnalysisOut,
     status_code=status.HTTP_201_CREATED,
     # Each upload here starts an AI extraction, so it draws on the per-user
     # quota; the manual route below shares the same intake quota.
     dependencies=[Depends(rate_limit_upload)],
     responses=error_responses(
-        "UNSUPPORTED_DOCUMENT_TYPE",
-        "DOCUMENT_TOO_LARGE",
-        "DOCUMENT_DUPLICATE",
+        "UNSUPPORTED_UPLOAD_TYPE",
+        "UPLOAD_TOO_LARGE",
+        "UPLOAD_DUPLICATE",
         "SUBMISSION_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "VALIDATION_FAILED",
         "RATE_LIMITED",
     ),
 )
-async def upload_document(
+async def create_upload(
     submission_id: SubmissionId,
     file: UploadFile,
     db: DbSession,
@@ -111,32 +112,32 @@ async def upload_document(
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
 ) -> CashoutDocumentAnalysisOut:
-    """Upload an end-of-shift document and start its extraction.
+    """Upload an end-of-shift file and start extracting the documents in it.
 
     Accepts JPEG, PNG, WebP, or PDF within the configured size limit
-    (`STORAGE_MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this submission (same
-    checksum) is rejected. The AI extraction runs in the background: this
-    returns the first analysis in `EXTRACTING`; poll `GET /cashout/analyses/{id}`
-    until it reaches `NEEDS_VERIFICATION` or `FAILED` (retry via the
-    analysis's extract endpoint). The extraction first finds every document
-    printed in the upload (several receipts in one photo, each page of a
-    PDF) and gives each further one its own analysis, listed on the document
-    in the submission detail.
+    (`STORAGE_MAX_DOCUMENT_SIZE_MB`); a file already uploaded to this
+    submission (same checksum) is rejected. The AI extraction runs in the
+    background: this returns the upload's first analysis in `EXTRACTING`;
+    poll `GET /cashout/analyses/{id}` until it reaches `NEEDS_VERIFICATION`
+    or `FAILED` (retry via the analysis's extract endpoint). The extraction
+    first finds every document printed in the upload (several receipts in
+    one photo, each page of a PDF) and gives each further one its own
+    analysis, listed on the upload in the submission detail.
 
     The content type is checked before the body is read, and the body itself is
     read only up to the limit (plus the byte that proves it was exceeded); the
     service rejects it from there.
     """
     # Resolved first so an unsupported type is rejected without reading the
-    # document: keyword arguments evaluate in order, so this cannot be inlined
+    # file: keyword arguments evaluate in order, so this cannot be inlined
     # below `data` without reading the body of a file we are about to refuse.
     content_type = _to_content_type(file.content_type)
-    payload = DocumentUpload(
+    payload = UploadPayload(
         data=await read_document(file, limit=settings.storage.MAX_DOCUMENT_SIZE_BYTES),
         content_type=content_type,
         original_filename=file.filename or "upload",
     )
-    analysis = await workflows.upload_document(
+    analysis = await workflows.create_upload(
         db,
         payload=payload,
         submission_id=submission_id,
@@ -148,23 +149,23 @@ async def upload_document(
 
 
 @router.post(
-    "/submissions/{submission_id}/documents/manual",
+    "/submissions/{submission_id}/uploads/manual",
     response_model=CashoutDocumentAnalysisOut,
     status_code=status.HTTP_201_CREATED,
     # No AI runs here, but the file still lands in storage — manual additions
     # draw on the same per-user intake quota as extracting uploads.
     dependencies=[Depends(rate_limit_upload)],
     responses=error_responses(
-        "UNSUPPORTED_DOCUMENT_TYPE",
-        "DOCUMENT_TOO_LARGE",
-        "DOCUMENT_DUPLICATE",
+        "UNSUPPORTED_UPLOAD_TYPE",
+        "UPLOAD_TOO_LARGE",
+        "UPLOAD_DUPLICATE",
         "SUBMISSION_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "VALIDATION_FAILED",
         "RATE_LIMITED",
     ),
 )
-async def upload_manual_document(
+async def create_manual_upload(
     submission_id: SubmissionId,
     file: UploadFile,
     payload: Annotated[str, Form(description="JSON object: `{classification, data}`.")],
@@ -172,12 +173,14 @@ async def upload_manual_document(
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
 ) -> CashoutDocumentAnalysisOut:
-    """Upload a document with manually entered details, skipping AI entirely.
+    """Upload a file with its document's manually entered details, skipping
+    AI entirely.
 
     The multipart `payload` field carries `{classification, data}`: the data
     is validated against the classification's registered schema. Typing the
     values is the verification, so the analysis lands directly in `VERIFIED`
-    — there is nothing to poll.
+    — there is nothing to poll. No extraction ever runs for it, so the upload
+    is never split: it stands for one document.
 
     As on the extracting upload, the content type is checked before the body
     is read, and the body itself is read only up to the limit (plus the byte
@@ -187,12 +190,12 @@ async def upload_manual_document(
     # rejected without reading the body of a file we are about to refuse.
     entry = CashoutDocumentManualEntry.model_validate_json(payload)
     content_type = _to_content_type(file.content_type)
-    upload = DocumentUpload(
+    upload = UploadPayload(
         data=await read_document(file, limit=settings.storage.MAX_DOCUMENT_SIZE_BYTES),
         content_type=content_type,
         original_filename=file.filename or "upload",
     )
-    analysis = await workflows.upload_manual_document(
+    analysis = await workflows.create_manual_upload(
         db,
         payload=upload,
         submission_id=submission_id,
@@ -216,7 +219,7 @@ async def upload_manual_document(
         "VALIDATION_FAILED",
     ),
 )
-async def enter_manual_analysis(
+async def replace_with_manual_entry(
     analysis_id: AnalysisId,
     payload: CashoutDocumentManualEntry,
     db: DbSession,
@@ -271,7 +274,7 @@ async def extract_analysis(
     over the crop it read before — poll `GET /cashout/analyses/{id}` for the
     outcome. A verified analysis cannot be re-run, nor one whose extraction
     is still in progress. To detect the documents in the upload again, use
-    the document's extract endpoint instead.
+    the upload's extract endpoint instead.
 
     With a `classification` in the body (the user correcting a
     misclassification), the rerun skips AI classification and extracts
@@ -289,12 +292,12 @@ async def extract_analysis(
 
 
 @router.post(
-    "/documents/{document_id}/extract",
+    "/uploads/{upload_id}/extract",
     response_model=CashoutDocumentAnalysisOut,
     # Starting over burns provider tokens on demand — per-user quota applies.
     dependencies=[Depends(rate_limit_extract)],
     responses=error_responses(
-        "DOCUMENT_NOT_FOUND",
+        "UPLOAD_NOT_FOUND",
         "SUBMISSION_COMPLETED",
         "ANALYSIS_VERIFIED",
         "EXTRACTION_IN_PROGRESS",
@@ -302,8 +305,8 @@ async def extract_analysis(
         "RATE_LIMITED",
     ),
 )
-async def extract_document(
-    document_id: DocumentId,
+async def extract_upload(
+    upload_id: UploadId,
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[DocumentStorageClient, Depends(get_document_storage)],
@@ -311,10 +314,10 @@ async def extract_document(
         CashoutDocumentProcessor, Depends(get_cashout_document_processor)
     ],
 ) -> CashoutDocumentAnalysisOut:
-    """Start a document over: detect the documents in the upload again and
-    re-extract them all.
+    """Start an upload over: detect the documents in it again and re-extract
+    them all.
 
-    Every current analysis of the document, and the crop each read, is
+    Every current analysis of the upload, and the crop each read, is
     discarded; a fresh `EXTRACTING` analysis is returned, and the background
     job adds one for each further document it finds — refresh the submission
     for them. Refused while any analysis is verified or still extracting.
@@ -323,7 +326,7 @@ async def extract_document(
     """
     analysis = await workflows.restart_extraction(
         db,
-        document_id=document_id,
+        upload_id=upload_id,
         user=current_user,
         processor=processor,
         storage=storage,
@@ -336,8 +339,8 @@ def _to_content_type(content_type: str | None) -> DocumentContentType:
         return DocumentContentType(content_type or "")
     except ValueError:
         raise AppError(
-            "UNSUPPORTED_DOCUMENT_TYPE",
-            f"Unsupported document content type: {content_type!r}.",
+            "UNSUPPORTED_UPLOAD_TYPE",
+            f"Unsupported upload content type: {content_type!r}.",
         ) from None
 
 

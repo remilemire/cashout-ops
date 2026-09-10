@@ -36,7 +36,7 @@ tests/
   support/
     api.py               OWNER_EMAIL, csrf_headers, login
     factories.py         direct DB seeding: create_user
-    cashout.py           workflow drivers: create_submission, upload_document,
+    cashout.py           workflow drivers: create_submission, create_upload,
                          poll_analysis, retry_extraction, enter_manual_analysis,
                          verify_analysis, complete_submission,
                          configure_server_summary
