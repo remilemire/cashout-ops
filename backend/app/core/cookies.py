@@ -1,5 +1,3 @@
-# backend/app/core/cookies.py
-
 from __future__ import annotations
 
 from datetime import timedelta

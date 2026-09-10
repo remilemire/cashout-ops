@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/ai.py
-
 from __future__ import annotations
 
 from typing import cast

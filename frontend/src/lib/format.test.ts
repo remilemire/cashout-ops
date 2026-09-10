@@ -1,5 +1,3 @@
-// frontend/src/lib/format.test.ts
-
 import { describe, expect, it } from "vitest";
 
 import { ApiError } from "@/api/client";

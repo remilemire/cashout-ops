@@ -1,5 +1,3 @@
-// frontend/src/api/client.ts
-
 import { errorMessage, validationMessage } from "./errors";
 import type { ErrorResponse, ValidationIssue } from "./types";
 

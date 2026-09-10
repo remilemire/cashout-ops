@@ -1,5 +1,3 @@
-// frontend/src/components/confirm-dialog.tsx
-
 import type { ReactNode } from "react";
 
 import { Dialog } from "@/components/dialog";

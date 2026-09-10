@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/db.py
-
 """Database fixtures: throwaway Postgres, schema, per-test truncation.
 
 Provisioning is lazy: nothing database-related happens until a test

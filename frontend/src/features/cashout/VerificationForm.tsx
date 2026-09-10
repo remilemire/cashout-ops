@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/VerificationForm.tsx
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -63,7 +61,7 @@ export function VerificationForm({
   );
 
   const groups = groupFields(analysis.schemaName, extracted);
-  // A single group renders as today's flat list, headings only differentiate.
+  // Show headings only when there are multiple groups to distinguish.
   const showHeadings = groups.length > 1;
 
   const verifiedData = buildVerifiedData(extracted, edits);

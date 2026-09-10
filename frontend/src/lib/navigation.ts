@@ -1,5 +1,3 @@
-// frontend/src/lib/navigation.ts
-
 /**
  * Top-level (full document) navigation, for flows that must leave the SPA —
  * e.g. OAuth sign-in, where the backend redirects on to the provider.

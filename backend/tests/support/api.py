@@ -1,5 +1,3 @@
-# backend/tests/support/api.py
-
 """Drivers for the authentication API and CSRF handling in tests."""
 
 from __future__ import annotations

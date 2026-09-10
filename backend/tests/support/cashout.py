@@ -1,5 +1,3 @@
-# backend/tests/support/cashout.py
-
 """Drivers for the cashout submission workflow over the HTTP API.
 
 Each helper asserts the expected status code (with the response body in the

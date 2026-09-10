@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/SubmissionPage.tsx
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, PartyPopper } from "lucide-react";
 import { useState } from "react";
@@ -52,9 +50,8 @@ export function SubmissionPage() {
     enabled: submissionId !== "",
   });
 
-  // A 404 from any action means the cashout (or an upload on it) was deleted
-  // elsewhere — another tab, or an admin. Refetch so the page reports the
-  // death instead of keeping stale, unactionable state.
+  // A missing submission, upload, or analysis can leave this view stale.
+  // Refetch after a 404 so the cards reflect the current submission.
   const refreshIfGone = (error: unknown) => {
     if (isNotFound(error)) {
       void queryClient.invalidateQueries({
@@ -357,11 +354,8 @@ export function SubmissionPage() {
 }
 
 /**
- * The uploads oldest-first. The detail payload carries them in no guaranteed
- * order, and an upload whose analysis was just re-extracted or verified can
- * come back in a different position — which reshuffles the cards under the
- * cashier mid-verification. Ids break a tie between two uploads created in
- * the same instant, so the order is total.
+ * Keep cached uploads in the same oldest-first order as the API. IDs break
+ * timestamp ties; copy the array to avoid mutating the query cache.
  */
 function inUploadOrder(uploads: CashoutUpload[]): CashoutUpload[] {
   return [...uploads].sort(
@@ -393,10 +387,8 @@ function selectableDepartments(
 }
 
 /**
- * What to go and look at when reconciliation refuses the cashout. The banner
- * carries the backend's message, which cannot name the documents; these point
- * at the ones on this page, by the field labels their verification forms
- * render.
+ * Page-specific next steps supplement the shared frontend error messages,
+ * using the same document and field labels as the verification forms.
  */
 const RECONCILE_HINTS: Partial<Record<ErrorCode, string>> = {
   RECONCILE_TOUCHBISTRO_MISSING:

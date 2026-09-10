@@ -1,5 +1,3 @@
-# backend/app/features/auth/dependencies.py
-
 from __future__ import annotations
 
 from typing import Annotated
@@ -22,8 +20,8 @@ async def get_current_user(
     user = await users_service.find_by_id(db, user_id=session.user_id)
 
     if user is None:
-        # The user row is gone (e.g. the account was deleted); the session is
-        # dead even if its Redis key still lingers.
+        # A missing or deactivated user cannot authenticate, even while
+        # their session key remains in Redis.
         raise AppError("INVALID_SESSION")
 
     return user

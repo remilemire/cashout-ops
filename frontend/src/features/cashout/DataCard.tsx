@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/DataCard.tsx
-
 import { Banknote, CreditCard, HandCoins, Sigma } from "lucide-react";
 import type { ReactNode } from "react";
 

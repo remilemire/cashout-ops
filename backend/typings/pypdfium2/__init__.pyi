@@ -1,4 +1,3 @@
-# backend/typings/pypdfium2/__init__.pyi
 #
 # pypdfium2 ships no type information. This covers only the surface
 # app/document_cropping/pdf.py uses; extend it if that surface grows.

@@ -1,5 +1,3 @@
-# backend/app/integrations/ai/gemini.py
-
 from __future__ import annotations
 
 from google import genai

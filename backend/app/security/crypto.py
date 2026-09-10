@@ -1,5 +1,3 @@
-# backend/app/security/crypto.py
-
 from __future__ import annotations
 
 import hashlib
@@ -11,27 +9,22 @@ def generate_secret_token() -> str:
 
 
 def hash_secret_token(token: str) -> str:
-    """Digest a secret this application issued.
+    """Hash an issued token or code for comparison without storing its plaintext.
 
-    Unsalted SHA-256 is sound here only because the input is high-entropy:
-    session tokens and sign-in codes are unguessable, so the digest cannot be
-    reversed by enumeration. Do not reach for this to hide a value the caller
-    did not mint — see `hash_identifier`.
+    Session tokens have 256 bits of randomness. Six-digit sign-in codes have
+    only one million possible values: their hashes can be guessed offline.
+    Code expiry and attempt limits bound online guessing; hashing alone does
+    not protect short codes if their stored hashes are exposed.
     """
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 def hash_identifier(identifier: str) -> str:
-    """Digest a caller-supplied identifier into a stable Redis key component.
+    """Hash a normalized identifier into a stable Redis key component.
 
-    Same primitive as `hash_secret_token`, deliberately named apart because
-    it makes a weaker promise. Identifiers such as email addresses are
-    low-entropy, so the digest is reversible by enumeration and is NOT a
-    confidentiality control. What it buys is that the plaintext stays out of
-    key names, which leak into surfaces values do not: SCAN/KEYS output,
-    MONITOR, the slowlog, per-key metrics, and logged keys.
-
-    Callers normalize before hashing; the digest is only as stable as the
-    normalization applied to its input.
+    This keeps plaintext identifiers out of key names, not out of stored
+    values or command logs. Low-entropy identifiers such as email addresses
+    can be recovered by enumeration; this is not a confidentiality control.
+    Callers must normalize the identifier before hashing it.
     """
     return hashlib.sha256(identifier.encode()).hexdigest()

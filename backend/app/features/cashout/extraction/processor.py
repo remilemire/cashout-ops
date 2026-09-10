@@ -1,5 +1,3 @@
-# backend/app/features/cashout/extraction/processor.py
-
 from __future__ import annotations
 
 from app.core.config import settings
@@ -139,14 +137,10 @@ class CashoutDocumentProcessor:
 def build_cashout_document_processor(
     ai: AIClient, storage: DocumentStorageClient, text_detector: TextDetector | None
 ) -> CashoutDocumentProcessor:
-    """Compose a processor over the configured token budgets and OCR settings.
+    """Build a processor with the configured token budgets and crop settings.
 
-    Neither the processor nor its `DocumentAIClient` and `DocumentCropper`
-    opens a resource — they only wrap the AI, storage, and detector clients,
-    which own their own lifecycles — so each consumer calls this for itself
-    rather than sharing one instance: the request dependency per request,
-    the extraction outbox handler when the composition root constructs it.
-    A None detector (cropping disabled) makes a processor that never crops.
+    The supplied AI, storage, and detector clients retain their own lifecycles.
+    A None detector disables cropping.
     """
     return CashoutDocumentProcessor(
         DocumentAIClient(

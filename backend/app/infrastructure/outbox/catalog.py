@@ -1,5 +1,3 @@
-# backend/app/infrastructure/outbox/catalog.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping

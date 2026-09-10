@@ -1,5 +1,3 @@
-// frontend/src/lib/theme.tsx
-
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { ThemeContext, type Theme } from "./useTheme";

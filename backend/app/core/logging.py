@@ -1,5 +1,3 @@
-# backend/app/core/logging.py
-
 from __future__ import annotations
 
 import logging

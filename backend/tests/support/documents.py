@@ -1,5 +1,3 @@
-# backend/tests/support/documents.py
-
 """Sample document payloads for upload tests.
 
 The extraction path never parses uploaded bytes (it stores them, checksums

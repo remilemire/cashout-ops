@@ -1,5 +1,3 @@
-# backend/tests/unit/test_outbox.py
-
 """Boot-time validation of the outbox handler registry against the catalog."""
 
 from __future__ import annotations

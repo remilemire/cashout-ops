@@ -1,5 +1,3 @@
-// frontend/src/lib/csv.test.ts
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { downloadCsv, serializeCsv } from "./csv";

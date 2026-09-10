@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/CashoutsPage.tsx
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, ReceiptText } from "lucide-react";
 import { useState } from "react";

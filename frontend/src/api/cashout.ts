@@ -1,5 +1,3 @@
-// frontend/src/api/cashout.ts
-
 import { api } from "./client";
 import type {
   CashoutDataRow,
@@ -37,7 +35,7 @@ export const cashoutApi = {
       method: "POST",
       json: input,
     }),
-  /** Cancel an incomplete cashout: deletes it and its uploads. */
+  /** Soft-delete an incomplete cashout; retain its uploads and analyses. */
   cancelSubmission: (id: string) =>
     api<void>(`/cashout/submissions/${id}`, { method: "DELETE" }),
   /** Admin only: reopen a completed cashout, removing its reconciled data. */
@@ -54,7 +52,7 @@ export const cashoutApi = {
       { method: "POST", body },
     );
   },
-  /** Upload a file with manually entered details; no AI extraction runs. */
+  /** Upload with manual details, skipping AI for this operation. */
   createManualUpload: (
     submissionId: string,
     file: File,
@@ -88,8 +86,8 @@ export const cashoutApi = {
   /** Plain URL for the crop the analysis read; 404 when it read the whole upload. */
   analysisCroppedUrl: (id: string) => `/api/cashout/analyses/${id}/cropped`,
   /**
-   * Re-run one analysis over the crop it read; a corrected classification
-   * skips the AI classify step.
+   * Reuse an existing crop; a sole uncropped analysis retries detection before
+   * falling back to the original. A supplied classification skips AI classification.
    */
   retryExtraction: (id: string, input?: RetryExtractionInput) =>
     api<CashoutDocumentAnalysis>(`/cashout/analyses/${id}/extract`, {

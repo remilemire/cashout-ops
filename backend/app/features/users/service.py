@@ -1,5 +1,3 @@
-# backend/app/features/users/service.py
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -49,7 +47,7 @@ async def create(db: AsyncSession, *, payload: UserCreate) -> User:
     The revived account gets the payload's name and is reset to STAFF: a
     deleted admin must not silently regain admin by being reinvited. A live
     duplicate email still falls through to the insert, whose unique-index
-    violation translates to EMAIL_TAKEN as before.
+    violation translates to EMAIL_TAKEN.
     """
     existing = await repository.find_by_email_include_deleted(db, email=payload.email)
     if existing is not None and existing.deleted_at is not None:

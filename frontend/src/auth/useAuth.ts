@@ -1,5 +1,3 @@
-// frontend/src/auth/useAuth.ts
-
 import { createContext, useContext } from "react";
 
 import type { User } from "@/api/types";

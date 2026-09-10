@@ -1,5 +1,3 @@
-# backend/app/document_ai/fields.py
-
 from __future__ import annotations
 
 import re
@@ -8,19 +6,18 @@ from typing import Annotated
 
 from pydantic import BeforeValidator, WithJsonSchema
 
-# Presentation a printed amount carries that its value does not: currency
-# symbols and ISO codes, digit grouping, and the assorted spaces a PDF text
-# layer emits. Amounts are Canadian dollars unless the document says otherwise
-# (see the extraction instructions), so "," is a thousands separator here.
+# Supported presentation characters. Commas are treated as grouping marks,
+# regardless of currency; this parser does not infer locale or convert money.
 _NOISE = re.compile(r"[$€£¥]|\b(?:CAD|USD)\b|[,\s  ]", re.IGNORECASE)
 
 
 def _clean_money(value: object) -> object:
-    """Strip the presentation a document puts around an amount.
+    """Strip supported currency symbols, grouping commas, and whitespace.
 
-    Runs on model output, so it is deliberately narrow: anything this does not
-    recognize is handed to `Decimal` unchanged and fails validation there,
-    rather than being coerced into a number that was never on the page.
+    Used for AI output and manual entries. Inputs must use a decimal point;
+    comma placement is not validated, so decimal-comma input is unsupported.
+    Accounting parentheses and a trailing minus are accepted. Remaining text
+    is parsed by Decimal, which can reject invalid numeric syntax.
     """
     if not isinstance(value, str):
         return value
@@ -49,8 +46,8 @@ def _clean_money(value: object) -> object:
 # unconstrained string keeps the payload inside the subset every provider
 # accepts, and the description carries the encoding the type no longer does.
 #
-# This is the only text we put in a provider schema; per-field guidance stays
-# in `FieldHint`, which never reaches the schema.
+# Field-specific extraction guidance stays in FieldHint metadata. This
+# description documents the shared monetary encoding in the JSON schema.
 Money = Annotated[
     Decimal,
     BeforeValidator(_clean_money),

@@ -1,5 +1,3 @@
-# backend/app/errors/constraints.py
-
 from __future__ import annotations
 
 from app.core.errors import ConstraintCodeMap

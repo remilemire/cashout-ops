@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/sdk/anthropic.py
-
 """Fakes shaped like the `AsyncAnthropic` surface `AnthropicAIClient` uses.
 
 The adapter (`app/integrations/ai/anthropic.py`) calls

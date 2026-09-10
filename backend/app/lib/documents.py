@@ -1,19 +1,15 @@
-# backend/app/lib/documents.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-# How much of an upload is pulled into memory per read. Bounds the peak
-# allocation while reading, and keeps the overshoot past a caller's limit to at
-# most one byte (see `read_document`).
+# Maximum requested bytes per read; accumulated chunks also consume memory.
 CHUNK_SIZE = 1024 * 1024
 
 
-# Only types the AI vision API accepts; HEIC/HEIF uploads must be converted
-# client-side (or a conversion step added) before they can be supported.
+# Supported upload formats. HEIC/HEIF require conversion before upload;
+# provider adapters may impose additional format restrictions.
 class DocumentContentType(StrEnum):
     JPEG = "image/jpeg"
     PNG = "image/png"
@@ -34,12 +30,12 @@ class AsyncByteReader(Protocol):
 
 
 async def read_document(file: AsyncByteReader, *, limit: int) -> bytes:
-    """Read `file` in chunks, stopping once it grows past `limit` bytes.
+    """Read up to `limit + 1` bytes from a file, in bounded chunks.
 
-    Returns at most `limit + 1` bytes, so an oversized document is never held
-    in memory in full, and the caller's own `len(data) > limit` check still
-    trips on the one byte of overshoot. A caller that only needs the bytes
-    (not the verdict) can treat the result as the whole document.
+    Callers must reject a result longer than `limit`: it may be a truncated
+    prefix, not a complete document. Chunks remain in memory until joined,
+    so total allocation grows with the result size. For an UploadFile, this
+    reads the file already parsed by the framework, not the network stream.
     """
     chunks: list[bytes] = []
     size = 0

@@ -1,5 +1,3 @@
-# backend/app/integrations/ai/dependencies.py
-
 from __future__ import annotations
 
 from fastapi import Request

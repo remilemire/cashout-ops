@@ -1,5 +1,3 @@
-# backend/tests/unit/test_oauth_authlib.py
-
 """What the Authlib client puts on the wire, and what it reads back off it.
 
 The authorization URL must force the account chooser; the identity it parses

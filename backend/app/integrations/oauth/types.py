@@ -1,5 +1,3 @@
-# backend/app/integrations/oauth/types.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -17,10 +15,10 @@ OAuthToken: TypeAlias = Mapping[str, Any]
 
 @dataclass(frozen=True)
 class OAuthAuthorization:
-    """Everything minted when an authorization-code + PKCE flow begins.
+    """Authorization URL and values retained for the callback.
 
-    `url` is where the browser goes; `state`, `nonce`, and `code_verifier`
-    are the flow's secrets, held server-side until the callback.
+    The URL includes state and nonce. The raw code_verifier is retained for
+    the server-to-server token exchange; its challenge appears in the URL.
     """
 
     url: str

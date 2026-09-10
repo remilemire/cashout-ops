@@ -1,5 +1,3 @@
-# backend/app/infrastructure/db/lifespan.py
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator

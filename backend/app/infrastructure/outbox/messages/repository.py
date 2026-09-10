@@ -1,5 +1,3 @@
-# backend/app/infrastructure/outbox/messages/repository.py
-
 """Database access for outbox messages; only the outbox package uses this."""
 
 from __future__ import annotations

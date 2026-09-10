@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/SubmissionPage.test.tsx
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
@@ -468,8 +466,8 @@ describe("SubmissionPage", () => {
   });
 
   it("explains a reconciliation conflict when completing fails", async () => {
-    // The backend message says what does not add up; the page adds where to
-    // go and look for it.
+    // The shared frontend message identifies the mismatch; the page adds
+    // the document fields to inspect.
     getSubmissionMock.mockResolvedValue(verifiedSubmission);
     completeSubmissionMock.mockRejectedValue(
       new ApiError(409, {

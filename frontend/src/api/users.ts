@@ -1,5 +1,3 @@
-// frontend/src/api/users.ts
-
 import { api } from "./client";
 import type { User, UserCreateInput, UserUpdateInput } from "./types";
 

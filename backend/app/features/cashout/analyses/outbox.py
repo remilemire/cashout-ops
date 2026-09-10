@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/outbox.py
-
 """Outbox message definition and handler for cashout analyses.
 
 The upload and re-extract services enqueue `cashout.run_extraction` in their
@@ -60,8 +58,6 @@ class RunExtractionOutboxHandler:
         text_detector: TextDetector | None,
     ) -> None:
         self._sessionmaker = sessionmaker
-        # Built here rather than handed in: the processor holds no resource,
-        # so there is nothing for the composition root to own on its behalf.
         self._processor = build_cashout_document_processor(ai, storage, text_detector)
 
     async def handle(self, payload: RunExtraction) -> None:
@@ -79,8 +75,8 @@ class RunExtractionOutboxHandler:
         )
 
     async def on_dead_letter(self, payload: RunExtraction) -> None:
-        # run_extraction already marks its analysis FAILED on any error, so
-        # there is nothing to clean up here beyond making the loss visible.
+        # This callback only logs. A crash or failed recovery write may have
+        # left the analysis EXTRACTING; dead-lettering does not repair it.
         logger.error(
             "Extraction outbox message dead-lettered for analysis %s",
             payload.analysis_id,

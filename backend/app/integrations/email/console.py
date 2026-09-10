@@ -1,5 +1,3 @@
-# backend/app/integrations/email/console.py
-
 from __future__ import annotations
 
 import logging
@@ -8,12 +6,10 @@ logger = logging.getLogger("app.email")
 
 
 class ConsoleEmailClient:
-    """`EmailClient` that logs messages instead of sending them.
+    """Log email content for local development when EMAIL_PROVIDER=console.
 
-    The development/default stand-in when no `RESEND_API_KEY` is configured, so
-    the app boots and the passwordless sign-in flow works end to end locally —
-    the code lands in the server logs. Swap in `ResendEmailClient` for real
-    delivery.
+    Codes appear in the server logs. Selection is explicit: missing Resend
+    credentials do not cause an automatic fallback to this client.
     """
 
     def __init__(self, *, sender: str) -> None:

@@ -1,5 +1,3 @@
-# backend/app/integrations/oauth/issuers.py
-
 from __future__ import annotations
 
 from enum import StrEnum

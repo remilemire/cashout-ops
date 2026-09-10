@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/clients.py
-
 """HTTP clients over the per-test app, including the make_client factory."""
 
 from __future__ import annotations

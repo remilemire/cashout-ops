@@ -1,5 +1,3 @@
-# backend/app/features/auth/sessions/service.py
-
 """Session orchestration and token crypto.
 
 The cookie carries the plaintext session token; this service mints tokens

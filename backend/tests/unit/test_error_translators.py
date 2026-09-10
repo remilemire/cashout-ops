@@ -1,5 +1,3 @@
-# backend/tests/unit/test_error_translators.py
-
 from __future__ import annotations
 
 from decimal import Decimal

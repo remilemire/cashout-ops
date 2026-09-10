@@ -1,5 +1,3 @@
-# backend/app/features/cashout/shared/access.py
-
 """The single authorization rule for cashout submissions.
 
 A submission belongs to its employee; admins (and the owner) have full

@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/router.py
-
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -20,7 +18,6 @@ from .schemas import CashoutAnalysisVerify, CashoutDocumentAnalysisOut
 
 router = APIRouter()
 
-# Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
 
 
@@ -138,14 +135,11 @@ async def unverify_analysis(
     db: DbSession,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CashoutDocumentAnalysisOut:
-    """Send a verified extraction back through verification for editing.
+    """Reopen a verified extraction for editing while the submission is PROCESSING.
 
-    Clears the verification (verified data, verifier, timestamp) and returns
-    the analysis to `NEEDS_VERIFICATION`; the extraction fields are kept, so
-    the verification form re-renders from them. The submission's employee or
-    an admin may unverify, and only while the submission is `PROCESSING` —
-    combined with unsubmit, this is how an admin corrects an
-    already-completed cashout.
+    Clears the verifier and timestamp, and returns NEEDS_VERIFICATION. Prior
+    verified data is retained to seed corrections; extracted data is unchanged.
+    The submission's employee or an admin may perform this operation.
     """
     analysis = await analyses_service.unverify_analysis(
         db, analysis_id=analysis_id, user=current_user

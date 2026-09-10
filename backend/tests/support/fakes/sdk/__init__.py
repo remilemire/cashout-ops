@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/sdk/__init__.py
-
 """SDK-shaped fakes for unit-testing the provider `AIClient` adapters.
 
 Each module mirrors the exact surface its adapter in `app/integrations/ai/`

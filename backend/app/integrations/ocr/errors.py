@@ -1,5 +1,3 @@
-# backend/app/integrations/ocr/errors.py
-
 from __future__ import annotations
 
 

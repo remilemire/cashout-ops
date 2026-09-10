@@ -1,5 +1,3 @@
-// frontend/src/router.tsx
-
 import { createBrowserRouter } from "react-router-dom";
 
 import { RequireAdmin, RequireAuth } from "@/auth/guards";
@@ -32,8 +30,8 @@ export const router = createBrowserRouter([
             element: <RequireAdmin />,
             children: [
               { path: "/admin/submissions", element: <AdminSubmissionsPage /> },
-              // The admin detail reuses the cashier view, which renders
-              // read-only for submissions the viewer doesn't own.
+              // The shared detail view allows admins to edit processing
+              // submissions; completed submissions must first be reopened.
               {
                 path: "/admin/submissions/:submissionId",
                 element: <SubmissionPage />,

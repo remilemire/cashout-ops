@@ -1,5 +1,3 @@
-// frontend/src/features/admin/cashoutDataTable.test.ts
-
 import { describe, expect, it } from "vitest";
 
 import type { CashoutDataRow, User } from "@/api/types";

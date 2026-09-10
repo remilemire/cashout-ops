@@ -1,5 +1,3 @@
-# backend/tests/support/settings.py
-
 """The suite's hermetic settings baseline.
 
 Every group is constructed with the dotenv source removed (`_env_file=None`),
@@ -51,9 +49,8 @@ def make_test_settings() -> Settings:
             **_NO_DOTENV,
             GOOGLE_CLIENT_ID="test-google-client-id",
             GOOGLE_CLIENT_SECRET="test-google-client-secret",
-            # Every login() is three padded requests, so the default floor
-            # would add minutes of pure sleep to the suite. The floor's own
-            # tests monkeypatch a real value.
+            # login() makes two HTTP requests and explicitly drains the outbox.
+            # Disable padding here; timing tests set their own floor.
             CHALLENGE_TIME_FLOOR_MS=0,
         ),
         # Matches the OWNER_EMAIL literal in tests/support/api.py.

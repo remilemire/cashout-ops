@@ -1,5 +1,3 @@
-# backend/tests/integration/test_error_translators.py
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime

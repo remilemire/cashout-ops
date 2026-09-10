@@ -1,5 +1,3 @@
-# backend/tests/unit/test_config.py
-
 """Unit tests for settings that derive behavior rather than just holding it."""
 
 from __future__ import annotations

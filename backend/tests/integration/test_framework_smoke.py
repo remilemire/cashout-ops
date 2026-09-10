@@ -1,5 +1,3 @@
-# backend/tests/integration/test_framework_smoke.py
-
 """Framework smoke tests for the integration tier.
 
 These prove the auto-marker and the make_client factory (user seeding,

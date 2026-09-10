@@ -1,4 +1,3 @@
-# backend/tests/integration/test_cashout.py
 #
 # End-to-end workflows that cross the cashout sub-features; per-sub-feature
 # coverage lives in test_cashout_submissions / test_cashout_uploads /
@@ -292,7 +291,7 @@ async def test_extract_without_body_still_runs_the_full_pipeline(
         analysis["classification"]
         == CashoutDocumentClassification.SERVER_SUMMARY_REPORT.value
     )
-    # The AI classified: its score is recorded as before.
+    # Classification confidence is retained alongside the extracted data.
     assert analysis["classificationConfidence"] == 0.95
     assert analysis["extractedDataJson"] == SERVER_SUMMARY_EXTRACTED
 

@@ -1,5 +1,3 @@
-# backend/app/core/config/base.py
-
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

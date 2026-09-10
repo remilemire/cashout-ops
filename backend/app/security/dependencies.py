@@ -1,5 +1,3 @@
-# backend/app/security/dependencies.py
-
 from __future__ import annotations
 
 import secrets

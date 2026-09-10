@@ -1,5 +1,3 @@
-# backend/app/api/__init__.py
-
 from __future__ import annotations
 
 from fastapi import APIRouter

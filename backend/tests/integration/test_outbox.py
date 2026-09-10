@@ -1,5 +1,3 @@
-# backend/tests/integration/test_outbox.py
-
 """Outbox behavior against a real database: enqueue, dispatch, retry, dead-letter."""
 
 from __future__ import annotations

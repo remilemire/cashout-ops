@@ -1,5 +1,3 @@
-# backend/app/features/cashout/dependencies.py
-
 """Per-user quotas on the costly cashout endpoints.
 
 Uploads land a file in storage and normally trigger an AI extraction

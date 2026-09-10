@@ -1,5 +1,3 @@
-# backend/app/features/users/repository.py
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -50,10 +48,10 @@ async def find_by_id(db: AsyncSession, *, user_id: UUID) -> User | None:
 
 
 async def owner_exists(db: AsyncSession) -> bool:
-    """Whether any account currently holds the owner role.
+    """Whether an account holds the owner role.
 
-    ix_users_single_owner indexes exactly these rows, so this is an
-    index-only probe rather than a scan of the table.
+    The partial owner index supports this lookup; PostgreSQL chooses the
+    execution plan.
     """
     stmt = select(select(User.id).where(User.role == UserRole.OWNER).exists())
 

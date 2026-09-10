@@ -1,5 +1,3 @@
-// frontend/src/api/client.test.ts
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, api } from "./client";

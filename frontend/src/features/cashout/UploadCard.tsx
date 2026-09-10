@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/UploadCard.tsx
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,

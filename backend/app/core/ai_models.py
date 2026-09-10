@@ -1,5 +1,3 @@
-# backend/app/core/ai_models.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping

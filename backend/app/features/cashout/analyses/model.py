@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/model.py
-
 from __future__ import annotations
 
 import uuid
@@ -57,22 +55,22 @@ class CashoutDocumentAnalysis(Base):
         server_default=func.now(),
     )
 
-    # A retry resets the row in place rather than appending an attempt; a
+    # A retry resets the row in place rather than appending an attempt; an
     # upload gains rows only for further documents found in it.
     cashout_upload_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cashout_uploads.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    # Reading order among the document's analyses, 1-based: the order the
+    # Reading order among the upload's analyses, 1-based: the order the
     # documents were found in the upload (page by page for a PDF). Unique
     # per upload.
     position: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
 
-    # Null provider (and model) ⇔ a manually entered analysis: the user typed
-    # the data in and no AI was involved.
+    # Null provider/model marks the current outcome as manual. Earlier AI
+    # attempts may have run, and their crop can survive manual replacement.
     provider: Mapped[AIProvider | None] = mapped_column(
         enum_column(AIProvider, "ai_provider"), nullable=True
     )

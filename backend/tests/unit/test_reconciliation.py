@@ -1,5 +1,3 @@
-# backend/tests/unit/test_reconciliation.py
-
 """Reconciliation's version-aware read of stored analysis payloads, and the
 deposit adjustment's exact effect on the cross-check.
 

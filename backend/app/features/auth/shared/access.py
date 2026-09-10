@@ -1,5 +1,3 @@
-# backend/app/features/auth/shared/access.py
-
 """Session access at the HTTP boundary: granting and revoking sign-in.
 
 These helpers deliberately touch the FastAPI response — issuing or ending a

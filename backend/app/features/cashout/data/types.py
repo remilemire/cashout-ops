@@ -1,5 +1,3 @@
-# backend/app/features/cashout/data/types.py
-
 from __future__ import annotations
 
 from enum import StrEnum

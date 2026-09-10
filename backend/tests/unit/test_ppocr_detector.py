@@ -1,10 +1,7 @@
-# backend/tests/unit/test_ppocr_detector.py
-
 """The vendored PP-OCRv4 detector over synthetic images.
 
-These run the real model (a second or so): the adapter's pre- and
-post-processing are the part most likely to drift, and only the model itself
-can prove them right.
+These load the real model to exercise preprocessing and box detection on
+synthetic inputs. They do not establish accuracy on real receipt photos.
 """
 
 from __future__ import annotations

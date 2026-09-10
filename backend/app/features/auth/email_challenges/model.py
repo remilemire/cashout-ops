@@ -1,5 +1,3 @@
-# backend/app/features/auth/email_challenges/model.py
-
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -13,7 +11,8 @@ class StoredEmailChallenge(BaseModel):
     A challenge belongs to an address, not to a user row: the bootstrapped
     owner has no account until its challenge is consumed, and the address is
     what the code is emailed to. `service.consume_code` resolves the account.
-    `code_hash` is None until the outbox handler mints and emails the code.
+    `code_hash` is None until the outbox handler generates and stores the code's
+    hash, before attempting delivery.
 
     Code attempts are not tracked here: the guess cap lives in a separate
     atomic Redis counter (see ``store.count_code_attempt``), because a

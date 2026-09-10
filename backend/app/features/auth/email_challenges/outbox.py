@@ -1,5 +1,3 @@
-# backend/app/features/auth/email_challenges/outbox.py
-
 """Outbox message definition and handler for email challenges.
 
 Initiation enqueues `auth.send_login_code_email` in its request
@@ -28,7 +26,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SUBJECT = "Your Whiskey District sign-in code"
-# The email body template ships with this feature; render it with the code.
 _TEMPLATE = (
     files("app.features.auth.email_challenges")
     .joinpath("templates", "login_code.html")
@@ -54,9 +51,8 @@ outbox_message_definitions: OutboxMessageDefinitionList[OutboxMessageType] = [
     _send_login_code_email_message
 ]
 
-# Sign-in code emails give up quickly (about a minute at the default backoff)
-# instead of retrying for an hour: the user is sitting on the login screen
-# and can always start a fresh challenge.
+# Limit delivery retries so a waiting user can restart sign-in. At the
+# default backoff, five attempts add 75 seconds of waits, plus send time.
 SEND_LOGIN_CODE_EMAIL_MAX_ATTEMPTS = 5
 
 
@@ -76,15 +72,13 @@ async def _send_login_code_email(
     email_client: EmailClient,
     challenge_id: str,
 ) -> None:
-    """Mint the 6-digit code and email it.
+    """Generate a code, store its hash, then attempt email delivery.
 
-    Runs once the initiating request has committed. The recipient is the
-    challenge's own address, so delivery needs no database access — and no
-    email address is persisted in the outbox payload. The code hash is
-    written to the challenge BEFORE the send: a retry regenerates and
-    overwrites it, so the most recently emailed code is always the live one,
-    and a crash between the write and the send never leaves an
-    emailed-but-unstored code.
+    Runs after initiation commits. The challenge supplies the recipient;
+    the outbox payload contains only its id. Each retry replaces the hash
+    before sending, so a failed send can invalidate an earlier emailed code.
+    Concurrent attempts or delayed emails can arrive out of order; delivery
+    order does not determine which code is live.
     """
     ttl_minutes = settings.auth.CHALLENGE_TTL_MINUTES
 
@@ -129,8 +123,8 @@ class SendLoginCodeEmailOutboxHandler:
         )
 
     async def on_dead_letter(self, payload: SendLoginCodeEmail) -> None:
-        # The user can always start a fresh login, so losing the message only
-        # needs to be visible, not repaired.
+        # Record the delivery failure; a new sign-in request can enqueue a
+        # fresh challenge, subject to the usual rate limits.
         logger.error(
             "Login code outbox message dead-lettered for challenge %s",
             payload.challenge_id,

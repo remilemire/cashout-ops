@@ -1,5 +1,3 @@
-// frontend/src/components/ui.tsx
-
 /** Small shared primitives. Colors come exclusively from the theme tokens. */
 
 import { AlertCircle, Inbox } from "lucide-react";

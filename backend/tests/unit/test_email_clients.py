@@ -1,5 +1,3 @@
-# backend/tests/unit/test_email_clients.py
-
 """Provider email clients normalize send failures to the application error."""
 
 from __future__ import annotations

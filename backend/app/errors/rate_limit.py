@@ -1,5 +1,3 @@
-# backend/app/errors/rate_limit.py
-
 from __future__ import annotations
 
 from .app_error import AppError

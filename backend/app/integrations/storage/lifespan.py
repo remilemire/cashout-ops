@@ -1,5 +1,3 @@
-# backend/app/integrations/storage/lifespan.py
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator

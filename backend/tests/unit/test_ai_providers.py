@@ -1,5 +1,3 @@
-# backend/tests/unit/test_ai_providers.py
-
 """Unit tests for the Anthropic, OpenAI, and Gemini AIClient implementations.
 
 These exercise each provider's request/response mapping against the SDK-shaped

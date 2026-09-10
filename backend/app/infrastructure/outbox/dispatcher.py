@@ -1,5 +1,3 @@
-# backend/app/infrastructure/outbox/dispatcher.py
-
 from __future__ import annotations
 
 import asyncio
@@ -45,20 +43,17 @@ class _Claimed:
 
 
 class OutboxDispatcher:
-    """Polls outbox_messages and runs the registered handler for each row.
+    """Poll messages, claim them under a lease, and invoke registered handlers.
 
-    Claims are lease-based: the claim transaction stamps `claim_id` and
-    `lease_expires_at` (and counts the attempt), the handler then runs outside
-    any transaction, and the outcome is recorded in a second transaction
-    guarded by the claim id. A worker that crashes mid-message simply lets its
-    lease expire, after which the row is claimable again — delivery is
-    at-least-once and handlers must tolerate replays.
+    The claim transaction assigns claim_id and lease_expires_at and counts
+    the attempt. Handlers run outside that transaction and may open their own.
+    Outcome writes are guarded by claim_id. Expired leases can be reclaimed,
+    so slow or crashed workers can cause replay; handlers must tolerate it.
 
-    A message whose attempts run out is dead-lettered: `on_dead_letter` runs
-    once (also at-least-once) and `dead_lettered_at` makes the row terminal.
-    A message with no registered handler or an unparseable payload is
-    dead-lettered immediately — retrying cannot fix either — without the
-    callback, which requires a handler and a parsed payload.
+    Exhausted messages trigger on_dead_letter before becoming terminal. The
+    callback can replay if terminal state is not committed; callback errors
+    are logged and do not prevent finalization. Unknown message types and
+    invalid payloads become terminal without invoking a callback.
     """
 
     def __init__(

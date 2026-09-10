@@ -1,5 +1,3 @@
-// frontend/src/features/admin/AdminDataPage.tsx
-
 import { useQuery } from "@tanstack/react-query";
 import { Database, Download, Printer, SearchX } from "lucide-react";
 import { useMemo, useState } from "react";

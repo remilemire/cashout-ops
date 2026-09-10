@@ -1,5 +1,3 @@
-# backend/tests/integration/test_email_challenges.py
-
 from __future__ import annotations
 
 import asyncio

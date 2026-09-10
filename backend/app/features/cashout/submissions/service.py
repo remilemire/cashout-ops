@@ -1,5 +1,3 @@
-# backend/app/features/cashout/submissions/service.py
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -35,9 +33,9 @@ async def create_submission(
     # below, and the integrity translator turns it into
     # SUBMISSION_DUPLICATE_DAY. The creator is the cashout's employee.
     #
-    # The client normally supplies business_date: the cashier's local date is
-    # the restaurant's day, and the server's timezone need not match it. The
-    # server-side today is only a fallback for bodyless API calls.
+    # The UI defaults to the browser's local date, which the cashier can
+    # correct. An omitted date uses the server's date; neither derives the
+    # restaurant's business day from a timezone or shift cutoff.
     submission = CashoutSubmission(
         employee_user_id=user_id,
         submitted_at=datetime.now(UTC),

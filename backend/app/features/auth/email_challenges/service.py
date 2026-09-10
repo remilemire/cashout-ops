@@ -1,11 +1,7 @@
-# backend/app/features/auth/email_challenges/service.py
+"""Initiate email-code challenges and consume them to resolve a local account.
 
-"""Email-challenge orchestration (passwordless sign-in).
-
-Initiation stores a Redis challenge and emails a 6-digit sign-in code;
-entering the code in the initiating tab consumes the challenge. Only the
-SHA-256 hash of the code reaches the store — the plaintext exists solely
-in the email.
+The challenge stores the code's hash. The outbox handler generates and
+delivers the plaintext code after initiation commits.
 """
 
 from __future__ import annotations
@@ -37,50 +33,35 @@ MAX_CODE_ATTEMPTS = 5
 
 
 def email_key(email: str) -> str:
-    """The address as it is keyed in Redis: normalized, then digested.
+    """Normalize and hash an address for its challenge pointer and rate-limit key.
 
-    Used by the challenge pointer here and by the per-email rate limiter in
-    `dependencies.py`; both must agree, or casing variants of one address
-    would split across two rate-limit buckets instead of sharing one.
-    `normalize_email` is the same rule the users table is keyed on, so the
-    Redis pointer and the account it stands for cannot disagree about which
-    mailbox they mean. It is applied again here rather than assumed, since
-    this helper also runs on an address read back out of Redis.
-
-    Digesting is not a confidentiality measure — an address is low-entropy
-    enough to recover from its digest, and the challenge value holds the
-    plaintext anyway. It keeps addresses out of the surfaces that expose key
-    names but not values (SCAN, MONITOR, the slowlog, per-key metrics).
+    Both callers must use the same normalization to share one address bucket.
+    Hashing keeps the address out of key names, but does not conceal it from
+    readers of the stored challenge or from offline enumeration.
     """
     return hash_identifier(normalize_email(email))
 
 
 async def initiate(db: AsyncSession, redis: Redis, *, email: str) -> str:
-    """Start an email challenge for the address, returning the challenge id.
+    """Return a challenge id without disclosing account existence in the result.
 
-    Always succeeds: an unknown address gets a decoy id — neutral response,
-    nothing stored, no email — indistinguishable from a real challenge, so
-    the endpoint cannot be used for account enumeration. For a real user the
-    challenge is stored in Redis and the code email is enqueued on the
-    outbox, so it is sent only once the request commits.
+    Unknown addresses get a decoy id with no challenge or email enqueued.
+    For eligible addresses, store a Redis challenge and enqueue code delivery
+    in the database transaction. Infrastructure errors still propagate.
 
-    Nothing is written to the users table here. BOOTSTRAP_OWNER_EMAIL is a
-    valid recipient while it may still claim ownership, but the account is
-    created only once the emailed code comes back (see `consume_code`) —
-    creating it here would let any unauthenticated request mint the owner.
-    The recipient test is the same one `consume_code` will apply, so an
-    address that cannot sign in is never emailed a code that cannot work.
+    The bootstrap address is eligible while it may claim ownership, but its
+    account is created only after mailbox proof in `consume_code`. Eligibility
+    is checked again at consumption because the account may change meanwhile.
     """
     user = await users_service.find_by_email(db, email=email)
 
     if user is None and not await accounts.may_bootstrap_owner(db, email=email):
         return str(uuid4())  # decoy id
 
-    # One active challenge per address: starting a new sign-in invalidates the
-    # previous code. The Redis delete is not transactional with the
-    # request, which is acceptable — worst case a rolled-back initiate
-    # destroyed a previous challenge the user had already abandoned by
-    # re-initiating.
+    # Invalidate the challenge currently referenced by this address. Lookup,
+    # deletion, and replacement are not atomic: concurrent initiations may
+    # leave multiple live challenges. A later database rollback also does
+    # not restore the previous Redis challenge.
     email_hash = email_key(email)
     previous_challenge_id = await store.find_challenge_id_for_email(
         redis, email_hash=email_hash
@@ -111,18 +92,17 @@ async def consume_code(
     """Consume the challenge and return its user; the router completes
     sign-in via `access.grant`.
 
-    Accepting the code is this flow's mailbox proof — the code only exists
-    in the email — so this is also where BOOTSTRAP_OWNER_EMAIL's account
-    is created, rather than at initiation, where an unauthenticated request
-    would have been enough to create it (see `accounts.resolve`).
+    A matching code is the mailbox proof required to create the bootstrap
+    owner's account (see `accounts.resolve`). The caller presents a challenge
+    id and code; this operation does not bind them to the initiating tab.
 
-    Every failure mode raises the one unified error so the response shape
-    cannot reveal whether a challenge, code, or account exists.
+    Invalid, expired, exhausted, or consumed challenges and ineligible
+    accounts share one error code. Infrastructure errors still propagate.
     """
     challenge = await store.find(redis, challenge_id=challenge_id)
 
-    # `code_hash is None` means the outbox handler has not minted and emailed
-    # the code yet — nothing to compare, and no attempt is counted.
+    # No code has been stored yet, so there is nothing to compare and no
+    # attempt is counted. A stored hash does not prove email delivery.
     if challenge is None or challenge.code_hash is None:
         raise AppError("EMAIL_CHALLENGE_INVALID")
 

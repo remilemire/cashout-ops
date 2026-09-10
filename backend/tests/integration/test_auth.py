@@ -1,5 +1,3 @@
-# backend/tests/integration/test_auth.py
-
 from __future__ import annotations
 
 from httpx import AsyncClient

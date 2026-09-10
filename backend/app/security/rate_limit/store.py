@@ -1,5 +1,3 @@
-# backend/app/security/rate_limit/store.py
-
 """Redis counters for fixed-window rate limiting.
 
 - ``rate_limit:{scope}:{identifier}`` is a server-atomic counter of hits

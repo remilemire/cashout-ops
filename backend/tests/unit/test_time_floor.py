@@ -1,5 +1,3 @@
-# backend/tests/unit/test_time_floor.py
-
 from __future__ import annotations
 
 import asyncio

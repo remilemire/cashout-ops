@@ -1,5 +1,3 @@
-// frontend/src/features/admin/AdminUsersPage.tsx
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,

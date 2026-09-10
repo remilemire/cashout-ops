@@ -1,5 +1,3 @@
-/* frontend/src/styles/global.css */
-
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));

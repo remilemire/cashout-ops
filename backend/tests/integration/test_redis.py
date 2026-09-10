@@ -1,5 +1,3 @@
-# backend/tests/integration/test_redis.py
-
 """Plumbing test: the Redis container fixture, client, and cleaner work."""
 
 from __future__ import annotations

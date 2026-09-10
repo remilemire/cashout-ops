@@ -1,5 +1,3 @@
-# backend/app/features/cashout/data/reconciliation.py
-
 """The rules that turn a cashout's verified analyses into its source figures.
 
 A cashout closes against exactly one TouchBistro end-of-day report: the

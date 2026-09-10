@@ -1,23 +1,15 @@
-# backend/app/document_cropping/cropper.py
+"""Detect candidate document regions and crop them for analysis.
 
-"""Cropping an upload down to the documents printed in it, before analysis.
+Text boxes are grouped by empty bands and a luminance contrast heuristic.
+This can separate receipts on a contrasting table, but shadows, shaded
+paper, and missed text can cause incorrect splits or omissions. Matching
+paper and background can leave several documents in one crop.
 
-A phone photo of a report is mostly tabletop, and one photo may hold more
-than one report. Text detection says where the print is; each printed area
-plus a margin becomes a crop, so the AI reads far fewer pixels, reads one
-document at a time, and the cashier sees the report rather than the table. A
-PDF is rendered page by page and every page treated like a photo.
-
-Best-effort by design: whatever stops the crop — no detectable text, a failed
-detection or render, cropping switched off — yields no crops, and the caller
-reads the upload whole, exactly as it did before cropping existed.
-
-Splitting (`_split`) is a recursive cut through empty bands. A band at least
-`split_gap` line heights wide with no text across it separates two documents
-when its background differs from the paper around the text: two receipts on
-a table sit apart on the table, so they cut; blank lines and label/value gaps
-inside one document sit on paper, so they never do. Two documents on a
-background their paper matches stay one crop — a conservative failure.
+PDFs are rendered up to the configured page limit. Pages with insufficient
+detected text contribute no crops. If any crops are returned, only those
+regions are analyzed; an omitted page does not receive a whole-page fallback.
+If no crops are returned, the caller reads the original upload. Recognized
+decode, render, and detection failures also return no crops.
 """
 
 from __future__ import annotations
@@ -43,7 +35,7 @@ from .types import CropBounds, DocumentCrop
 logger = logging.getLogger(__name__)
 
 # Pillow format and save options per image content type. A crop keeps its
-# source's format: a lossless screenshot stays lossless, a photo stays a JPEG.
+# source's format, though JPEG and WebP encoding may introduce further loss.
 # A PDF's crops are cut from rendered pages and stored as PNG.
 _ENCODINGS: Mapping[DocumentContentType, tuple[str, dict[str, Any]]] = {
     DocumentContentType.JPEG: ("JPEG", {"quality": 90, "optimize": True}),
@@ -60,10 +52,9 @@ type _Luminance = NDArray[np.uint8]
 
 
 class DocumentCropper:
-    """Finds the documents printed in an upload and crops each one out.
+    """Crop candidate documents identified by text detection.
 
-    `detector` is None when cropping is disabled: every crop then returns
-    nothing without decoding anything.
+    A None detector disables cropping without decoding the upload.
     """
 
     def __init__(
@@ -90,13 +81,12 @@ class DocumentCropper:
         self._pdf_max_pages = pdf_max_pages
 
     async def crop(self, content: DocumentContent) -> list[DocumentCrop]:
-        """The documents found in the upload, in reading order — page by
-        page for a PDF — or nothing when there is nothing to crop to.
+        """Return detected regions in reading order, with page numbers for PDFs.
 
-        Never raises for a document-shaped reason: an undecodable image, a
-        PDF that will not render, or a failed detection is logged and yields
-        nothing, so the caller reads the upload whole rather than rejecting
-        it.
+        Recognized decoding, PDF-rendering, and text-detection errors are logged
+        and return an empty list. Pages without enough text boxes contribute no
+        crops; other pages can still produce results. Unexpected processing or
+        encoding errors propagate to the caller.
         """
         if self._detector is None:
             return []
@@ -204,10 +194,9 @@ class DocumentCropper:
 
 
 def build_document_cropper(detector: TextDetector | None) -> DocumentCropper:
-    """Compose a cropper over the configured OCR settings.
+    """Build a cropper using the configured geometry and PDF limits.
 
-    The cropper opens no resource of its own — the detector owns the model —
-    so each consumer builds one for itself, as it builds its AI client.
+    The caller owns the detector's lifecycle; this wrapper opens no resources.
     """
     return DocumentCropper(
         detector,
@@ -236,7 +225,7 @@ def _decode(data: bytes) -> Image.Image:
 
 
 def _downscale(image: Image.Image, max_side: int) -> tuple[Image.Image, float]:
-    """A copy fit under `max_side` for detection, and the factor applied."""
+    """Return an image fit under `max_side` and the scale factor applied."""
     width, height = image.size
     longest = max(width, height)
     if longest <= max_side:
@@ -256,11 +245,10 @@ def _split(
     gap_ratio: float,
     min_boxes: int,
 ) -> list[list[TextBox]]:
-    """Group the boxes into one group per document, in reading order.
+    """Split text boxes into candidate documents in approximate reading order.
 
-    Groups too small to be a document (fewer than `min_boxes`: a stray label
-    on the table) are dropped — unless that would drop everything, in which
-    case the boxes stay one document rather than none.
+    Drop groups with fewer than `min_boxes`, unless that would drop them all;
+    in that case retain all boxes as a single group.
     """
     heights = sorted(box.height for box in boxes)
     line_height = max(1, heights[len(heights) // 2])
@@ -269,8 +257,8 @@ def _split(
     kept = [group for group in groups if len(group) >= min_boxes]
     if not kept:
         return [list(boxes)]
-    # Reading order: by row (tops within a couple of lines share a row),
-    # then left to right.
+    # Approximate reading order using fixed bands two line heights tall,
+    # then left to right within each band.
     row_height = 2 * line_height
     return sorted(
         kept,
@@ -305,7 +293,7 @@ def _cut_along(
     line_height: int,
 ) -> tuple[list[TextBox], list[TextBox]] | None:
     """The two sides of the widest empty band along `axis` that is at least
-    `gap` wide and sits on background rather than paper, or None."""
+    `gap` wide and passes the background heuristic, or None."""
     if len(boxes) < 2:
         return None
     ordered = sorted(boxes, key=lambda box: _span(box, axis)[0])
@@ -338,11 +326,11 @@ def _is_background(
     *,
     line_height: int,
 ) -> bool:
-    """Whether the band's fill differs from the paper on both sides of it.
+    """Compare the band's median luminance with pooled pixels on its two sides.
 
-    Paper is measured on a line's height of the print beside the band: text
-    is a minority of those pixels, so their median is the paper. A band whose
-    median is far from that is the table showing between two documents.
+    The pooled median estimates paper brightness when text occupies a small
+    share of those pixels. This is a contrast heuristic, not separate checks
+    against each side or proof that the band lies between documents.
     """
     low, high = across
     before = _band(

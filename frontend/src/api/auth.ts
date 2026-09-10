@@ -1,5 +1,3 @@
-// frontend/src/api/auth.ts
-
 import { api } from "./client";
 import type {
   LoginStart,
@@ -10,7 +8,7 @@ import type {
 
 export const authApi = {
   me: () => api<User>("/users/me"),
-  /** Begin a passwordless login; always 202, even for unknown emails. */
+  /** Accepted login requests return 202 for both known and unknown emails. */
   startLogin: (input: LoginStartInput) =>
     api<LoginStart>("/auth/email-challenges", { method: "POST", json: input }),
   /** Complete the login with the emailed code; sets the session cookies. */

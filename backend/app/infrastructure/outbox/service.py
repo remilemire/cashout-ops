@@ -1,5 +1,3 @@
-# backend/app/infrastructure/outbox/service.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping

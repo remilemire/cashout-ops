@@ -1,5 +1,3 @@
-# backend/app/features/cashout/extraction/schemas.py
-
 from __future__ import annotations
 
 from typing import Annotated, ClassVar

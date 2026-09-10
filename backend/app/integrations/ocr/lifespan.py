@@ -1,5 +1,3 @@
-# backend/app/integrations/ocr/lifespan.py
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator

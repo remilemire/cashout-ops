@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/integrations.py
-
 """Fake integration clients, and the real processor and cropper wired over them."""
 
 from __future__ import annotations

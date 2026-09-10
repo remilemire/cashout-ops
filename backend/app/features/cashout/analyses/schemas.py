@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/schemas.py
-
 from __future__ import annotations
 
 import uuid
@@ -16,10 +14,10 @@ from .types import DocumentAnalysisStatus
 class CashoutDocumentAnalysisOut(BaseOut):
     id: uuid.UUID
     created_at: UtcDateTime
-    # Reading order among the document's analyses (1-based): the order the
+    # Reading order among the upload's analyses (1-based): the order the
     # documents were found in the upload.
     position: int
-    # Null for a manually entered analysis (no AI involved).
+    # Null when the current outcome was entered manually.
     provider: AIProvider | None = None
     model: str | None = None
     status: DocumentAnalysisStatus

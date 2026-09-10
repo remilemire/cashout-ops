@@ -1,6 +1,4 @@
-# backend/app/features/cashout/analyses/repository.py
-
-"""Database access for cashout analyses; only the analyses service imports this."""
+"""Database access for cashout analyses."""
 
 from __future__ import annotations
 
@@ -13,11 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.cashout.submissions.repository import (
     get_submission as get_live_submission,
 )
-
-# Sibling read reuse: the walk-up reads (the upload, then its live submission)
-# come from the owning repositories instead of restating their queries. The
-# service still runs them as separate calls so each NOT_FOUND error surfaces at
-# the same step as before; writes stay in the owning repository.
 from app.features.cashout.uploads.repository import get_upload
 
 from .model import CashoutDocumentAnalysis

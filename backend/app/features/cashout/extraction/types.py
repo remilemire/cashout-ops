@@ -1,5 +1,3 @@
-# backend/app/features/cashout/extraction/types.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +11,7 @@ from .schemas import CashoutDocumentSchema
 
 # The document types the AI can classify a cashout document as. There is no
 # "none of the above" member: a document the model cannot place is a failed
-# extraction (DocumentUnclassifiedError), not a classification — so every
+# extraction (DocumentUnclassifiableError), not a classification — so every
 # classification here has a registered extraction schema.
 class CashoutDocumentClassification(StrEnum):
     TOUCHBISTRO_REPORT = "touchbistro_report"

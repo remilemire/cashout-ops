@@ -1,5 +1,3 @@
-# backend/app/features/cashout/uploads/router.py
-
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -19,7 +17,6 @@ from . import service as uploads_service
 
 router = APIRouter()
 
-# Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 UploadId = Annotated[UUID, Path(description="Cashout upload ID.")]
 
 

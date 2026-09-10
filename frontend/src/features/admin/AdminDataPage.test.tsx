@@ -1,5 +1,3 @@
-// frontend/src/features/admin/AdminDataPage.test.tsx
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";

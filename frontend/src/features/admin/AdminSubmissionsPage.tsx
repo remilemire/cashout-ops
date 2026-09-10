@@ -1,5 +1,3 @@
-// frontend/src/features/admin/AdminSubmissionsPage.tsx
-
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";

@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/email.py
-
 from __future__ import annotations
 
 import re

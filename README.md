@@ -4,7 +4,7 @@ Internal operations tool that replaces Whiskey District's paper-based end-of-shi
 
 Live deployment: <https://whiskeydistrictcashout.com>
 
-> **Status:** early build. Authentication (passwordless emailed sign-in codes), error handling, the build/deploy pipeline, cross-cutting plumbing (CSRF, sessions, error contract, OpenAPI shapes), the cashout domain, and the AI document-extraction pipeline are implemented and tested, with a React SPA over the cashier and admin flows. The tipout rates are still placeholders, and reporting is still to come — tracked in the [Planned scope](#planned-scope) section below.
+> **Status:** early build. Passwordless authentication, the cashout and AI extraction workflows, and the cashier and admin SPA are implemented. A reporting view feeds the management Google Sheet, and the admin data table supports CSV export and printing. Tipout rates and the remaining workflow improvements are tracked in [Planned scope](#planned-scope).
 
 ---
 
@@ -72,7 +72,7 @@ The longer-term goal is to grow this into a broader internal operations platform
 - Read-only reporting view `reporting.cashout_data` (the admin cashout data table, for spreadsheet consumers) and the `reporting_reader` role that may read it, both maintained by the migration chain
 - Cashout domain (create/list/re-date/delete submission — at most one live cashout per employee per business day, add and remove uploads with background AI extraction + polling, serve an upload's original bytes and the crops its analyses read, per-document cashier verification and unverification, manual entry that skips AI entirely, complete and unsubmit) with a pytest suite over a throwaway Postgres
 - Cross-document reconciliation on completion: the server summaries' grand totals and transaction counts must add up to the TouchBistro report's card payments and card orders, or completion fails naming what disagrees
-- AI document pipeline: the first extraction finds every document printed in an upload — several receipts in one photo, each page of a PDF — with a local text-detection model and crops each out (crops are stored beside the original, recorded on their analyses, shown to the cashier, and reused by every rerun), then an LLM classifies each one and extracts structured data (vision + structured output), one analysis per document found, decoupled behind provider/storage/detector interfaces — Anthropic, OpenAI, or Gemini, selected by config
+- AI document pipeline: the first extraction uses local text detection to find candidate documents in images and PDF pages. Detected crops are stored beside the original and assigned to separate analyses; an LLM classifies each and extracts structured data. Reruns reuse an existing crop; a sole uncropped analysis retries detection. Detection is heuristic: only the configured number of PDF pages are inspected, and pages without a usable crop are omitted when other pages yield crops. If no crops are found, extraction reads the whole original. Anthropic, OpenAI, or Gemini is selected by config.
 - React 19 SPA: auth-guarded routing, light/dark theme with centralized tokens, mobile-first cashier flow (drag-and-drop upload → poll extraction → correct → verify → complete), and admin submissions/data/users views
 - Vite build pipeline that emits straight into `backend/static/`, served as a SPA by FastAPI
 - Render deploy hooks: `backend/scripts/build.bash`, `pre-deploy.bash`, `start.bash`
@@ -83,13 +83,13 @@ These are designed but not yet finished in code. Tracked here so the gap between
 
 **Tipout rates** — the per-department rates in `core/config/tipout.py` are placeholders, except the manager's 1%, which is the specified rate. The real rates must replace the others before the app reconciles a real cashout.
 
-**Deterministic extraction validation** — the per-document schemas and the cross-document reconciliation rules are implemented; what remains is deterministic post-extraction validation of a single document's values (totals reconcile, amounts non-negative) before they reach reconciliation.
+**Document-value rules** — schema validation, money normalization, and cross-document reconciliation already run. Additional per-document arithmetic checks need explicit business rules, including treatment of refunds; a blanket ban on negative amounts would reject legitimate data. Money input currently assumes a decimal dot and treats commas as grouping separators, so decimal-comma input is unsupported.
 
 **Field-typed correction editors** — the cashier and admin flows are stable, and the verification form groups and labels fields per document type, but it still renders every value as a plain text input. Per-document-type editors (currency, counts) are the remaining step. Paste-to-upload is also still outstanding (drag-and-drop works).
 
 **Admin flow** — the cashout-data view filters by employee and business day; date-*range* filtering, editing submitted data, and discrepancy investigation are still to come.
 
-**Reporting** — the `reporting.cashout_data` view feeds a management Google Sheet today, and the admin data table exports CSV; Excel/PDF export and Power Query consumption of the Postgres data are still to come.
+**Reporting** — the `reporting.cashout_data` view feeds a management Google Sheet, and the admin data table supports CSV export and browser printing. Dedicated Excel/PDF export and Power Query integration remain planned.
 
 ## Project structure
 
@@ -180,8 +180,8 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `BOOTSTRAP_OWNER_EMAIL` | `bootstrap.OWNER_EMAIL` | no | `owner@test.com`                                    | First sign-in with this email lazily bootstraps the owner account (see [features/auth/email_challenges/service.py](backend/app/features/auth/email_challenges/service.py)). |
 | `BOOTSTRAP_OWNER_FULL_NAME` | `bootstrap.OWNER_FULL_NAME` | no | `Owner`                                         | Full name given to the bootstrapped owner account.                                                   |
 | `AUTH_SESSION_TTL_DAYS` | `auth.SESSION_TTL_DAYS` | no | `7`                                                     | Session lifetime; also the `session_token` cookie max-age.                                           |
-| `AUTH_CHALLENGE_TTL_MINUTES` | `auth.CHALLENGE_TTL_MINUTES` | no | `15`                                           | How long an email challenge (and with it the emailed link and its one-time code) stays valid.         |
-| `AUTH_CHALLENGE_TIME_FLOOR_MS` | `auth.CHALLENGE_TIME_FLOOR_MS` | no | `100`                                      | Minimum duration of every email-challenge response, so timing cannot reveal whether an address has an account. Must exceed the real path's tail latency. `0` disables. |
+| `AUTH_CHALLENGE_TTL_MINUTES` | `auth.CHALLENGE_TTL_MINUTES` | no | `15`                                           | Challenge and code lifetime from initiation, including time awaiting delivery.         |
+| `AUTH_CHALLENGE_TIME_FLOOR_MS` | `auth.CHALLENGE_TIME_FLOOR_MS` | no | `100`                                      | Timing floor around email-challenge route dependencies. Work above the floor and failures before dependencies run are not hidden. `0` disables. |
 | `AUTH_OAUTH_FLOW_TTL_MINUTES` | `auth.OAUTH_FLOW_TTL_MINUTES` | no | `10`                                         | How long a pending OAuth sign-in flow (its Redis state and the `oauth_flow` cookie) stays valid.      |
 | `GOOGLE_CLIENT_ID`    | `auth.GOOGLE_CLIENT_ID` | no | —                                                        | Unprefixed (vendor convention). Google sign-in is on exactly when both Google credentials are set — there is no enablement variable, and boot fails on just one of the two. From Google Cloud Console, with authorized redirect URI `<APP_BASE_URL>/api/auth/oauth/google/callback`. |
 | `GOOGLE_CLIENT_SECRET` | `auth.GOOGLE_CLIENT_SECRET` | no | —                                                     | Unprefixed (vendor convention). See `GOOGLE_CLIENT_ID` — set together or not at all.                 |
@@ -191,25 +191,25 @@ Settings are grouped: each variable's prefix names the nested settings model it 
 | `AI_MODEL`            | `ai.MODEL` | no      | `claude-sonnet-5`                                              | Must be one of the models in `AI_PROVIDER_MODELS` ([core/ai_models.py](backend/app/core/ai_models.py)), which lists a default, a cheap, and a premium model per provider; selects the document-AI client built at startup. An unlisted value fails validation at boot. |
 | `AI_CLASSIFICATION_MAX_TOKENS` | `ai.CLASSIFICATION_MAX_TOKENS` | no | `512`                                     | Max output tokens for a classification request.                                                      |
 | `AI_EXTRACTION_MAX_TOKENS` | `ai.EXTRACTION_MAX_TOKENS` | no  | `2048`                                            | Max output tokens for an extraction request.                                                         |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | `ai.*` | see notes | — | Unprefixed (vendor convention). Only the key for the provider serving `AI_MODEL` is required (the lifespan raises at startup if it's missing). A placeholder lets the app boot; a real key is only needed to hit the extract endpoint. |
-| `OCR_ENABLED`         | `ocr.ENABLED` | no   | `true`                                                         | Crop uploaded images to their printed area with the vendored text-detection model, loaded once at startup. `false` skips the model load and the crop; documents then extract from the original. |
-| `OCR_DETECTION_MAX_SIDE` | `ocr.DETECTION_MAX_SIDE` | no | `1280`                                            | Long side the image is downscaled to for detection. The crop itself keeps the original resolution. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | `ai.*` | see notes | — | Unprefixed (vendor convention). Only the selected provider's key is required; its settings validator rejects a missing key. Provider authentication is checked when the background extraction calls the provider, not when an upload is accepted. |
+| `OCR_ENABLED`         | `ocr.ENABLED` | no   | `true`                                                         | Enable text detection and cropping for images and PDF pages. `false` skips model loading and new crops; analyses with existing crops still reuse them. |
+| `OCR_DETECTION_MAX_SIDE` | `ocr.DETECTION_MAX_SIDE` | no | `1280`                                            | Maximum image side used for detection; cropping uses the source image resolution. |
 | `OCR_CROP_MARGIN`     | `ocr.CROP_MARGIN` | no | `0.03`                                                     | Margin kept around the detected text, as a fraction of the crop's larger side. |
-| `OCR_MIN_TEXT_BOXES`  | `ocr.MIN_TEXT_BOXES` | no | `3`                                                     | Fewer detected text boxes than this means no document was found: the upload stays uncropped. |
-| `OCR_MAX_CROP_AREA_RATIO` | `ocr.MAX_CROP_AREA_RATIO` | no | `0.95`                                          | A crop that would keep more than this share of the image's pixels is skipped: nothing worth a second copy. |
-| `OCR_SPLIT_ENABLED`   | `ocr.SPLIT_ENABLED` | no | `true`                                                   | Split an upload holding several documents (two receipts on the table, the pages of a PDF) into one crop, and one extraction, per document. |
-| `OCR_SPLIT_GAP`       | `ocr.SPLIT_GAP` | no  | `4.0`                                                       | An empty band at least this many text-line heights wide, on background rather than paper, separates two documents. |
+| `OCR_MIN_TEXT_BOXES`  | `ocr.MIN_TEXT_BOXES` | no | `3`                                                     | Minimum text boxes for a candidate crop. Split regions below this threshold are omitted. |
+| `OCR_MAX_CROP_AREA_RATIO` | `ocr.MAX_CROP_AREA_RATIO` | no | `0.95`                                          | Skip a single image crop above this area ratio. This limit does not apply to PDF pages or multiple crops from one image. |
+| `OCR_SPLIT_ENABLED`   | `ocr.SPLIT_ENABLED` | no | `true`                                                   | Enable heuristic splitting within each image or PDF page. Disabling it does not combine PDF pages. |
+| `OCR_SPLIT_GAP`       | `ocr.SPLIT_GAP` | no  | `4.0`                                                       | Minimum gap in median text-line heights considered for a split; background checks are heuristic. |
 | `OCR_PDF_RENDER_DPI`  | `ocr.PDF_RENDER_DPI` | no | `200`                                                   | Resolution a PDF page is rendered at before detection and cropping. |
-| `OCR_PDF_MAX_PAGES`   | `ocr.PDF_MAX_PAGES` | no | `10`                                                     | Pages of a PDF rendered at most; later pages are ignored. |
+| `OCR_PDF_MAX_PAGES`   | `ocr.PDF_MAX_PAGES` | no | `10`                                                     | Maximum PDF pages inspected for crops. Later pages are omitted if any crops are found; no crops means extraction falls back to the whole original. |
 | `STORAGE_PROVIDER`    | `storage.PROVIDER` | no | `local`                                                    | `local` writes documents under `STORAGE_LOCAL_DIR`; `s3` stores them in `S3_BUCKET`. The selected provider's settings are required; the other provider's are ignored. |
 | `STORAGE_LOCAL_DIR`   | `storage.LOCAL_DIR` | see notes | —                                                     | Where uploaded documents are written by the local storage client. Required when `STORAGE_PROVIDER=local` (the default). |
 | `S3_BUCKET`           | `storage.S3_BUCKET` | see notes | —                                                     | Unprefixed, alongside the AWS chain's own variables. Required when `STORAGE_PROVIDER=s3`. Credentials are not configured here — see the note below the table. |
 | `S3_REGION`           | `storage.S3_REGION` | see notes | —                                                     | AWS region for the S3 client. Required when `STORAGE_PROVIDER=s3`.                                   |
 | `S3_ENDPOINT_URL`     | `storage.S3_ENDPOINT_URL` | no  | —                                               | Custom endpoint for S3-compatible stores such as MinIO or Cloudflare R2. Optional even under `s3`; unset (or blank) leaves the client on the AWS endpoint for `S3_REGION`. |
-| `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest single upload the upload endpoints accept; a larger body stops being read and is rejected with `UPLOAD_TOO_LARGE`, whose message carries the configured size. |
+| `STORAGE_MAX_DOCUMENT_SIZE_MB` | `storage.MAX_DOCUMENT_SIZE_MB` | no | `20`                                      | Largest accepted file. The copy from FastAPI's already-parsed upload is limited to this size plus one byte; larger files raise `UPLOAD_TOO_LARGE` with the configured size in `ctx`. This is not a request-body ingestion limit. |
 | `RATE_LIMIT_AUTH_IP_PER_HOUR` | `rate_limit.AUTH_IP_PER_HOUR` | no | `20`                                          | Per-IP cap on each anonymous auth endpoint (fixed 1-hour window).                                    |
 | `RATE_LIMIT_INITIATE_EMAIL_PER_HOUR` | `rate_limit.INITIATE_EMAIL_PER_HOUR` | no | `5`                             | Sign-in emails per address per hour — counted for real and decoy addresses alike.                    |
-| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | `rate_limit.UPLOADS_PER_USER_PER_HOUR` | no | `30`                          | Per-user hourly quota on cashout uploads (each starts an AI extraction).                             |
+| `RATE_LIMIT_UPLOADS_PER_USER_PER_HOUR` | `rate_limit.UPLOADS_PER_USER_PER_HOUR` | no | `30`                          | Per-user hourly quota on cashout uploads, including manual-entry uploads.                             |
 | `RATE_LIMIT_EXTRACTS_PER_USER_PER_HOUR` | `rate_limit.EXTRACTS_PER_USER_PER_HOUR` | no | `15`                        | Per-user hourly quota on AI re-extractions.                                                          |
 | `OUTBOX_MAX_ATTEMPTS` | `outbox.MAX_ATTEMPTS` | no | `10`                                                     | Delivery attempts before an outbox message dead-letters.                                             |
 | `OUTBOX_BATCH_SIZE`   | `outbox.BATCH_SIZE` | no  | `1`                                                        | Messages a dispatcher worker claims per poll.                                                        |
@@ -289,7 +289,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 **Single-origin SPA.** Vite builds into `backend/static/`. FastAPI mounts `/assets` as a `StaticFiles` directory and registers a catch-all route that returns `static/index.html` so client-side routing works on hard refresh ([app/main.py](backend/app/main.py)).
 
-**Async all the way down.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) is the composition root: it enters the per-component lifespans (database, Redis, AI, email, storage, text detection, and — last, so they stop first on shutdown — the outbox dispatcher workers) and attaches the resulting resources — async engine + `async_sessionmaker`, Redis client, and the external clients — to `app.state`. The per-request `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) yields an `AsyncSession`, commits on success, and rolls back on error — so services never commit.
+**Resource lifecycles and transactions.** The lifespan handler ([app/lifespan.py](backend/app/lifespan.py)) constructs the database, Redis, and external clients, then starts the outbox workers. Resources live on `app.state`; workers stop before the clients close. The request-scoped `get_db` dependency ([app/infrastructure/db/dependencies.py](backend/app/infrastructure/db/dependencies.py)) commits on success and rolls back on error. Background handlers own their transaction boundaries.
 
 **AI document pipeline.** Two generic components, coordinated by the cashout-specific `CashoutDocumentProcessor` ([features/cashout/extraction/](backend/app/features/cashout/extraction/)), which knows both while neither knows the other. `DocumentCropper` ([document_cropping/](backend/app/document_cropping/)) finds the documents printed in an image — or in each page of a PDF, rendered with pypdfium2 — using a local text-detection model (PP-OCRv4 over onnxruntime, vendored with the app — [integrations/ocr/](backend/app/integrations/ocr/)) and cuts each one out; an empty band on background rather than paper between two blocks of text is what separates two documents. That is detection only, not OCR in the reading sense: no text is recognized. `DocumentAIClient` ([document_ai/](backend/app/document_ai/)) classifies and extracts one document with a vision model. The first extraction of an upload finds its documents and stores a crop of each beside the original: the upload's own analysis takes the first, and the job creates a sibling analysis with its own queued extraction for each further one. Every rerun reads its analysis's crop, the cashier previews it, and the upload's extract endpoint starts it over when the split was wrong. Uploads with no detectable text, and extractions made with `OCR_ENABLED=false`, read the original whole. The layering keeps the domain off the provider SDK: `DocumentAIClient` → an `AIClient` protocol implemented per provider (`AnthropicAIClient`, `OpenAIAIClient`, `GeminiAIClient`) plus a `DocumentStorageClient` and a `TextDetector`. Providers are swappable behind those interfaces, and the tests fake only the provider, storage, and detector.
 
@@ -297,7 +297,7 @@ make backend-dev                        # FastAPI serves /assets/* and the SPA f
 
 ## Authentication and sessions
 
-- Login is passwordless: `POST /api/auth/email-challenges` always returns `202` with a `challengeId` — whether an email was actually sent is never revealed, so the endpoint can't be used for account enumeration. For a real account a one-time sign-in code is emailed (via the transactional outbox, once the request commits); the challenge lives in Redis with a TTL (`AUTH_CHALLENGE_TTL_MINUTES`), storing only the SHA-256 hash of the code. Starting a new sign-in invalidates any previous pending challenge for the account.
+- Login is passwordless: accepted `POST /api/auth/email-challenges` requests return `202` with a `challengeId` for both known and unknown addresses. Rate limits, invalid input, and infrastructure failures can return errors. The outbox sends a one-time code for an eligible account after the request commits. Redis stores its SHA-256 hash and the challenge expires after `AUTH_CHALLENGE_TTL_MINUTES`. Initiating a new sign-in deletes the challenge found by the current email pointer, but those Redis operations are not atomic: overlapping requests can leave multiple live challenges. Hashing a six-digit code does not prevent offline enumeration if the hash is exposed; attempt limits constrain online guessing.
 - Entering the code (`POST /api/auth/email-challenges/verify-code`) consumes the single-use challenge and creates a session in Redis with an opaque random token, storing **only the SHA-256 hash** of the token as the Redis key, expiring with the session TTL.
 - Accounts are created by admins (`POST /api/users`) — there is no self-registration and no password. The `BOOTSTRAP_OWNER_EMAIL` account is bootstrapped lazily on its first sign-in as the single owner (an admin who cannot be demoted or deleted; ownership moves via an explicit transfer).
 - The raw token is returned to the client in an HTTP-only `session_token` cookie.
@@ -314,19 +314,20 @@ All errors come back as a stable JSON shape so the frontend can render them unif
 {
   "kind": "VALIDATION",
   "code": "VALIDATION_FAILED",
-  "message": "There was a problem with the submission.",
+  "ctx": {},
   "issues": [
-    { "code": "MISSING_FIELD", "path": ["email"], "message": "This field is required." }
+    { "code": "missing", "path": ["email"], "ctx": {} }
   ]
 }
 ```
 
 - `kind` is a broad `SCREAMING_CASE` discriminator that also fixes the HTTP status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `VALIDATION`, `TOO_MANY_REQUESTS`, `INTERNAL`, `SERVICE_UNAVAILABLE` → 400/401/403/404/409/422/429/500/503 via `kind_status_map`).
-- `code` is the specific `ErrorCode` — a base code (`INTERNAL`, `BAD_REQUEST`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `ROUTE_NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE`) or a feature code (e.g. `EMAIL_TAKEN`, `USER_NOT_FOUND`, `EMAIL_CHALLENGE_INVALID`). The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its `kind` and default client `message`; each route documents its actual error statuses in OpenAPI via `error_responses(*codes)` ([errors/openapi.py](backend/app/errors/openapi.py)).
-- `issues` is present only for validation failures (`VALIDATION`): one entry per field with a `ValidationIssueCode` (`MISSING_FIELD`, `EXTRA_FIELD`, `TOO_SMALL`, …), a `path` array, and a human `message`. Pydantic errors are translated in [errors/translators.py](backend/app/errors/translators.py).
+- `code` is the specific `ErrorCode` — a base code (`INTERNAL`, `BAD_REQUEST`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `ROUTE_NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE`) or a feature code (e.g. `EMAIL_TAKEN`, `USER_NOT_FOUND`, `EMAIL_CHALLENGE_INVALID`). The catalog ([errors/catalog.py](backend/app/errors/catalog.py)) maps each code to its `kind`; each route documents its actual error statuses in OpenAPI via `error_responses(*codes)` ([errors/openapi.py](backend/app/errors/openapi.py)).
+- `ctx` contains deliberately public JSON values used by the frontend to compose messages; it excludes private diagnostics and submitted values.
+- Validation responses may include `issues`: Pydantic codes such as `missing`, `extra_forbidden`, and `greater_than_equal`, camelCase `path` arrays, and safe constraint `ctx` objects. Translation lives in [errors/translators.py](backend/app/errors/translators.py).
 - `TOO_MANY_REQUESTS` (429) responses also carry a `Retry-After` header with the seconds until the rate-limit window resets.
 - `IntegrityError` is auto-mapped, first by constraint name (to a feature code) then by Postgres SQLSTATE (unique/FK/restrict → `CONFLICT`, check/not-null → `VALIDATION_FAILED`) in [errors/translators.py](backend/app/errors/translators.py).
-- An `AppError`'s internal `message` never reaches the client (it goes to logs/tracebacks only); the response `message` is always the catalog default. Uncaught exceptions are funneled to a generic `INTERNAL` error — no stack traces are leaked.
+- An `AppError`'s internal `message` is diagnostic detail and is not serialized into the response. [frontend/src/api/errors.ts](frontend/src/api/errors.ts) owns user-facing wording for both application codes and validation issues. Uncaught exceptions produce a generic `INTERNAL` response.
 
 ## API surface
 
@@ -369,7 +370,7 @@ Implemented under the `/api` prefix:
 
 "Submitter" is the cashier who created the submission — enforced in the cashout service ([cashout/shared/access.py](backend/app/features/cashout/shared/access.py)), not by a dependency. Admins (and the owner) have full control over every cashout, so every "submitter" row admits an admin too; it is unrelated to the single **owner** role, which only gates `transfer-ownership`. CSRF is checked on unsafe methods only, so the `GET` rows carry no CSRF requirement even though the routers declare `require_csrf`.
 
-The auth endpoints are rate limited (per client IP on each endpoint, sign-in emails per address, and link verification per challenge), and cashout upload/extract have per-user hourly quotas — exceeding one returns 429 `RATE_LIMITED` with a `Retry-After` header.
+Auth endpoints have per-IP rate limits, and email initiation also has a per-address quota. Cashout upload/extract have per-user quotas. Exceeding these returns 429 `RATE_LIMITED` with `Retry-After`. The separate per-challenge wrong-code budget invalidates the challenge and returns 401 `EMAIL_CHALLENGE_INVALID` when exhausted.
 
 Interactive docs are available at `/docs` (Swagger UI) and `/redoc` while the app is running.
 
@@ -387,20 +388,19 @@ The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider'
 
 ## Conventions
 
-- **API casing.** Inbound and outbound JSON is `camelCase`; Python is `snake_case`. Conversion is handled by `BaseIn`/`BaseOut` via `alias_generator=snake_to_camel`. `BaseIn` is `extra="forbid"`; unknown fields surface as `EXTRA_FIELD` validation issues.
+- **API casing.** Inbound and outbound JSON is `camelCase`; Python is `snake_case`. Conversion is handled by `BaseIn`/`BaseOut` via `alias_generator=snake_to_camel`. `BaseIn` is `extra="forbid"`; unknown fields surface as `extra_forbidden` validation issues.
 - **Enum values.** Every `StrEnum` member's *value* is `lower_snake_case` (`processing`, `needs_verification`, `s3`) while the member name stays `SCREAMING_SNAKE_CASE` — so the value is what appears in JSON, Postgres enum labels, and configuration, and the name is what Python code spells. The exceptions are values an external format dictates: `DocumentContentType` holds MIME types. The provider selectors read from the environment (`EMAIL_PROVIDER`, `STORAGE_PROVIDER`) accept either case, so a deployment configured before this convention still boots.
 - **Timestamps.** `created_at` is stored UTC and serialized as ISO-8601 with a trailing `Z`.
 - **Monetary rounding.** Source-document amounts and configured tipout rates are preserved as reported. Calculated tipouts round each department separately upward to cent precision in the house's favour (the manager, who tips out on every cashout, included; amounts already on a cent stay unchanged), and the final signed settlement uses the same rule: employee obligations round up while house obligations round toward zero. The generated columns apply this policy consistently to existing and future cashouts.
 - **Python typing.** `pyproject.toml` requires Python 3.13+ and configures Pyright in strict mode (`[tool.pyright] typeCheckingMode = "strict"`). Run `make typecheck` (backend Pyright + frontend `tsc`).
 - **Lint/format.** Ruff for Python (with import sorting via `extend-select = ["I"]`), Prettier + ESLint for TS/React (the Tailwind plugin sorts classes).
-- **Tests.** `make test` runs both suites: Vitest + Testing Library on the frontend, and pytest against a real Postgres and Redis — `TEST_DATABASE_URL` / `TEST_REDIS_URL` if set, otherwise throwaway containers via testcontainers (needs Docker running). The AI provider, object store, and email are faked; the rest of the extraction stack runs for real. See [backend/tests/README.md](backend/tests/README.md) for the unit/integration tiers.
+- **Tests.** `make test` runs Vitest + Testing Library and the backend unit/integration suites. Integration tests use real Postgres and Redis via `TEST_DATABASE_URL` / `TEST_REDIS_URL` or throwaway testcontainers (Docker required), with provider clients faked. Dedicated tests also exercise the migration chain and the vendored OCR model. See [backend/tests/README.md](backend/tests/README.md) for fixture and tier details.
 
 ### Known incomplete work
 
-The backend domain and AI pipeline are implemented and tested. What's left is tracked in [Planned scope](#planned-scope); the two placeholders carried in code are:
+Remaining work is tracked in [Planned scope](#planned-scope). The explicit configuration placeholder is:
 
 - **Tipout rates are placeholders** — `core/config/tipout.py` ships stand-in rates (`TODO(tipout)`) for the four selectable departments, overridable via the `TIPOUT_*` variables; the manager's 1% is the real rate. The others must be set before the app reconciles a real cashout.
-- **No deterministic extraction validation** — `features/cashout/extraction/processor.py` carries a `TODO(document-ai)` for value-level checks (totals reconcile, amounts non-negative) on a single document, ahead of the cross-document reconciliation that already runs at completion.
 
 ## License
 

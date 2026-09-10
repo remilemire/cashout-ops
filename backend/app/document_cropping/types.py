@@ -1,5 +1,3 @@
-# backend/app/document_cropping/types.py
-
 """What a crop is: the cut-out content, and where in the upload it came from."""
 
 from __future__ import annotations

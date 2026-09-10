@@ -1,5 +1,3 @@
-// frontend/src/lib/useTheme.ts
-
 import { createContext, useContext } from "react";
 
 export type Theme = "light" | "dark" | "system";

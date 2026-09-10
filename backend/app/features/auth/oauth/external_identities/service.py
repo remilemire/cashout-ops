@@ -1,5 +1,3 @@
-# backend/app/features/auth/oauth/external_identities/service.py
-
 """Mapping OAuth issuer identities to local accounts."""
 
 from __future__ import annotations

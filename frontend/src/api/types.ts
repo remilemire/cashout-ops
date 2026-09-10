@@ -1,5 +1,3 @@
-// frontend/src/api/types.ts
-
 /** Contracts mirroring the backend's `BaseOut` schemas (camelCase JSON). */
 
 // ---------- Errors (app/errors) ----------

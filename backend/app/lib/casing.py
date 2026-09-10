@@ -1,5 +1,3 @@
-# backend/app/lib/casing.py
-
 from __future__ import annotations
 
 # ================================

@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/fields.test.ts
-
 import { describe, expect, it } from "vitest";
 
 import { CASHOUT_DOCUMENT_CLASSIFICATIONS } from "@/api/types";

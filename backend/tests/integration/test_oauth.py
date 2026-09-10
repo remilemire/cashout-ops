@@ -1,5 +1,3 @@
-# backend/tests/integration/test_oauth.py
-
 from __future__ import annotations
 
 import asyncio
@@ -551,7 +549,7 @@ async def test_callback_is_rate_limited_per_ip(
 # ================================
 
 
-async def test_flow_secrets_never_reach_the_browser(
+async def test_fake_flow_response_keeps_values_out_of_cookie(
     client: AsyncClient,
     redis_client: Redis,
     oauth_client: FakeOAuthClient,
@@ -561,8 +559,9 @@ async def test_flow_secrets_never_reach_the_browser(
     assert response.status_code == 302, response.text
     authorization = oauth_client.latest_authorization().authorization
     set_cookie = response.headers["set-cookie"]
-    # state necessarily rides the issuer URL; the verifier and nonce must
-    # never leave the server in any channel the browser can read.
+    # The cookie carries only a flow ID. This fake URL omits nonce as well;
+    # Authlib's real authorization URL includes nonce and state. These checks
+    # cover the route's response to the fake, not Authlib's URL construction.
     assert authorization.code_verifier not in set_cookie
     assert authorization.nonce not in set_cookie
     assert authorization.code_verifier not in response.headers["location"]

@@ -1,5 +1,3 @@
-# backend/tests/unit/test_oauth_flow.py
-
 """Pure logic of the OAuth flow service."""
 
 from __future__ import annotations

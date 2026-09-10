@@ -1,5 +1,3 @@
-// frontend/src/layout/AppLayout.tsx
-
 import {
   ClipboardList,
   Database,

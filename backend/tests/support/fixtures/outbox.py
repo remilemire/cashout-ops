@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/outbox.py
-
 """On-demand outbox delivery over the real handlers and fake clients.
 
 ASGITransport never runs the app lifespan, so no dispatcher polls during

@@ -1,5 +1,3 @@
-# backend/app/document_ai/schemas.py
-
 from __future__ import annotations
 
 from enum import StrEnum

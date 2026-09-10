@@ -1,5 +1,3 @@
-# backend/app/integrations/oauth/errors.py
-
 from __future__ import annotations
 
 

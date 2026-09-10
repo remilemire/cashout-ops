@@ -1,5 +1,3 @@
-# backend/app/infrastructure/db/registry.py
-
 """Imports every ORM model so Alembic autogenerate sees the full schema.
 
 Models live in feature packages; importing them here registers them on

@@ -1,5 +1,3 @@
-# backend/app/core/config/redis.py
-
 from __future__ import annotations
 
 from pydantic_settings import SettingsConfigDict

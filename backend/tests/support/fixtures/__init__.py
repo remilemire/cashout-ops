@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/__init__.py
-
 """Fixture modules loaded via `pytest_plugins` in the root conftest.
 
 Splitting fixtures by concern (db, integrations, app, clients) keeps the

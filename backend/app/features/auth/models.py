@@ -1,11 +1,7 @@
-# backend/app/features/auth/models.py
+"""Auth ORM models registered with the database metadata.
 
-"""The auth feature's persisted models, as one surface.
-
-Auth keeps its ORM models inside the sub-feature that owns them, and most of
-its state is not persisted at all (sessions, email challenges, and OAuth
-flows live in Redis). This module is what the database registry imports, so
-adding or moving a sub-feature's table never reaches past this boundary.
+Sessions, email challenges, and pending OAuth flows are stored in Redis;
+external identity links are stored in PostgreSQL.
 """
 
 from __future__ import annotations

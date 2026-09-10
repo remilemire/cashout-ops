@@ -1,5 +1,3 @@
-# backend/app/security/csrf.py
-
 from __future__ import annotations
 
 from fastapi import Request, Response

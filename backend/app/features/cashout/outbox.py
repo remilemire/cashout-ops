@@ -1,5 +1,3 @@
-# backend/app/features/cashout/outbox.py
-
 """Aggregated outbox surface for the cashout feature.
 
 Message definitions and handlers live with their owning sub-features; this

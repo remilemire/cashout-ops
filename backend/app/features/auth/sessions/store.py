@@ -1,5 +1,3 @@
-# backend/app/features/auth/sessions/store.py
-
 """Redis storage for sessions.
 
 Sessions live in Redis, not Postgres: ``session:{token_hash}`` holds a

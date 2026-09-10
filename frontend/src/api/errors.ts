@@ -1,5 +1,3 @@
-// frontend/src/api/errors.ts
-
 import type { ErrorCode, ErrorContext, ValidationIssue } from "./types";
 
 /** All application wording lives here; the backend sends codes and context. */

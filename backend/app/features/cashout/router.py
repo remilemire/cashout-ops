@@ -1,20 +1,8 @@
-# backend/app/features/cashout/router.py
+"""Cashout workflow routes and sub-feature router composition.
 
-"""The flow, per upload (the file the cashier submits): the cashier uploads it
-and immediately gets back an EXTRACTING analysis; the AI extraction runs in a
-background task, first finding every document printed in the upload (two
-receipts in one photo, the pages of a PDF) and giving each document its own
-analysis, and the client polls each analysis until it reaches
-NEEDS_VERIFICATION (or FAILED — a provider failure, or a document the AI
-could not place as a cashout report — retryable via the analysis's extract
-endpoint; the upload's extract endpoint starts the upload over, detecting its
-documents again). The cashier verifies each analysis — optionally submitting
-corrections. Alternatively, an upload can be added with manually entered
-details (or a failed/unverified analysis replaced by them), skipping AI
-entirely and landing directly in VERIFIED. Once every analysis is verified,
-completing the submission reconciles them into a CashoutData row and closes
-the cashout (COMPLETED) — or refuses, when the documents do not cross-check
-(see data/reconciliation.py).
+Uploads queue extraction; text detection may produce multiple analyses.
+Cashiers review and verify those analyses, or supply manual entries.
+Completion reconciles verified data into a CashoutData row.
 """
 
 from __future__ import annotations
@@ -66,20 +54,15 @@ router = APIRouter(
     ),
 )
 
-# The submission lifecycle (create, list, complete, unsubmit, delete).
 router.include_router(submissions_router)
-# Upload removal and inline viewing.
 router.include_router(uploads_router)
-# Analysis polling and verification.
 router.include_router(analyses_router)
-# The reconciled cashout data (admin table).
 router.include_router(data_router)
 
 # The upload workflows' HTTP entry points: these routes cross sub-feature URL
 # spaces and coordinate across sub-features, so they live at the namespace
 # root and call shared/workflows — mirroring auth's root logout → shared/access.
 
-# Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
 UploadId = Annotated[UUID, Path(description="Cashout upload ID.")]
 AnalysisId = Annotated[UUID, Path(description="Cashout document analysis ID.")]
@@ -120,17 +103,16 @@ async def create_upload(
     background: this returns the upload's first analysis in `EXTRACTING`;
     poll `GET /cashout/analyses/{id}` until it reaches `NEEDS_VERIFICATION`
     or `FAILED` (retry via the analysis's extract endpoint). The extraction
-    first finds every document printed in the upload (several receipts in
-    one photo, each page of a PDF) and gives each further one its own
-    analysis, listed on the upload in the submission detail.
+    detects candidate document regions in the upload and gives each further
+    region its own analysis, listed in the submission detail. Detection is
+    heuristic; PDFs are processed only up to OCR_PDF_MAX_PAGES.
 
-    The content type is checked before the body is read, and the body itself is
-    read only up to the limit (plus the byte that proves it was exceeded); the
-    service rejects it from there.
+    The declared content type is checked before reading from the parsed
+    upload. At most the size limit plus one byte is read into the payload;
+    an oversized file is rejected. FastAPI has already parsed the multipart
+    request by then, so this is not a network request-body limit.
     """
-    # Resolved first so an unsupported type is rejected without reading the
-    # file: keyword arguments evaluate in order, so this cannot be inlined
-    # below `data` without reading the body of a file we are about to refuse.
+    # Validate the declared type before copying bytes from the parsed file.
     content_type = _to_content_type(file.content_type)
     payload = UploadPayload(
         data=await read_document(file, limit=settings.storage.MAX_DOCUMENT_SIZE_BYTES),
@@ -179,15 +161,14 @@ async def create_manual_upload(
     The multipart `payload` field carries `{classification, data}`: the data
     is validated against the classification's registered schema. Typing the
     values is the verification, so the analysis lands directly in `VERIFIED`
-    — there is nothing to poll. No extraction ever runs for it, so the upload
-    is never split: it stands for one document.
+    — there is nothing to poll. This operation does not crop or split the
+    upload; a later extraction request can do so.
 
-    As on the extracting upload, the content type is checked before the body
-    is read, and the body itself is read only up to the limit (plus the byte
-    that proves it was exceeded).
+    As on the extracting upload, the handler validates the declared content
+    type and reads at most the size limit plus one byte from the parsed file.
+    This check does not limit the framework's multipart ingestion.
     """
-    # Parsed first, like the content-type check below: a malformed entry is
-    # rejected without reading the body of a file we are about to refuse.
+    # Validate the entry envelope before copying bytes from the parsed file.
     entry = CashoutDocumentManualEntry.model_validate_json(payload)
     content_type = _to_content_type(file.content_type)
     upload = UploadPayload(

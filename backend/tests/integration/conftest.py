@@ -1,5 +1,3 @@
-# backend/tests/integration/conftest.py
-
 """Anchor for integration-tier-local fixtures.
 
 The database, app, and client fixtures come from tests/support/fixtures via

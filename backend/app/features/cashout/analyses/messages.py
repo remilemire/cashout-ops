@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/messages.py
-
 """User-facing messages for FAILED document analyses.
 
 Keyed by the persisted `error_code` — the DocumentAIErrorCode raised by the

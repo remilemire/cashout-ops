@@ -1,6 +1,4 @@
-# backend/app/features/cashout/data/repository.py
-
-"""Database access for cashout data; only the data service imports this."""
+"""Database access for cashout data."""
 
 from __future__ import annotations
 

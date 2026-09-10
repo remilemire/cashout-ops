@@ -1,5 +1,3 @@
-# backend/app/core/providers.py
-
 from __future__ import annotations
 
 from enum import StrEnum

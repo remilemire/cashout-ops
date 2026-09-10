@@ -4,8 +4,8 @@
 
 | Tier | Directory | May use | Must not use | Run with |
 |---|---|---|---|---|
-| Unit | `tests/unit/` | pure code, `tests.support` fakes | database, Redis, Docker, `app`, HTTP clients | `make backend-test-unit` |
-| Integration | `tests/integration/` | full HTTP stack (ASGI client) + real Postgres and Redis | live network, real providers | `make backend-test-integration` |
+| Unit | `tests/unit/` | isolated components, local OCR, provider fakes | database, Redis, Docker, application HTTP stack, live providers | `make backend-test-unit` |
+| Integration | `tests/integration/` | full HTTP stack (ASGI client), real Postgres and Redis, migrations | live external providers | `make backend-test-integration` |
 
 `make backend-test` runs everything. Tests are auto-marked `unit` /
 `integration` by directory (see the root `conftest.py`), so `-m unit` and
@@ -69,7 +69,8 @@ email_client + redis_client ─────────────┘      └�
 
 - `app` is a fresh `create_app()` instance per test with the database, Redis,
   and all external clients overridden; the lifespan never runs under
-  ASGITransport, so nothing real is constructed.
+  ASGITransport, so production startup does not construct provider clients.
+  The database and Redis fixtures supply real connections.
 - `make_client` is the way to get authenticated clients — including several
   users in one test:
 
@@ -99,8 +100,9 @@ email_client + redis_client ─────────────┘      └�
   need a wider loop scope — don't).
 - Mutating requests need `csrf_headers(client)`; the helpers in
   `support/cashout.py` handle this already.
-- The AI provider, object storage, email, and text detector are always faked;
-  the extraction stack between them (`DocumentAIClient`, the cropper, the
-  processor, registry) is real.
-- Schema comes from `registry.metadata.create_all`, so migrations are not
-  exercised by this suite.
+- Shared application fixtures fake AI, object storage, email, OAuth, and text
+  detection. The extraction stack between them is real. Dedicated unit tests
+  also load the vendored OCR model and exercise provider adapters with fakes.
+- Most database tests use `registry.metadata.create_all`. The dedicated
+  `tests/integration/test_migrations.py` runs the Alembic chain to head and
+  checks the reporting view.

@@ -1,5 +1,3 @@
-# backend/app/features/cashout/analyses/service.py
-
 from __future__ import annotations
 
 import logging
@@ -155,8 +153,8 @@ async def record_manual_entry(
     the actor as its verifier. The validated entry is written to both the
     extracted and verified data, so unverify → edit → re-verify (and a later
     retry extraction) behave exactly as they do after an AI run. A null
-    provider/model is what marks the analysis as manual. No extraction ever
-    runs for it, so the upload is never cropped or split: it is one document.
+    provider/model marks the current outcome as manual. This operation does
+    not crop or split the upload; a later extraction request can do so.
     """
     analysis = CashoutDocumentAnalysis(cashout_upload_id=upload.id, position=1)
     await repository.add_analysis(db, analysis)
@@ -204,15 +202,13 @@ async def run_extraction(
     processor: CashoutDocumentProcessor,
     classification: CashoutDocumentClassification | None = None,
 ) -> None:
-    """Outbox job: run one analysis's AI extraction and persist the outcome.
+    """Run an enqueued extraction and persist its outcome in a separate transaction.
 
-    Runs from the extraction handler after the request (or the job that
-    found a sibling) has committed the EXTRACTING analysis, so it owns its
-    session and transaction — the one sanctioned exception to "services
-    never commit". All failures are handled here (the analysis is marked
-    FAILED), so the outbox message completes even when the extraction does
-    not. A supplied `classification` skips AI classification (its confidence
-    is recorded as null).
+    Expected document-AI errors produce FAILED analyses without retrying the
+    outbox message. Unexpected errors trigger a separate attempt to record
+    FAILED; if that database work also fails, the exception reaches the
+    dispatcher. Process termination can leave an analysis in EXTRACTING.
+    A supplied classification skips classification and records no confidence.
     """
     async with sessionmaker() as db:
         try:
@@ -249,8 +245,8 @@ async def run_extraction(
             await db.rollback()
             logger.exception("Extraction failed for analysis %s", analysis_id)
 
-    # Unexpected failure above: record it so the analysis doesn't sit in
-    # EXTRACTING forever (which would block retries).
+    # Try to record an unexpected failure in a fresh transaction. If this
+    # also fails, the dispatcher receives the error and may retry the job.
     async with sessionmaker() as db:
         analysis = await repository.get_analysis(db, analysis_id=analysis_id)
         if (
@@ -435,11 +431,11 @@ async def _apply_extraction(
     outcome.
 
     Detection runs from an upload's sole, uncropped analysis: the first
-    run, or a rerun after earlier runs found nothing to crop to (trying again
-    is cheap, and picks up a detector or setting that has changed since).
+    run, or a rerun after earlier runs returned no crops.
     The first document found is this analysis's; every further one becomes
-    a sibling analysis with its own queued extraction — queued rather than
-    run here, so this job stays within its outbox claim. Once an upload has
+    a sibling analysis with its own queued extraction, avoiding sequential
+    processing of every document within this job. The lease is time-limited;
+    even a single extraction can outlast it. Once an upload has
     crops, each analysis keeps reading its own; the upload's restart is
     the way to detect again. Crops are recorded before the AI call, so a
     failed extraction still keeps its crop.

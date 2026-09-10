@@ -1,5 +1,3 @@
-# backend/tests/integration/test_cashout_analyses.py
-
 from __future__ import annotations
 
 import io

@@ -1,5 +1,3 @@
-# backend/app/features/cashout/uploads/model.py
-
 from __future__ import annotations
 
 import uuid

@@ -1,5 +1,3 @@
-# backend/tests/unit/test_ocr_lifespan.py
-
 """The OCR lifespan loads the detector exactly when cropping is enabled."""
 
 from __future__ import annotations

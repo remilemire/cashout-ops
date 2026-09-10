@@ -1,15 +1,10 @@
-# backend/app/features/cashout/shared/workflows.py
+"""Cashout upload and analysis entry points.
 
-"""Cross-sub-feature workflows: receiving an upload and recording its analyses.
-
-Upload intake and manual entry span two sub-features — uploads stores the
-file, analyses records the outcomes (an AI extraction per document found in
-the upload, or a manual entry that skips AI entirely) — so the workflows live
-here: neither sub-feature's service depends on the other, and the namespace
-root's router makes a single call. Every route that enqueues
-`cashout.run_extraction` enters through this module, as do the manual entry
-points that enqueue nothing. Only the root router calls it; sub-feature
-modules never import it.
+Upload intake stores the file, then creates its database records and queued
+work. Storage operations do not roll back with the database transaction.
+Manual intake validates document data before storing bytes.
+Retry, restart, and manual replacement delegate to the analyses service
+through the same entry point used by the cashout router.
 """
 
 from __future__ import annotations
@@ -47,8 +42,8 @@ async def create_upload(
 
     The AI extraction itself runs from the outbox (`run_extraction` via the
     extraction handler); the message is enqueued in this transaction, so it
-    dispatches only once the upload commits. That job also finds every
-    document printed in the upload and adds an analysis for each further one.
+    dispatches only once the upload commits. That job attempts document
+    detection and adds an analysis for each further crop it finds.
     Clients poll the returned analysis and refresh the submission for the
     rest.
     """
@@ -102,9 +97,6 @@ async def restart_extraction(
     processor: CashoutDocumentProcessor,
     storage: DocumentStorageClient,
 ) -> CashoutDocumentAnalysis:
-    # Pure delegation: the behavior lives wholly in the analyses service. The
-    # indirection is kept so every extraction entry point enters through this
-    # workflow and the root router never reaches into sub-feature services.
     return await analyses_service.restart_extraction(
         db,
         upload_id=upload_id,
@@ -122,7 +114,6 @@ async def retry_extraction(
     processor: CashoutDocumentProcessor,
     classification: CashoutDocumentClassification | None = None,
 ) -> CashoutDocumentAnalysis:
-    # Pure delegation, as above.
     return await analyses_service.retry_extraction(
         db,
         analysis_id=analysis_id,
@@ -140,10 +131,6 @@ async def replace_with_manual_entry(
     data: dict[str, Any],
     user: User,
 ) -> CashoutDocumentAnalysis:
-    # Pure delegation: the behavior lives wholly in the analyses service. The
-    # indirection is kept so every upload intake/entry route enters through
-    # this workflow and the root router never reaches into sub-feature
-    # services.
     return await analyses_service.replace_with_manual_entry(
         db,
         analysis_id=analysis_id,

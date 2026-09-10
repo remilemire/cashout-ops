@@ -1,5 +1,3 @@
-# backend/tests/support/factories.py
-
 """Helpers for seeding database rows directly (bypassing the API)."""
 
 from __future__ import annotations

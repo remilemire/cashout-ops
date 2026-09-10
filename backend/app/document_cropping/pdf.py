@@ -1,11 +1,9 @@
-# backend/app/document_cropping/pdf.py
-
 """Rendering a PDF's pages to images, so a PDF is cropped like a photo.
 
 PDFium (via pypdfium2, a self-contained wheel) draws each page at the
 requested resolution. The cropper then treats every page as one more image:
 text detection, splitting, and cropping all run on the render, and the crops
-are stored as PNG since a rendered page is lossless print, not a photo.
+are stored as PNG to avoid additional lossy compression of the rendered pixels.
 """
 
 from __future__ import annotations

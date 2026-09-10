@@ -1,5 +1,3 @@
-# backend/app/features/cashout/uploads/errors.py
-
 from __future__ import annotations
 
 from typing import Literal

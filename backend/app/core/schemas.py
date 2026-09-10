@@ -1,5 +1,3 @@
-# backend/app/core/schemas.py
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -23,19 +21,11 @@ UtcDateTime = Annotated[
 
 
 def normalize_email(email: str) -> str:
-    """An address in the one form the system stores and compares it in.
+    """Lowercase an email address for this application's account matching policy.
 
-    Mailboxes are treated as case-insensitive: RFC 5321 leaves the local part
-    case-sensitive in principle, but no provider in practice does, so letting
-    `Foo@x.com` and `foo@x.com` become two accounts is account confusion, not
-    a feature. Pydantic already lowercases the domain; this lowercases the
-    local part too.
-
-    Applied wherever an address enters the system — request bodies, the
-    bootstrap setting, an issuer's verified claim — so nothing downstream has
-    to remember to: the users table holds normalized values, its unique index
-    enforces one account per mailbox, and every `==` lookup compares forms
-    that already agree.
+    The application intentionally treats both local part and domain as
+    case-insensitive. Apply this at input boundaries so storage and lookups
+    use the same form.
     """
     return email.lower()
 

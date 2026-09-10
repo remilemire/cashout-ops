@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/__init__.py
-
 """In-memory doubles for the AI, storage, email, and text-detection integrations.
 
 The document-extraction stack (processor, registry, DocumentAIClient) is real in

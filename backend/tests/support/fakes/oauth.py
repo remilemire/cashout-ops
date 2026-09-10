@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/oauth.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,6 +35,10 @@ class IdentityCall:
 
 class FakeOAuthClient(OAuthClient):
     """`OAuthClient` that mints predictable secrets and records every call.
+
+    The fake authorization URL contains only state; unlike Authlib, it omits
+    nonce and the PKCE challenge. Response tests using this fake do not prove
+    the real authorization URL keeps nonce out of the browser.
 
     Configure `identity` with the OAuthIdentity a completed flow should
     resolve to (asserted present — a test that reaches get_identity without

@@ -1,4 +1,3 @@
-# backend/typings/onnxruntime/__init__.pyi
 #
 # onnxruntime ships no type information. This covers only the surface
 # app/integrations/ocr/ppocr.py uses; extend it if that surface grows.

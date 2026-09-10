@@ -1,5 +1,3 @@
-# backend/app/document_ai/__init__.py
-
 from __future__ import annotations
 
 from .client import DocumentAIClient

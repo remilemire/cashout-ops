@@ -1,5 +1,3 @@
-// frontend/src/auth/EmailLoginPage.tsx
-
 import { useState, type SyntheticEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 

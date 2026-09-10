@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/sdk/gemini.py
-
 """Fakes shaped like the `genai.Client` surface `GeminiAIClient` uses.
 
 The adapter (`app/integrations/ai/gemini.py`) calls

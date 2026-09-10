@@ -1,5 +1,3 @@
-# backend/app/features/cashout/submissions/router.py
-
 from __future__ import annotations
 
 from typing import Annotated
@@ -26,7 +24,6 @@ from .schemas import (
 
 router = APIRouter()
 
-# Path parameters are UUIDs; Pydantic validates them (a malformed id → 422).
 SubmissionId = Annotated[UUID, Path(description="Cashout submission ID.")]
 
 

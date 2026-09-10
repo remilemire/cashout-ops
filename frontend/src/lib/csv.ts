@@ -1,5 +1,3 @@
-// frontend/src/lib/csv.ts
-
 /**
  * CSV serialization plus the browser download that hands the file to the
  * user. The download side effect is isolated in this module so pages can mock

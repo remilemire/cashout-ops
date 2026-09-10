@@ -1,5 +1,3 @@
-// frontend/src/auth/CodeInput.tsx
-
 import { useState, type ChangeEvent } from "react";
 
 import { cx } from "@/lib/cx";

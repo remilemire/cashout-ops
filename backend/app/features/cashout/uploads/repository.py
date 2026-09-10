@@ -1,6 +1,4 @@
-# backend/app/features/cashout/uploads/repository.py
-
-"""Database access for cashout uploads; only the uploads service imports this."""
+"""Database access for cashout uploads."""
 
 from __future__ import annotations
 

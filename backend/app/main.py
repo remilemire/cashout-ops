@@ -1,5 +1,3 @@
-# backend/app/main.py
-
 from __future__ import annotations
 
 from fastapi import FastAPI
@@ -14,32 +12,32 @@ from app.lifespan import lifespan
 
 DESCRIPTION = """\
 Internal API for the Whiskey District end-of-shift cashout flow: cashiers open a
-submission and upload the shift documents (TouchBistro reports, terminal
-reports, receipts, tip-out sheets, cash summaries). An AI pipeline classifies
-and extracts each document in the background after upload; the cashier polls
-the analysis, verifies each extraction (correcting it if needed), and then
-completes the cashout.
+submission and upload TouchBistro reports and terminal server summaries.
+An AI pipeline classifies and extracts each document after upload; the cashier
+polls the analysis, verifies each extraction (correcting it if needed), and
+then completes the cashout.
 
 ## Conventions
 
 - JSON is **camelCase** in and out; timestamps are ISO-8601 UTC with a trailing `Z`.
 - Authentication is a `session_token` HttpOnly cookie, set when a passwordless
-  email challenge is completed (`/auth/email-challenges/verify-code`).
-- Unsafe methods require the double-submit CSRF check: send the JS-readable
+  email challenge is completed (`/auth/email-challenges/verify-code`) or an
+  OAuth sign-in succeeds.
+- Authenticated mutations require the double-submit CSRF check: send the JS-readable
   `csrf_token` cookie's value in the `x-csrf-token` header.
-- Errors always use one body shape: `{ "kind", "code", "message", "issues" }`,
-  where `issues` (per-field details) is present only for validation failures
-  (`kind: "VALIDATION"`).
+- Error responses contain `kind`, `code`, and a public JSON `ctx` object.
+  Validation failures may also contain `issues`, each with a Pydantic `code`,
+  camelCase `path`, and safe constraint `ctx`. The frontend supplies messages.
 """
 
 OPENAPI_TAGS = [
     {
         "name": "auth",
         "description": (
-            "Passwordless login. Submitting an email always returns a "
-            "challenge (account existence is never revealed); the emailed "
-            "link reveals a one-time code, and verifying the code in the "
-            "initiating tab starts a cookie session. OAuth sign-in (Google) "
+            "Passwordless login. Accepted email submissions return a "
+            "challenge ID for both known and unknown addresses. Eligible "
+            "accounts receive a one-time code; verifying it with the "
+            "challenge ID starts a cookie session. OAuth sign-in (Google) "
             "is a browser navigation: /oauth/{issuer}/start redirects to "
             "the provider and its callback starts the same cookie session "
             "for an existing account. Accounts are created by admins."

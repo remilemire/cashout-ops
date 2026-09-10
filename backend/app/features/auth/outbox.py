@@ -1,5 +1,3 @@
-# backend/app/features/auth/outbox.py
-
 """Aggregated outbox surface for the auth feature.
 
 Message definitions and handlers live with their owning sub-features; this

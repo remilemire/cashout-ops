@@ -1,5 +1,3 @@
-# backend/app/features/cashout/extraction/prompts.py
-
 """The free-form guidance the processor gives the document AI.
 
 Per-type signals are typed structures beside the schemas (the registry's

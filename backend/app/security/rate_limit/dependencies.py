@@ -1,5 +1,3 @@
-# backend/app/security/rate_limit/dependencies.py
-
 from __future__ import annotations
 
 from datetime import timedelta

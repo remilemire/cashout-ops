@@ -1,5 +1,3 @@
-# backend/app/document_ai/hints.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -39,11 +37,8 @@ class FieldHint:
     anti_anchors: tuple[str, ...] = ()
 
 
-# The renderers translate hints into plain guidance: the prompt never sees the
-# structural vocabulary above (markers, labels, anchors, ...) and carries no
-# preamble explaining it. Empty groups are skipped, a hint with no content
-# renders nothing, and both renderers return None when nothing renders so
-# hint-less calls stay byte-identical to before.
+# Render nonempty hints as plain guidance. Return None for empty hints so
+# callers omit the additional-instructions section entirely.
 
 
 def render_classification_hints(

@@ -1,5 +1,3 @@
-# backend/app/integrations/storage/local.py
-
 from __future__ import annotations
 
 import asyncio

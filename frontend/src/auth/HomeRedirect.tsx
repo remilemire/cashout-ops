@@ -1,5 +1,3 @@
-// frontend/src/auth/HomeRedirect.tsx
-
 import { Navigate } from "react-router-dom";
 
 import { isAdminRole } from "@/api/types";

@@ -1,5 +1,3 @@
-# backend/tests/unit/test_framework_smoke.py
-
 """Framework smoke tests for the unit tier.
 
 These prove the tier contract (auto-marker applied; support fakes importable

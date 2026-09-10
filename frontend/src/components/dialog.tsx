@@ -1,13 +1,11 @@
-// frontend/src/components/dialog.tsx
-
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
 
 /**
  * Native `<dialog>`-based modal: focus trapping, Esc handling, and the
- * backdrop come from the platform. `dismissible: false` makes it blocking
- * (used by the email-verification gate).
+ * backdrop come from the platform. `dismissible: false` prevents native
+ * cancellation with Esc; callers can still close the dialog.
  */
 export function Dialog({
   open,

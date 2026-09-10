@@ -1,5 +1,3 @@
-# backend/app/core/outbox.py
-
 from __future__ import annotations
 
 from collections.abc import Sequence

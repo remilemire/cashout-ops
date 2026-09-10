@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/AdjustmentForm.tsx
-
 import { ApiError } from "@/api/client";
 import type { JsonValue } from "@/api/types";
 import { Badge, TextField } from "@/components/ui";

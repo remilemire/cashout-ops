@@ -1,5 +1,3 @@
-# backend/app/infrastructure/db/models.py
-
 from __future__ import annotations
 
 import enum

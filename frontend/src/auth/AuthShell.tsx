@@ -1,5 +1,3 @@
-// frontend/src/auth/AuthShell.tsx
-
 import { GlassWater } from "lucide-react";
 import type { ReactNode } from "react";
 

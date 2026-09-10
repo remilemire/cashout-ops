@@ -1,4 +1,3 @@
-# backend/tests/integration/test_cashout_manual.py
 #
 # Manual document entry: adding a document with typed-in details (no AI
 # involved), and converting a failed or unverified analysis into a manual

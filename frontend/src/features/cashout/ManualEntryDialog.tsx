@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/ManualEntryDialog.tsx
-
 import { Check, FolderOpen } from "lucide-react";
 import { useRef, useState } from "react";
 

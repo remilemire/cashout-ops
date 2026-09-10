@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/storage.py
-
 from __future__ import annotations
 
 from app.integrations.storage import (

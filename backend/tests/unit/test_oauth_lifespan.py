@@ -1,5 +1,3 @@
-# backend/tests/unit/test_oauth_lifespan.py
-
 """Issuer enablement derives from credentials, in both the lifespan and
 `enabled_issuers`."""
 

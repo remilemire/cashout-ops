@@ -1,5 +1,3 @@
-# backend/tests/integration/test_rate_limits.py
-
 """Rate limiting on the pre-session auth endpoints and the cashout quotas.
 
 The passwordless routes carry two layers: a per-email limit against

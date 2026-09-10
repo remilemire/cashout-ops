@@ -1,5 +1,3 @@
-# backend/app/features/auth/oauth/router.py
-
 from __future__ import annotations
 
 from typing import Annotated, Any

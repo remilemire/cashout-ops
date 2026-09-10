@@ -1,4 +1,3 @@
-# backend/tests/integration/test_migrations.py
 #
 # The application schema in tests comes from the ORM metadata (create_all),
 # so nothing else exercises the migration chain. This runs the real chain

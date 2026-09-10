@@ -1,5 +1,3 @@
-# backend/app/security/time_floor.py
-
 from __future__ import annotations
 
 import asyncio

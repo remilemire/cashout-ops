@@ -1,5 +1,3 @@
-# backend/app/integrations/email/__init__.py
-
 from __future__ import annotations
 
 from .client import EmailClient

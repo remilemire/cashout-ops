@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/status.tsx
-
 import type {
   CashoutSubmissionStatus,
   DocumentAnalysisStatus,

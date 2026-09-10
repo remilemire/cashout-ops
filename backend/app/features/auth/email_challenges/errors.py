@@ -1,5 +1,3 @@
-# backend/app/features/auth/email_challenges/errors.py
-
 from __future__ import annotations
 
 from typing import Literal

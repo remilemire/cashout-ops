@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/fields.ts
-
 import { type CashoutDocumentClassification } from "@/api/types";
 import { fieldLabel } from "@/lib/format";
 
@@ -88,7 +86,7 @@ export function fieldGroupsFor(schemaName: string): FieldGroup[] {
  * keys actually present. Keys the registry doesn't know — everything, when
  * the schema is null or unrecognized — land in a trailing catch-all group
  * labeled via the generic fieldLabel fallback ("Other" when curated groups
- * precede it, heading-less when it stands alone like today's flat list).
+ * precede it; omit its heading when it is the only group).
  */
 export function groupFields(
   schemaName: string | null | undefined,

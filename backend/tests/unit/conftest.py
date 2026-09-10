@@ -1,5 +1,3 @@
-# backend/tests/unit/conftest.py
-
 """Guards enforcing the unit-tier contract: no database, no Redis, no Docker,
 no app.
 

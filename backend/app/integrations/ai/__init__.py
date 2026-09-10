@@ -1,5 +1,3 @@
-# backend/app/integrations/ai/__init__.py
-
 from __future__ import annotations
 
 from .anthropic import AnthropicAIClient

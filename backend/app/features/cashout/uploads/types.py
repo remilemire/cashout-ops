@@ -1,5 +1,3 @@
-# backend/app/features/cashout/uploads/types.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass

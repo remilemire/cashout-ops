@@ -1,5 +1,3 @@
-# backend/app/core/config/storage.py
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,10 +35,9 @@ class StorageSettings(SettingsGroup):
         default=None, validation_alias="S3_ENDPOINT_URL"
     )
 
-    # Upload ceiling for a single file, in megabytes. The upload endpoint
-    # stops reading a request body once it passes this, and the service rejects
-    # the upload (UPLOAD_TOO_LARGE). Configured in MB because that is how the
-    # limit is communicated to users; code reads MAX_DOCUMENT_SIZE_BYTES.
+    # Accepted file size in megabytes. The handler reads at most the limit
+    # plus one byte from the parsed upload, then rejects an oversized file.
+    # This does not limit multipart ingestion by the server or proxy.
     MAX_DOCUMENT_SIZE_MB: int = 20
 
     @field_validator("LOCAL_DIR", mode="before")

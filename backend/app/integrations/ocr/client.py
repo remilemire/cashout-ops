@@ -1,5 +1,3 @@
-# backend/app/integrations/ocr/client.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass

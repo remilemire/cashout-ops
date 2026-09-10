@@ -1,5 +1,3 @@
-# backend/app/integrations/ocr/ppocr.py
-
 """`TextDetector` over the PP-OCRv4 detection model (DBNet), run with onnxruntime.
 
 Only the detection stage of PP-OCR runs here: the model outputs a per-pixel

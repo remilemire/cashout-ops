@@ -1,5 +1,3 @@
-# backend/app/features/auth/email_challenges/store.py
-
 """Redis storage for email challenges.
 
 - ``email_challenge:{challenge_id}`` holds a JSON-encoded
@@ -130,11 +128,12 @@ async def find_challenge_id_for_email(redis: Redis, *, email_hash: str) -> str |
 async def clear_email_pointer(
     redis: Redis, *, email_hash: str, challenge_id: str
 ) -> None:
-    """Remove the address's pointer if it still points at ``challenge_id``.
+    """Remove the address pointer after observing that it names this challenge.
 
-    The GET+DEL pair can race a concurrent initiate (which rewrites the
-    pointer between the two commands), but the race is benign: at worst a
-    pointer or an orphaned challenge lingers until its ≤15-minute TTL.
+    GET and DEL are separate commands. A concurrent initiation can replace
+    the pointer between them, and this delete can remove the newer pointer.
+    Its challenge survives until expiry and may escape invalidation by the
+    next initiation. This operation is not an atomic compare-and-delete.
     """
     value = await redis.get(_email_pointer_key(email_hash))
 

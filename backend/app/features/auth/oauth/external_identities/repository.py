@@ -1,5 +1,3 @@
-# backend/app/features/auth/oauth/external_identities/repository.py
-
 from __future__ import annotations
 
 from sqlalchemy import select

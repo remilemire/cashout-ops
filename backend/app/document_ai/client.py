@@ -1,5 +1,3 @@
-# backend/app/document_ai/client.py
-
 from __future__ import annotations
 
 from collections.abc import Mapping

@@ -1,5 +1,3 @@
-# backend/app/features/cashout/data/model.py
-
 from __future__ import annotations
 
 import uuid

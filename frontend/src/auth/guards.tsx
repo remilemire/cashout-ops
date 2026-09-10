@@ -1,5 +1,3 @@
-// frontend/src/auth/guards.tsx
-
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { isAdminRole } from "@/api/types";

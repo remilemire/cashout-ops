@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/app.py
-
 """A fresh FastAPI application per test, with every external seam overridden."""
 
 from __future__ import annotations

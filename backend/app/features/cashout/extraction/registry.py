@@ -1,5 +1,3 @@
-# backend/app/features/cashout/extraction/registry.py
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -22,7 +20,7 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[
 }
 
 # Every classification has an entry: a document the model can't place is not a
-# classification but a failed extraction (DocumentUnclassifiedError), so there
+# classification but a failed extraction (DocumentUnclassifiableError), so there
 # is no schema-less type to guard against here or downstream.
 
 # Keys must match CASHOUT_DOCUMENT_SCHEMAS (unit-test-enforced). "None of the

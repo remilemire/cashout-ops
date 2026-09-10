@@ -1,5 +1,3 @@
-# backend/tests/unit/test_dependency_scopes.py
-
 """Structural guarantees on dependency scopes.
 
 `DbSession` exists so the per-request commit runs before the response is

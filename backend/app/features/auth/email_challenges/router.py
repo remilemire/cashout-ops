@@ -1,5 +1,3 @@
-# backend/app/features/auth/email_challenges/router.py
-
 from __future__ import annotations
 
 from typing import Annotated
@@ -26,28 +24,11 @@ from .schemas import (
     EmailChallengeVerifyCode,
 )
 
-# No auth or CSRF dependencies: these routes run before any session exists.
-# Rate limits are attached per route via the feature's guard dependencies;
-# see .dependencies for how the per-email and per-IP caps divide the work.
-#
-# Every response is padded to CHALLENGE_TIME_FLOOR_MS by the router-wide
-# `challenge_time_floor` dependency, so response timing cannot reveal whether
-# an address has an account or a challenge id is real (the decoy path does
-# far less work than the real one). Function-scoped and solved first, the
-# floor brackets everything account-dependent: rate limiting, body-field
-# validation, the handler, response serialization, and — because teardown is
-# LIFO and the session is `DbSession` — the pre-response commit, whose cost
-# differs between the real and decoy paths. Error responses (429, field
-# 422s, rejected challenges) unwind through the floor and are padded too.
-# The one unpadded path is a malformed-JSON body, rejected before
-# dependencies run — identical for real and decoy input, since nothing
-# account-dependent has executed by then.
-#
-# Committing before the response also means a commit failure surfaces as an
-# error instead of hiding behind an already-sent 202/200: the outbox insert
-# and the owner bootstrap flush in-request, but the COMMIT itself only
-# happens in the session teardown. The floor must therefore exceed the real
-# path's tail including the commit; see CHALLENGE_TIME_FLOOR_MS.
+# Sign-in needs no existing session. Per-route guards enforce rate limits.
+# The function-scoped timing floor must run first so it unwinds after the
+# database commit and before the response is sent (see .dependencies).
+# Padding mitigates timing differences only below the configured floor;
+# malformed JSON is rejected before dependencies run.
 router = APIRouter(
     prefix="/email-challenges",
     tags=["auth"],
@@ -70,12 +51,11 @@ async def start_login(
     db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> EmailChallengeStartOut:
-    """Start a passwordless login by emailing a 6-digit sign-in code.
+    """Start sign-in by queuing delivery of a six-digit code to an eligible address.
 
-    Always returns 202 with a challengeId; whether an email was actually sent
-    is never revealed (an unknown address gets an indistinguishable decoy).
-    For a real account the code is emailed once the request commits, via the
-    transactional outbox.
+    Successful requests return 202 with a challengeId for both real and unknown
+    addresses. Unknown addresses receive a decoy id and no email. Validation,
+    rate-limit, and infrastructure failures can still return errors.
     """
     challenge_id = await email_challenges_service.initiate(
         db, redis, email=payload.email
@@ -99,10 +79,10 @@ async def verify_code(
     db: DbSession,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> UserOut:
-    """Complete login in the tab that initiated the challenge.
+    """Consume a challenge id and code, then set the authentication cookies.
 
-    Sets the `session_token` (HttpOnly) and `csrf_token` (JS-readable)
-    cookies. Consumes the challenge — it is single use.
+    Sets `session_token` (HttpOnly) and `csrf_token` (JS-readable). The
+    challenge is single use; verification does not require the initiating tab.
     """
     # The router-wide floor covers the session grant too, so a successful
     # sign-in and a rejected one are padded to the same shared minimum.

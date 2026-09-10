@@ -1,5 +1,3 @@
-# backend/app/features/cashout/submissions/model.py
-
 from __future__ import annotations
 
 import uuid
@@ -102,11 +100,8 @@ class CashoutSubmission(Base):
         foreign_keys="CashoutSubmission.employee_user_id"
     )
 
-    # Upload order, oldest first, so every consumer sees a stable list: with
-    # no ORDER BY, Postgres returns the rows in physical order, which an
-    # update to a row can change — and the cashier's upload cards reshuffle
-    # under them. The id breaks a tie between two uploads written in the
-    # same transaction, so the order is total.
+    # Keep upload cards stable across refreshes. SQL provides no ordering
+    # guarantee without ORDER BY; the id breaks ties in creation time.
     uploads: Mapped[list[CashoutUpload]] = relationship(
         back_populates="cashout_submission",
         cascade="all, delete-orphan",

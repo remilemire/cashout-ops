@@ -1,5 +1,3 @@
-# backend/app/integrations/ai/lifespan.py
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Awaitable, Callable

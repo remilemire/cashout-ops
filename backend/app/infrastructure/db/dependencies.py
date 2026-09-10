@@ -1,5 +1,3 @@
-# backend/app/infrastructure/db/dependencies.py
-
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -12,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
     """One transaction per request: commit on success, roll back on error.
 
-    Services never commit; they may flush when they need a generated PK.
+    Request services leave commits to this dependency. Background jobs own
+    separate transactions; repositories flush where results are needed early.
 
     Declare the session as `DbSession` below rather than wrapping this in
     `Depends` yourself — the wrapper's `scope` decides whether a commit-time

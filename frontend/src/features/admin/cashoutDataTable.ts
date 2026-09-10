@@ -1,5 +1,3 @@
-// frontend/src/features/admin/cashoutDataTable.ts
-
 import type { CashoutDataRow, User } from "@/api/types";
 
 /**

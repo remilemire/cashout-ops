@@ -1,5 +1,3 @@
-# backend/app/features/auth/oauth/dependencies.py
-
 """Pre-session rate-limit guards for the OAuth sign-in flow.
 
 These routes run before any session exists, so only per-IP caps apply; the

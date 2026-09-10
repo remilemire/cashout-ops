@@ -1,5 +1,3 @@
-// frontend/src/api/errors.test.ts
-
 import { describe, expect, it } from "vitest";
 
 import { errorMessage, validationMessage } from "./errors";

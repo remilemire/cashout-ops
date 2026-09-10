@@ -1,5 +1,3 @@
-# backend/app/features/users/model.py
-
 from __future__ import annotations
 
 import uuid
@@ -46,9 +44,8 @@ class User(Base):
         server_default=UserRole.STAFF.value,
     )
 
-    # Soft-delete marker: a user with cashout submissions is deactivated by
-    # setting this instead of being removed, so their submissions keep a valid
-    # author; NULL means the account is live.
+    # Deletion deactivates every account, preserving its identity for cashout
+    # history and reinvitation. NULL means the account is active.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

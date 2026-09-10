@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/FieldList.tsx
-
 import { displayValue } from "@/lib/format";
 
 import { groupFields } from "./fields";
@@ -16,7 +14,7 @@ export function FieldList({
   if (groups.length === 0) {
     return <p className="text-ink-muted text-sm">No extracted fields.</p>;
   }
-  // A single group renders as today's flat list, headings only differentiate.
+  // Show headings only when there are multiple groups to distinguish.
   const showHeadings = groups.length > 1;
   return (
     <div className="space-y-4">

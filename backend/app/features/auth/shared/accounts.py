@@ -1,5 +1,3 @@
-# backend/app/features/auth/shared/accounts.py
-
 """Resolving a mailbox-proven address to a local account.
 
 Both sign-in flows land here once they hold proof that the person controls
@@ -58,9 +56,9 @@ async def resolve(db: AsyncSession, *, email: str) -> User | None:
     the deployment being new (`may_bootstrap_owner`), so ownership is
     reclaimable after an out-of-band loss, and an address whose ownership
     has moved on is turned away here instead of at the unique index. It
-    still cannot help once that address holds a non-owner row: the lookup
-    below short-circuits, and no path promotes an existing account to OWNER
-    (see users/types.py).
+    does not promote an existing non-owner account: the lookup below returns
+    that account unchanged. Promoting an existing account to owner requires
+    an explicit ownership transfer by the current owner.
 
     None means the sign-in cannot proceed: the address has no account and
     may not claim ownership, or the bootstrap lost a race to a concurrent

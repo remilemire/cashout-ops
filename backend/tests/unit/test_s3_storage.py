@@ -1,5 +1,3 @@
-# backend/tests/unit/test_s3_storage.py
-
 """Unit tests for `S3DocumentStorageClient`.
 
 These pin the same security contract as the local client: a `storage_key` is

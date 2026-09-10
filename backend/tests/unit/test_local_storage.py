@@ -1,5 +1,3 @@
-# backend/tests/unit/test_local_storage.py
-
 """Unit tests for `LocalDocumentStorageClient`.
 
 These pin the security contract the client upholds: a `storage_key` is an

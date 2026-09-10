@@ -1,5 +1,3 @@
-# backend/tests/support/fakes/sdk/openai.py
-
 """Fakes shaped like the `AsyncOpenAI` surface `OpenAIAIClient` uses.
 
 The adapter (`app/integrations/ai/openai.py`) calls

@@ -1,5 +1,3 @@
-# backend/app/features/cashout/errors.py
-
 from __future__ import annotations
 
 from app.core.errors import ConstraintCodeMap, ErrorKindMap

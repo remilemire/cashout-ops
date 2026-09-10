@@ -1,5 +1,3 @@
-# backend/tests/unit/test_storage_lifespan.py
-
 """The storage lifespan hands out the client selected by configuration."""
 
 from __future__ import annotations

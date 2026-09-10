@@ -1,16 +1,8 @@
-# backend/app/features/auth/email_challenges/dependencies.py
+"""Pre-session rate limits and response timing mitigation for email sign-in.
 
-"""Pre-session guards for the passwordless sign-in flow: rate limits and the
-timing floor.
-
-These routes run before any session exists, so the usual authenticated
-per-user limits do not apply. The per-email guard keys the fixed-window
-counter on the address the request itself supplies, throttling targeted
-abuse of a single account; the per-IP guards bound total volume from a
-single source. The timing floor
-(`challenge_time_floor`) pads every response so its timing cannot reveal
-whether an address or challenge is real; see the router comment for the
-full defense.
+Per-email limits bound requests targeting an address; per-IP limits bound
+requests from a source. The timing floor reduces differences between real
+and decoy paths when their work finishes below the configured minimum.
 """
 
 from __future__ import annotations
@@ -34,15 +26,12 @@ _HOUR = timedelta(hours=1)
 
 
 async def challenge_time_floor() -> AsyncIterator[None]:
-    """Pad every email-challenge response to CHALLENGE_TIME_FLOOR_MS.
+    """Pad the request's work to CHALLENGE_TIME_FLOOR_MS before sending a response.
 
-    Declared router-wide with scope="function": router-level dependencies are
-    solved before endpoint parameters, so this is entered before every other
-    dependency and — teardown being LIFO within the function stack — pads
-    after the DbSession commit but before the response is sent. The commit's
-    cost therefore lands inside the padded window, and the pad completes
-    before any byte leaves. The floor is read at request time so tests can
-    patch it.
+    Declare this first on the router with function scope, like `DbSession`.
+    Dependencies unwind in reverse order, so the database commit is included
+    in the padded interval. Requests exceeding the floor receive no padding;
+    malformed JSON is rejected before dependencies run.
     """
     async with time_floor(settings.auth.CHALLENGE_TIME_FLOOR_MS):
         yield

@@ -1,5 +1,3 @@
-# backend/app/integrations/storage/keys.py
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -8,16 +6,11 @@ from .errors import InvalidStorageKeyError
 
 
 def validate_storage_key(storage_key: str) -> str:
-    """Return `storage_key` unchanged if it safely addresses content in a root.
+    """Validate a relative POSIX storage key without rewriting it.
 
-    A storage key is an opaque, relative POSIX path used to locate content
-    inside a storage root. To guarantee it can never escape that root — no
-    matter the backend — the key must be non-empty, relative (not absolute),
-    and free of parent-directory (`..`) segments. Anything else raises
-    `InvalidStorageKeyError`.
-
-    Keys are validated, not rewritten: a suspicious key is rejected rather than
-    silently coerced into a different (and possibly colliding) location.
+    Rejects empty paths, surrounding whitespace, absolute paths, and parent
+    segments. These lexical checks do not resolve filesystem symlinks or
+    establish object ownership; local storage assumes a controlled root.
     """
     if storage_key != storage_key.strip():
         raise InvalidStorageKeyError(storage_key)

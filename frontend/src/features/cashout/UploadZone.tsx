@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/UploadZone.tsx
-
 import { Camera, FolderOpen, UploadCloud } from "lucide-react";
 import { useRef, useState } from "react";
 

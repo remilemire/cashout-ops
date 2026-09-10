@@ -1,5 +1,3 @@
-// frontend/src/auth/AuthProvider.tsx
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 

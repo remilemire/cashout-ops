@@ -1,5 +1,3 @@
-# backend/tests/unit/test_cropping.py
-
 """`DocumentCropper` over the fake text detector.
 
 The detector is faked: these tests are about what the cropper does with the

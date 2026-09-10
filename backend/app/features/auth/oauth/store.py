@@ -1,13 +1,11 @@
-# backend/app/features/auth/oauth/store.py
-
 """Redis storage for pending OAuth flows.
 
-- ``oauth_flow:{flow_id}`` holds a JSON-encoded :class:`StoredOAuthFlow` and
-  expires after ``AUTH_OAUTH_FLOW_TTL_MINUTES`` — Redis TTLs enforce expiry,
-  so a missing key covers both "never started" and "expired".
-- No hashing here: the stored state/nonce/code_verifier are single-use CSPRNG
-  values that never leave the server, not user-presented credentials — the
-  browser only ever carries the flow id.
+`oauth_flow:{flow_id}` holds a JSON-encoded StoredOAuthFlow and expires
+after AUTH_OAUTH_FLOW_TTL_MINUTES. A missing key covers absent and expired
+flows. The browser cookie holds the flow id; state and nonce also travel
+in the issuer authorization URL. The raw PKCE verifier is retained for
+the server-to-server token exchange. These values must remain available
+for comparison or exchange, so the store keeps them without hashing.
 """
 
 from __future__ import annotations

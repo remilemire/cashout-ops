@@ -1,4 +1,3 @@
-# backend/migrations/views.py
 #
 # Views maintained by the migration chain, after Alembic's "replaceable
 # objects" recipe.

@@ -1,5 +1,3 @@
-// frontend/src/features/cashout/NewCashoutPage.test.tsx
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,

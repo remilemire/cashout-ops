@@ -1,5 +1,3 @@
-# backend/tests/unit/test_documents.py
-
 """Unit tests for `read_document`.
 
 This helper is what bounds an upload: it pulls the file in `CHUNK_SIZE` pieces

@@ -1,5 +1,3 @@
-# backend/app/core/config/rate_limit.py
-
 from __future__ import annotations
 
 from pydantic_settings import SettingsConfigDict

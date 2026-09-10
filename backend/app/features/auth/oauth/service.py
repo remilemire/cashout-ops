@@ -1,10 +1,9 @@
-# backend/app/features/auth/oauth/service.py
-
 """OAuth sign-in orchestration (the flow state machine).
 
-/start mints the issuer authorization URL and stores the flow's secrets
-(state, nonce, PKCE verifier) in Redis under a fresh flow id; the browser
-carries only that id, in the `oauth_flow` cookie. The issuer's callback
+/start builds the issuer authorization URL and stores state, nonce, and the
+PKCE verifier in Redis under a fresh flow id. The browser's `oauth_flow`
+cookie holds that id; the authorization URL also contains state and nonce.
+The issuer's callback
 consumes the flow, verifies state, redeems the code, validates the identity,
 and resolves it to a local account via the external-identities service.
 """

@@ -1,14 +1,12 @@
-# backend/app/features/cashout/analyses/types.py
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
-# EXTRACTING (AI running in the background — poll the analysis) →
-# NEEDS_VERIFICATION (extraction produced data, awaiting the cashier) or
-# FAILED (error_code/error_message set; retry via the extract endpoint) →
-# VERIFIED (cashier confirmed, possibly with corrections).
+# Extraction: EXTRACTING (queued or running) → NEEDS_VERIFICATION or FAILED.
+# Verification: NEEDS_VERIFICATION → VERIFIED; unverify reverses this step.
+# Retry returns a settled, unverified analysis to EXTRACTING; manual entry
+# can replace it with VERIFIED. Unexpected failures may have no error_code.
 class DocumentAnalysisStatus(StrEnum):
     EXTRACTING = "extracting"
     NEEDS_VERIFICATION = "needs_verification"

@@ -1,5 +1,3 @@
-// frontend/src/test/setup.ts
-
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
@@ -8,7 +6,7 @@ afterEach(() => {
 });
 
 // jsdom doesn't implement the native <dialog> modal methods; stub them so
-// components using Dialog (e.g. the email-verification gate) can render.
+// components using Dialog can render. These stubs do not emulate focus trapping.
 if (!HTMLDialogElement.prototype.showModal) {
   HTMLDialogElement.prototype.showModal = function showModal(
     this: HTMLDialogElement,

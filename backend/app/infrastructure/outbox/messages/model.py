@@ -1,5 +1,3 @@
-# backend/app/infrastructure/outbox/messages/model.py
-
 from __future__ import annotations
 
 import uuid

@@ -1,5 +1,3 @@
-# backend/tests/support/fixtures/redis.py
-
 """Redis fixtures: throwaway Redis, per-test FLUSHDB.
 
 Provisioning is lazy: nothing Redis-related happens until a test

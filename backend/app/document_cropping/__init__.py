@@ -1,5 +1,3 @@
-# backend/app/document_cropping/__init__.py
-
 from __future__ import annotations
 
 from .cropper import DocumentCropper, build_document_cropper
