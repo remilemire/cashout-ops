@@ -508,6 +508,9 @@ describe("SubmissionPage", () => {
       ),
     ).toBeDefined();
     // Only an admin can record the deposit that explains the gap.
+    expect(
+      screen.queryByRole("combobox", { name: /Adjustment/ }),
+    ).toBeNull();
     expect(screen.queryByLabelText("Deposit amount")).toBeNull();
   });
 
@@ -518,11 +521,18 @@ describe("SubmissionPage", () => {
 
     fireEvent.click(await screen.findByLabelText("Kitchen"));
     // The form is a remedy for one refusal: nothing to see before it.
-    expect(screen.queryByLabelText("Deposit amount")).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: /Adjustment/ }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
 
+    // Discreet until a kind is chosen: the select alone, no deposit fields.
+    const kind = await screen.findByRole("combobox", { name: /Adjustment/ });
+    expect(screen.queryByLabelText("Deposit amount")).toBeNull();
+    fireEvent.change(kind, { target: { value: "deposit" } });
+
     expect(
-      await screen.findByText(/exceed the summaries by \$234\.56/),
+      screen.getByText(/exceed the summaries by \$234\.56/),
     ).toBeDefined();
     fireEvent.change(screen.getByLabelText("Deposit amount"), {
       target: { value: "234.56" },
@@ -549,7 +559,37 @@ describe("SubmissionPage", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Complete cashout" }),
     );
-    expect(await screen.findByLabelText("Deposit amount")).toBeDefined();
+    fireEvent.change(
+      await screen.findByRole("combobox", { name: /Adjustment/ }),
+      { target: { value: "deposit" } },
+    );
+    expect(screen.getByLabelText("Deposit amount")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
+
+    await waitFor(() =>
+      expect(completeSubmissionMock).toHaveBeenCalledTimes(2),
+    );
+    expect(completeSubmissionMock.mock.calls[1]?.[1]).toStrictEqual({
+      tipoutDepartments: [],
+    });
+  });
+
+  it("withdraws a typed deposit when the admin switches the adjustment back to none", async () => {
+    getSubmissionMock.mockResolvedValue(verifiedSubmission);
+    completeSubmissionMock.mockRejectedValueOnce(cardMismatch());
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete cashout" }),
+    );
+    const kind = await screen.findByRole("combobox", { name: /Adjustment/ });
+    fireEvent.change(kind, { target: { value: "deposit" } });
+    fireEvent.change(screen.getByLabelText("Deposit amount"), {
+      target: { value: "234.56" },
+    });
+    fireEvent.change(kind, { target: { value: "" } });
+    // The fields go with the choice, and so does what was typed in them.
+    expect(screen.queryByLabelText("Deposit amount")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Complete cashout" }));
 
     await waitFor(() =>

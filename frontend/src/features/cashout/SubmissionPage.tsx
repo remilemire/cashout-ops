@@ -30,7 +30,7 @@ import {
 import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
 
-import { AdjustmentForm } from "./AdjustmentForm";
+import { AdjustmentForm, type AdjustmentValues } from "./AdjustmentForm";
 import { DataCard } from "./DataCard";
 import { UploadCard } from "./UploadCard";
 import { ManualEntryDialog } from "./ManualEntryDialog";
@@ -451,13 +451,16 @@ function CompletePrompt({
   // The prompt only mounts once the detail payload is loaded, so the
   // initializer sees the fetched snapshot (kept through unsubmit).
   const [selected, setSelected] = useState<TipoutDepartment[]>(initialSelected);
-  const [depositTotal, setDepositTotal] = useState("");
-  const [note, setNote] = useState("");
+  const [adjustment, setAdjustment] = useState<AdjustmentValues>({
+    kind: null,
+    depositTotal: "",
+    note: "",
+  });
   const hint = reconcileHint(error);
   // The adjustment is a remedy for one refusal, so it appears only after
-  // that one — and stays while it carries a value, through any later error.
+  // that one — and stays while a kind is chosen, through any later error.
   const showAdjustment =
-    canAdjust && (isCardMismatch(error) || depositTotal !== "");
+    canAdjust && (isCardMismatch(error) || adjustment.kind != null);
   // A validation failure that landed entirely on the adjustment's own fields
   // surfaces under them; anything else falls back to the banner.
   const bannerError =
@@ -491,13 +494,14 @@ function CompletePrompt({
     );
 
   const submit = () => {
-    const deposit = depositTotal.trim();
-    const trimmedNote = note.trim();
+    const deposit = adjustment.depositTotal.trim();
+    const trimmedNote = adjustment.note.trim();
     onComplete({
       tipoutDepartments: selected,
-      // Only an admin's non-empty deposit becomes an adjustment; the note
-      // rides along with it and is dropped when blank.
+      // Only an admin's chosen, non-empty deposit becomes an adjustment; the
+      // note rides along with it and is dropped when blank.
       ...(canAdjust &&
+        adjustment.kind === "deposit" &&
         deposit !== "" && {
           adjustment: {
             depositTotal: deposit,
@@ -554,12 +558,8 @@ function CompletePrompt({
 
       {showAdjustment && (
         <AdjustmentForm
-          depositTotal={depositTotal}
-          note={note}
-          onChange={(next) => {
-            setDepositTotal(next.depositTotal);
-            setNote(next.note);
-          }}
+          values={adjustment}
+          onChange={setAdjustment}
           error={error}
         />
       )}
