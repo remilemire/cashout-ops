@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 import boto3
+from google.cloud import storage as gcs
 
 from app.core.config import settings
 from app.core.providers import StorageProvider
 
 from .client import DocumentStorageClient
+from .gcs import GCSDocumentStorageClient
 from .local import LocalDocumentStorageClient
 from .s3 import S3DocumentStorageClient
 
@@ -50,6 +52,20 @@ def _build_document_storage() -> DocumentStorageClient:
             endpoint_url=settings.storage.S3_ENDPOINT_URL,
         )
         return S3DocumentStorageClient(s3, bucket=settings.storage.S3_BUCKET)
+    if settings.storage.PROVIDER is StorageProvider.GCS:
+        if not settings.storage.GCS_BUCKET:
+            raise RuntimeError("GCS_BUCKET is required when STORAGE_PROVIDER is GCS.")
+        # Google credentials intentionally come from Application Default
+        # Credentials (a service-account key file, workload identity, or a
+        # developer's gcloud login) rather than Settings. The client resolves
+        # them as it is built, so a deployment without them fails here at
+        # startup rather than at first upload.
+        # An explicit project=None tells the library none is needed: object
+        # reads, writes, and deletes address the bucket alone. The default
+        # would infer a project from ADC and refuse to start where none is
+        # available.
+        client = gcs.Client(project=None)
+        return GCSDocumentStorageClient(client, bucket=settings.storage.GCS_BUCKET)
     if settings.storage.LOCAL_DIR is None:
         raise RuntimeError(
             "STORAGE_LOCAL_DIR is required when STORAGE_PROVIDER is LOCAL."

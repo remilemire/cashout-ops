@@ -6,6 +6,7 @@ from .errors import (
     DocumentStorageError,
     InvalidStorageKeyError,
 )
+from .gcs import GCSDocumentStorageClient
 from .keys import validate_storage_key
 from .local import LocalDocumentStorageClient
 from .s3 import S3DocumentStorageClient
@@ -14,6 +15,7 @@ __all__ = [
     "DocumentNotFoundError",
     "DocumentStorageClient",
     "DocumentStorageError",
+    "GCSDocumentStorageClient",
     "InvalidStorageKeyError",
     "LocalDocumentStorageClient",
     "S3DocumentStorageClient",

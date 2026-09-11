@@ -33,6 +33,7 @@ class EmailProvider(_ProviderEnum):
 class StorageProvider(_ProviderEnum):
     LOCAL = "local"
     S3 = "s3"
+    GCS = "gcs"
 
 
 __all__ = ["AIProvider", "EmailProvider", "StorageProvider"]

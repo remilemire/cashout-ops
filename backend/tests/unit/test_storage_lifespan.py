@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import google.auth
 import pytest
+from google.auth.credentials import AnonymousCredentials
 
 from app.core.config import settings
 from app.core.providers import StorageProvider
 from app.integrations.storage import (
+    GCSDocumentStorageClient,
     LocalDocumentStorageClient,
     S3DocumentStorageClient,
 )
@@ -62,6 +65,26 @@ async def test_a_custom_endpoint_url_reaches_the_s3_client(
         assert endpoint == "http://localhost:9000"
 
 
+async def test_gcs_provider_builds_the_gcs_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.GCS)
+    monkeypatch.setattr(settings.storage, "GCS_BUCKET", "test-bucket")
+
+    # The client resolves Application Default Credentials as it is built, so
+    # pinning them keeps construction independent of any gcloud login present
+    # (or absent) on the host running the tests — the same reason the S3 test
+    # pins a region.
+    def anonymous_default(**_: object) -> tuple[AnonymousCredentials, None]:
+        return AnonymousCredentials(), None
+
+    monkeypatch.setattr(google.auth, "default", anonymous_default)
+
+    async with storage_lifespan() as storage:
+        assert isinstance(storage, GCSDocumentStorageClient)
+        assert storage._bucket.name == "test-bucket"  # pyright: ignore[reportPrivateUsage]
+
+
 # Settings rejects these combinations at load, so the lifespan can only reach
 # them when an already-built settings object is mutated. The guards still hold,
 # which is what keeps the optional fields safe to unwrap.
@@ -85,6 +108,17 @@ async def test_s3_provider_without_region_fails_at_startup(
     monkeypatch.setattr(settings.storage, "S3_REGION", None)
 
     with pytest.raises(RuntimeError, match="S3_REGION"):
+        async with storage_lifespan():
+            pass
+
+
+async def test_gcs_provider_without_bucket_fails_at_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings.storage, "PROVIDER", StorageProvider.GCS)
+    monkeypatch.setattr(settings.storage, "GCS_BUCKET", None)
+
+    with pytest.raises(RuntimeError, match="GCS_BUCKET"):
         async with storage_lifespan():
             pass
 

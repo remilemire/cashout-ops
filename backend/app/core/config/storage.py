@@ -14,11 +14,12 @@ class StorageSettings(SettingsGroup):
     """Document storage.
 
     PROVIDER selects the client: LOCAL writes under LOCAL_DIR, S3 stores
-    objects in S3_BUCKET. Each provider's own settings are required when it is
-    selected and ignored otherwise, so both groups default to None and
-    _validate_storage_config enforces the selected one. AWS credentials are not
-    modeled here; they come from the standard AWS chain (env vars, profile,
-    instance role).
+    objects in S3_BUCKET, GCS stores objects in GCS_BUCKET. Each provider's
+    own settings are required when it is selected and ignored otherwise, so
+    every group defaults to None and _validate_storage_config enforces the
+    selected one. Provider credentials are not modeled here: AWS credentials
+    come from the standard AWS chain (env vars, profile, instance role) and
+    Google credentials from Application Default Credentials.
     """
 
     model_config = SettingsConfigDict(env_prefix="STORAGE_")
@@ -34,6 +35,9 @@ class StorageSettings(SettingsGroup):
     S3_ENDPOINT_URL: str | None = Field(
         default=None, validation_alias="S3_ENDPOINT_URL"
     )
+    # Unprefixed: sits alongside the ADC chain's own variables
+    # (GOOGLE_APPLICATION_CREDENTIALS), as the S3 settings sit beside AWS's.
+    GCS_BUCKET: str | None = Field(default=None, validation_alias="GCS_BUCKET")
 
     # Accepted file size in megabytes. The handler reads at most the limit
     # plus one byte from the parsed upload, then rejects an oversized file.
@@ -81,6 +85,12 @@ class StorageSettings(SettingsGroup):
                 raise ValueError(
                     f"{', '.join(missing)} required when "
                     f"STORAGE_PROVIDER is {StorageProvider.S3}."
+                )
+        elif self.PROVIDER is StorageProvider.GCS:
+            if not self.GCS_BUCKET:
+                raise ValueError(
+                    f"GCS_BUCKET required when "
+                    f"STORAGE_PROVIDER is {StorageProvider.GCS}."
                 )
         elif self.LOCAL_DIR is None:
             raise ValueError(
