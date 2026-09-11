@@ -3,14 +3,12 @@
 # objects" recipe.
 #
 # Postgres records that a view depends on the columns it reads, so a migration
-# that drops or rebuilds one of those columns fails while the view exists —
-# and this chain rebuilds the generated columns of cashout_data by drop/add
-# (see c42d9e7a1b6f). A view is therefore a migration-managed object like any
-# other: each definition is frozen in the revision that introduces it, and a
-# later migration that touches a column it reads drops the current definition
-# first and recreates it afterwards. That definition is fetched with
-# `view_defined_in` rather than copied, so each version of a view has exactly
-# one source in the chain.
+# that drops or rebuilds one of those columns fails while the view exists. A
+# view is therefore a migration-managed object like any other: each definition
+# is frozen in the revision that introduces it, and a later migration that
+# touches a column it reads drops the current definition first and recreates it
+# afterwards. That definition is fetched with `view_defined_in` rather than
+# copied, so each version of a view has exactly one source in the chain.
 
 from __future__ import annotations
 
