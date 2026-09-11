@@ -258,7 +258,7 @@ export function AdminUsersPage() {
             hint="Add a user above to create the first account."
           />
         ) : (
-          <Card padded={false} className="overflow-x-auto">
+          <Card padded={false} className="overflow-x-auto contain-paint">
             <table className="w-full min-w-120 text-sm">
               <thead>
                 <tr className="border-line text-ink-muted border-b text-left text-xs">
