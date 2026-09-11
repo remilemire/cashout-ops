@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from app.document_ai import DocumentAnalysis
 from app.features.cashout.analyses.types import DocumentAnalysisStatus
+from app.features.cashout.extraction.schemas import ServerSummaryReportData
 from app.features.cashout.extraction.types import CashoutDocumentClassification
 from app.features.cashout.submissions.types import CashoutSubmissionStatus
 from tests.support.api import csrf_headers
@@ -335,3 +337,50 @@ async def test_cannot_access_another_users_submission(
     assert submission_response.json()["code"] == "FORBIDDEN"
     assert analysis_response.status_code == 403
     assert analysis_response.json()["code"] == "FORBIDDEN"
+
+
+async def test_unknown_extraction_survives_review_but_blocks_completion(
+    cashier_client: AsyncClient,
+    ai_client: FakeAIClient,
+    drain_outbox: OutboxDrain,
+) -> None:
+    submission_id = await create_submission(cashier_client)
+    configure_touchbistro(ai_client)
+    report = await create_upload(cashier_client, submission_id, drain=drain_outbox)
+    await verify_analysis(cashier_client, report["id"])
+
+    configure_server_summary(ai_client)
+    ai_client.extraction = DocumentAnalysis[ServerSummaryReportData](
+        data=ServerSummaryReportData(
+            grand_total=None, grand_total_transaction_count=42
+        ),
+        confidence=0.15,
+    )
+    summary = await create_upload(
+        cashier_client, submission_id, drain=drain_outbox, file=SAMPLE_PNG_UPLOAD
+    )
+    extracted = await poll_analysis(cashier_client, summary["id"])
+    assert extracted["status"] == "needs_verification"
+    assert extracted["extractedDataJson"]["grand_total"] is None
+    verified = await verify_analysis(cashier_client, summary["id"])
+    assert verified["verifiedDataJson"]["grand_total"] is None
+
+    blocked = await cashier_client.post(
+        f"/api/cashout/submissions/{submission_id}/complete",
+        json=completion_body(),
+        headers=csrf_headers(cashier_client),
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["code"] == "RECONCILE_DOCUMENT_DATA_INVALID"
+    detail = (
+        await cashier_client.get(f"/api/cashout/submissions/{submission_id}")
+    ).json()
+    assert detail["status"] == "processing"
+    assert detail["data"] is None
+
+    await unverify_analysis(cashier_client, summary["id"])
+    await verify_analysis(
+        cashier_client, summary["id"], {"verifiedData": SERVER_SUMMARY_EXTRACTED}
+    )
+    completed = await complete_submission(cashier_client, submission_id)
+    assert completed["status"] == "completed"

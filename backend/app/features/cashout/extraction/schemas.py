@@ -24,29 +24,29 @@ class CashoutDocumentSchema(BaseModel):
 
 class ServerSummaryReportData(CashoutDocumentSchema):
     grand_total: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             sections=("GRAND TOTALS",),
             anchors=("beside Grand Total", "last row", "last column"),
             anti_anchors=("CREDIT", "DEBIT", "TOTAL CREDIT"),
         ),
-    ]
+    ] = None
     grand_total_transaction_count: Annotated[
-        int,
+        int | None,
         Field(ge=0),
         FieldHint(
             sections=("GRAND TOTALS",),
             anchors=("beside Grand Total", "last row", "middle column"),
             anti_anchors=("CREDIT", "DEBIT", "TOTAL CREDIT"),
         ),
-    ]
+    ] = None
 
 
 class TouchBistroReportData(CashoutDocumentSchema):
     SCHEMA_VERSION: ClassVar[int] = 2
 
     drink_net_sales: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Net Sales:",),
             sections=("Sales Totals", "Total Drinks"),
@@ -59,9 +59,9 @@ class TouchBistroReportData(CashoutDocumentSchema):
                 "Total",
             ),
         ),
-    ]
+    ] = None
     food_net_sales: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Net Sales:",),
             sections=("Sales Totals", "Total Food"),
@@ -74,9 +74,9 @@ class TouchBistroReportData(CashoutDocumentSchema):
                 "Total",
             ),
         ),
-    ]
+    ] = None
     total_net_sales: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Net Sales (incl tax):",),
             sections=("Sales Totals", "Total"),
@@ -89,10 +89,10 @@ class TouchBistroReportData(CashoutDocumentSchema):
                 "Food and Drink Tax Collected",
             ),
         ),
-    ]
+    ] = None
 
     card_transaction_count: Annotated[
-        int,
+        int | None,
         Field(ge=0),
         FieldHint(
             labels=("Orders:",),
@@ -100,9 +100,9 @@ class TouchBistroReportData(CashoutDocumentSchema):
             anchors=("below Cash transaction count",),
             anti_anchors=("Total Payments", "Total Refunds"),
         ),
-    ]
+    ] = None
     integrated_gift_card_transaction_count: Annotated[
-        int,
+        int | None,
         Field(ge=0),
         FieldHint(
             labels=("Orders:",),
@@ -113,25 +113,25 @@ class TouchBistroReportData(CashoutDocumentSchema):
     ] = 0
 
     cash_payment_total: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Total:",),
             sections=("Payment and Refund Totals", "Cash"),
             anchors=("one row", "right side"),
             anti_anchors=("Card", "Total Payments"),
         ),
-    ]
+    ] = None
     card_payment_total: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Total:",),
             sections=("Payment and Refund Totals", "Card"),
             anchors=("below Subtotal:", "below Tips:", "third row", "right side"),
             anti_anchors=("Cash", "Total Payments"),
         ),
-    ]
+    ] = None
     integrated_gift_card_payment_total: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Total",),
             sections=("Payment and Refund Totals", "Integrated Gift Cards"),
@@ -141,18 +141,20 @@ class TouchBistroReportData(CashoutDocumentSchema):
     ] = Decimal(0)
 
     card_tip_total: Annotated[
-        Money,
+        Money | None,
         FieldHint(
             labels=("Total:",),
             sections=("Credit Card Tips Report", "Total Credit Card Tips"),
             anchors=("right side",),
             anti_anchors=("Tips (Card)", "Tips (Gift Card)"),
         ),
-    ]
+    ] = None
 
 
 class GiftCertificateData(CashoutDocumentSchema):
-    amount: Annotated[Money, FieldHint(labels=("Amount:",), anchors=("middle row",))]
+    amount: Annotated[
+        Money | None, FieldHint(labels=("Amount:",), anchors=("middle row",))
+    ] = None
 
 
 __all__ = [

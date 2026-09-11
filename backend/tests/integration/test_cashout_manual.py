@@ -128,8 +128,8 @@ async def test_manual_upload_rejects_invalid_data(
 ) -> None:
     submission_id = await create_submission(cashier_client)
 
-    # Missing required field, non-numeric money, and an extra field: each
-    # surfaces as its own issue at the (camelCased) data path.
+    # Non-numeric money and extra fields are invalid; omitted values remain
+    # unknown until reconciliation enforces completeness.
     response = await cashier_client.post(
         f"/api/cashout/submissions/{submission_id}/uploads/manual",
         files={"file": SAMPLE_PDF_UPLOAD},
@@ -149,7 +149,6 @@ async def test_manual_upload_rejects_invalid_data(
     issues = {(issue["code"], tuple(issue["path"])) for issue in body["issues"]}
     assert issues == {
         ("decimal_parsing", ("grandTotal",)),
-        ("missing", ("grandTotalTransactionCount",)),
         ("extra_forbidden", ("tillNumber",)),
     }
 

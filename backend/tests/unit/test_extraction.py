@@ -721,12 +721,14 @@ def test_every_registered_schema_field_declares_a_hint() -> None:
 
 
 def test_registered_schemas_stay_in_the_portable_json_schema_subset() -> None:
-    # Every monetary field must go through Money: a bare Decimal reintroduces
-    # the anyOf/pattern shape that provider structured-output modes restrict.
+    # Nullable fields may use anyOf, but money must remain an unpatterned
+    # decimal string rather than Decimal's number/patterned-string union.
     for schema in CASHOUT_DOCUMENT_SCHEMAS.values():
         rendered = json.dumps(schema.model_json_schema())
-        assert "anyOf" not in rendered, schema.__name__
         assert "pattern" not in rendered, schema.__name__
+        for field in schema.model_json_schema()["properties"].values():
+            types = {option["type"] for option in field["anyOf"]}
+            assert types in ({"string", "null"}, {"integer", "null"})
 
 
 def test_field_hints_stay_out_of_the_json_schema() -> None:
@@ -947,3 +949,35 @@ def test_touchbistro_upcast_preserves_gift_values_already_entered() -> None:
     )
     assert lifted == original
     assert lifted is not original
+
+
+@pytest.mark.parametrize("schema", list(CASHOUT_DOCUMENT_SCHEMAS.values()))
+def test_extraction_accepts_all_unknown_fields(
+    schema: type[CashoutDocumentSchema],
+) -> None:
+    unknown = dict.fromkeys(schema.model_fields)
+    result = schema.model_validate(unknown)
+    assert result.model_dump(mode="json") == unknown
+    # Omitted fields still appear in the review payload, so they can be filled.
+    omitted = schema.model_validate({}).model_dump(mode="json")
+    assert set(omitted) == set(unknown)
+    assert all(
+        value is None
+        for name, value in omitted.items()
+        if not name.startswith("integrated_gift_card_")
+    )
+
+
+async def test_processor_preserves_unknown_amount_for_review() -> None:
+    processor, ref = await _build_processor(
+        classification=_classification(CashoutDocumentClassification.GIFT_CERTIFICATE),
+        extraction=DocumentAnalysis[GiftCertificateData](
+            data=GiftCertificateData(amount=None),
+            confidence=0.15,
+            issues=[FieldIssue(path="amount", message="unreadable")],
+        ),
+    )
+    result = await processor.process(ref)
+    assert result.data.model_dump(mode="json") == {"amount": None}
+    assert result.confidence == 0.15
+    assert result.classification_confidence == 0.9

@@ -80,6 +80,60 @@ def test_pre_versioning_rows_reconcile_as_the_first_version() -> None:
     assert figures.card_tip_total == Decimal("180.00")
 
 
+@pytest.mark.parametrize(
+    ("classification", "field", "omit"),
+    [
+        (kind, field, omit)
+        for kind, fields in [
+            (
+                CashoutDocumentClassification.TOUCHBISTRO_REPORT,
+                TouchBistroReportData.model_fields,
+            ),
+            (
+                CashoutDocumentClassification.SERVER_SUMMARY_REPORT,
+                ServerSummaryReportData.model_fields,
+            ),
+            (CashoutDocumentClassification.GIFT_CERTIFICATE, {"amount": None}),
+        ]
+        for field in fields
+        for omit in [False, True]
+        if not (omit and field.startswith("integrated_gift_card_"))
+    ],
+)
+def test_reconciliation_requires_document_values(
+    classification: CashoutDocumentClassification, field: str, omit: bool
+) -> None:
+    # Missing integrated-gift fields retain the existing absent-tender zero
+    # default. Explicit null means unknown and must never become zero.
+    report = {
+        **_TOUCHBISTRO_VERIFIED,
+        "integrated_gift_card_transaction_count": 1,
+        "integrated_gift_card_payment_total": "25.00",
+    }
+    payloads: dict[CashoutDocumentClassification, dict[str, Any]] = {
+        CashoutDocumentClassification.TOUCHBISTRO_REPORT: report,
+        CashoutDocumentClassification.SERVER_SUMMARY_REPORT: dict(_SUMMARY_VERIFIED),
+        CashoutDocumentClassification.GIFT_CERTIFICATE: {"amount": "25.00"},
+    }
+    if omit:
+        del payloads[classification][field]
+    else:
+        payloads[classification][field] = None
+    analyses = [
+        _analysis(
+            kind,
+            payload,
+            schema_version=2
+            if kind is CashoutDocumentClassification.TOUCHBISTRO_REPORT
+            else 1,
+        )
+        for kind, payload in payloads.items()
+    ]
+    with pytest.raises(AppError) as exc_info:
+        reconcile_figures(analyses)
+    assert exc_info.value.code == "RECONCILE_DOCUMENT_DATA_INVALID"
+
+
 def test_older_version_verified_data_is_lifted_before_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

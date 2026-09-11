@@ -110,6 +110,26 @@ def reconcile_figures(
         )
 
     report = _verified_data(touchbistro_analyses[0], TouchBistroReportData)
+    # Extraction may leave any field unknown. Every figure used to complete
+    # a cashout must exist before it participates in arithmetic or comparison.
+    figures = ReconciledFigures(
+        food_net_sales=_required(report.food_net_sales, "food_net_sales"),
+        drink_net_sales=_required(report.drink_net_sales, "drink_net_sales"),
+        total_net_sales=_required(report.total_net_sales, "total_net_sales"),
+        card_payment_total=_required(report.card_payment_total, "card_payment_total"),
+        cash_payment_total=_required(report.cash_payment_total, "cash_payment_total"),
+        card_tip_total=_required(report.card_tip_total, "card_tip_total"),
+    )
+    card_transaction_count = _required(
+        report.card_transaction_count, "card_transaction_count"
+    )
+    gift_transaction_count = _required(
+        report.integrated_gift_card_transaction_count,
+        "integrated_gift_card_transaction_count",
+    )
+    gift_payment_total = _required(
+        report.integrated_gift_card_payment_total, "integrated_gift_card_payment_total"
+    )
     summaries = [
         _verified_data(analysis, ServerSummaryReportData)
         for analysis in summary_analyses
@@ -118,13 +138,16 @@ def reconcile_figures(
     # No server summaries makes both sums zero, which reconciles only against
     # a shift that took no card payments at all — the same rule, not an
     # exemption from it.
-    card_payments = sum((summary.grand_total for summary in summaries), Decimal(0))
-    if card_payments != report.card_payment_total - deposit_total:
+    card_payments = sum(
+        (_required(summary.grand_total, "grand_total") for summary in summaries),
+        Decimal(0),
+    )
+    if card_payments != figures.card_payment_total - deposit_total:
         # Both sides are public: the admin deciding whether a deposit
         # explains the gap needs to see it. Decimals go out as strings so
         # the cents survive JSON exactly.
         ctx: dict[str, JsonValue] = {
-            "cardPaymentTotal": str(report.card_payment_total),
+            "cardPaymentTotal": str(figures.card_payment_total),
             "serverSummaryTotal": str(card_payments),
         }
         applied = ""
@@ -134,47 +157,51 @@ def reconcile_figures(
         raise AppError(
             "RECONCILE_CARD_PAYMENT_MISMATCH",
             f"Server summary grand totals {card_payments} do not match"
-            f" TouchBistro card payments {report.card_payment_total}{applied}.",
+            f" TouchBistro card payments {figures.card_payment_total}{applied}.",
             ctx=ctx,
         )
 
-    transactions = sum(summary.grand_total_transaction_count for summary in summaries)
-    if transactions != report.card_transaction_count:
+    transactions = sum(
+        _required(
+            summary.grand_total_transaction_count, "grand_total_transaction_count"
+        )
+        for summary in summaries
+    )
+    if transactions != card_transaction_count:
         raise AppError(
             "RECONCILE_CARD_TRANSACTION_MISMATCH",
             f"Server summary transaction counts {transactions} do not match"
-            f" TouchBistro card orders {report.card_transaction_count}.",
+            f" TouchBistro card orders {card_transaction_count}.",
         )
 
     certificates = [
         _verified_data(analysis, GiftCertificateData)
         for analysis in certificate_analyses
     ]
-    if len(certificates) != report.integrated_gift_card_transaction_count:
+    if len(certificates) != gift_transaction_count:
         raise AppError(
             "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
             f"Gift certificate count {len(certificates)} does not match"
             f" TouchBistro integrated gift card orders"
-            f" {report.integrated_gift_card_transaction_count}.",
+            f" {gift_transaction_count}.",
             ctx={
-                "integratedGiftCardTransactionCount": report.integrated_gift_card_transaction_count,
+                "integratedGiftCardTransactionCount": gift_transaction_count,
                 "giftCertificateCount": len(certificates),
             },
         )
 
     certificate_total = sum(
-        (certificate.amount for certificate in certificates), Decimal(0)
+        (_required(certificate.amount, "amount") for certificate in certificates),
+        Decimal(0),
     )
-    if certificate_total != report.integrated_gift_card_payment_total:
+    if certificate_total != gift_payment_total:
         raise AppError(
             "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
             f"Gift certificate amounts {certificate_total} do not match"
             f" TouchBistro integrated gift card payments"
-            f" {report.integrated_gift_card_payment_total}.",
+            f" {gift_payment_total}.",
             ctx={
-                "integratedGiftCardPaymentTotal": str(
-                    report.integrated_gift_card_payment_total
-                ),
+                "integratedGiftCardPaymentTotal": str(gift_payment_total),
                 "giftCertificateTotal": str(certificate_total),
             },
         )
@@ -182,14 +209,17 @@ def reconcile_figures(
     # The cross-check passed, so the TouchBistro report stands for the whole
     # cashout: its fields are the source columns, one for one — the card
     # payments included, deposit and all, as the report states them.
-    return ReconciledFigures(
-        food_net_sales=report.food_net_sales,
-        drink_net_sales=report.drink_net_sales,
-        total_net_sales=report.total_net_sales,
-        card_payment_total=report.card_payment_total,
-        cash_payment_total=report.cash_payment_total,
-        card_tip_total=report.card_tip_total,
-    )
+    return figures
+
+
+def _required[ValueT](value: ValueT | None, field: str) -> ValueT:
+    """Unknown extracted values must be supplied before reconciliation."""
+    if value is None:
+        raise AppError(
+            "RECONCILE_DOCUMENT_DATA_INVALID",
+            f"Required document field {field} is missing from verified data.",
+        )
+    return value
 
 
 def _verified_data[SchemaT: CashoutDocumentSchema](
@@ -202,9 +232,9 @@ def _verified_data[SchemaT: CashoutDocumentSchema](
     current schema validates, so a cashout analyzed before a schema change
     still reconciles. Verification stores the cashier's corrections as typed,
     without checking them against the schema, so this is where an unreadable
-    correction (or a field dropped from the payload) surfaces: as a completion
-    conflict naming the document, rather than a field-level 422 on a request
-    that changed nothing.
+    correction surfaces as a completion conflict naming the document.
+    Nullable values survive this parse; _required enforces their existence
+    before reconciliation uses them.
     """
     data = analysis.verified_data_json
     try:
