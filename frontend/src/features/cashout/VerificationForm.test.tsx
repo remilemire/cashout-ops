@@ -73,6 +73,33 @@ beforeEach(() => {
 });
 
 describe("VerificationForm", () => {
+  it("shows the original only while a field differs from its extraction", () => {
+    renderForm();
+    expect(screen.queryByText(/^Original:/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Orders"), {
+      target: { value: "41" },
+    });
+    expect(screen.getByText("Original: 42")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("Orders"), {
+      target: { value: "42" },
+    });
+    expect(screen.queryByText(/^Original:/)).toBeNull();
+    expect(screen.queryByText("edited")).toBeNull();
+  });
+
+  it("shows an empty original when filling a missing extracted value", () => {
+    renderForm(true, {
+      ...analysis,
+      extractedDataJson: { grand_total: null },
+    });
+    fireEvent.change(screen.getByLabelText("Grand total"), {
+      target: { value: "25.00" },
+    });
+    expect(screen.getByText("Original: —")).toBeDefined();
+  });
+
   it("shows confidences and flags the issue on its field", () => {
     renderForm();
 
@@ -124,6 +151,7 @@ describe("VerificationForm", () => {
 
     expect(screen.getByLabelText<HTMLInputElement>("Orders").value).toBe("41");
     expect(screen.getByText("edited")).toBeDefined();
+    expect(screen.getByText("Original: 42")).toBeDefined();
 
     fireEvent.click(
       screen.getByRole("button", { name: /verify with 1 correction/i }),

@@ -168,6 +168,11 @@ export function VerificationForm({
                           }))
                         }
                       />
+                      {edited && (
+                        <span className="text-ink-muted mt-1 block text-xs break-all">
+                          Original: {displayValue(value) || "—"}
+                        </span>
+                      )}
                       {fieldIssues.map((issue, index) => (
                         <span
                           key={index}

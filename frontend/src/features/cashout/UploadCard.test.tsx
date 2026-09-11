@@ -201,7 +201,7 @@ describe("UploadCard", () => {
     expect(screen.queryByText("Grand total transaction count")).toBeNull();
   });
 
-  it("keeps curated labels on the original extraction inside the correction note", () => {
+  it("shows original values and emphasizes corrections with curated labels", () => {
     const corrected: CashoutDocumentAnalysis = {
       ...analysis,
       verifiedDataJson: {
@@ -218,6 +218,13 @@ describe("UploadCard", () => {
     // Once in the verified summary, once in the correction note's extraction.
     expect(screen.getAllByText("Grand total")).toHaveLength(2);
     expect(screen.getAllByText("Orders")).toHaveLength(2);
+    const note = screen
+      .getByText(/corrected from the original extraction/i)
+      .closest("details")!;
+    fireEvent.click(within(note).getByText(/show it/i));
+    expect(within(note).getByText("1234.56")).toBeDefined();
+    expect(within(note).getByText("1200.00").tagName).toBe("STRONG");
+    expect(within(note).getByText("42").closest("strong")).toBeNull();
   });
 
   it("offers retry extraction while needs-verification", async () => {

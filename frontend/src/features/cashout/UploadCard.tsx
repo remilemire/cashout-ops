@@ -693,7 +693,11 @@ function CorrectionNote({
         Corrected from the original extraction — show it
       </summary>
       <div className="border-line mt-2 rounded-lg border p-2">
-        <FieldList data={extracted} schemaName={schemaName} />
+        <FieldList
+          data={verified}
+          originalData={extracted}
+          schemaName={schemaName}
+        />
       </div>
     </details>
   );

@@ -6,9 +6,12 @@ import { groupFields } from "./fields";
 export function FieldList({
   data,
   schemaName,
+  originalData,
 }: {
   data: Record<string, unknown>;
   schemaName?: string | null;
+  /** When provided, show corrections beside their original extracted values. */
+  originalData?: Record<string, unknown>;
 }) {
   const groups = groupFields(schemaName, data);
   if (groups.length === 0) {
@@ -33,7 +36,23 @@ export function FieldList({
               >
                 <dt className="text-ink-muted">{label}</dt>
                 <dd className="text-right font-medium break-all tabular-nums">
-                  {displayValue(data[key]) || "—"}
+                  {originalData &&
+                  displayValue(originalData[key]) !==
+                    displayValue(data[key]) ? (
+                    <>
+                      <span className="text-ink-muted font-normal">
+                        <span className="sr-only">Original: </span>
+                        {displayValue(originalData[key]) || "—"}
+                      </span>{" "}
+                      <span aria-hidden="true">→</span>{" "}
+                      <strong className="text-accent-strong font-bold">
+                        <span className="sr-only">Corrected: </span>
+                        {displayValue(data[key]) || "—"}
+                      </strong>
+                    </>
+                  ) : (
+                    displayValue(data[key]) || "—"
+                  )}
                 </dd>
               </div>
             ))}
