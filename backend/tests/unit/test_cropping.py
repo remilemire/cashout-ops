@@ -9,8 +9,10 @@ finding text.
 from __future__ import annotations
 
 import io
+import math
 from collections.abc import Sequence
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
@@ -91,6 +93,7 @@ def _cropper(
     margin: float = 0.03,
     min_text_boxes: int = 3,
     max_area_ratio: float = 0.95,
+    deskew_enabled: bool = True,
     split_enabled: bool = True,
     split_gap: float = 4.0,
     pdf_dpi: int = 200,
@@ -102,6 +105,7 @@ def _cropper(
         margin=margin,
         min_text_boxes=min_text_boxes,
         max_area_ratio=max_area_ratio,
+        deskew_enabled=deskew_enabled,
         split_enabled=split_enabled,
         split_gap=split_gap,
         pdf_dpi=pdf_dpi,
@@ -246,6 +250,22 @@ async def test_splits_two_receipts_stacked_on_a_table() -> None:
     assert [crop.bounds for crop in crops] == [
         CropBounds(left=81, top=71, right=399, bottom=233),
         CropBounds(left=81, top=551, right=399, bottom=713),
+    ]
+
+
+async def test_splits_two_receipts_lying_corner_to_corner() -> None:
+    # One receipt top-left, the other bottom-right, with no overlap on
+    # either axis. Each side's paper is measured over its own rows and
+    # columns; measured over both sides' the table would drown it.
+    photo = _table_photo([(40, 40, 340, 300), (460, 340, 760, 600)], size=(800, 640))
+    lines = _lines(70, 300, (80, 140, 200)) + _lines(490, 720, (380, 440, 500))
+    cropper = _cropper(FakeTextDetector(lines))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=73, right=307, bottom=231),
+        CropBounds(left=483, top=373, right=727, bottom=531),
     ]
 
 
@@ -410,6 +430,215 @@ async def test_wide_paper_margins_do_not_hide_the_table_between_documents(
         CropBounds(left=63, top=113, right=307, bottom=311),
         CropBounds(left=713, top=113, right=957, bottom=311),
     ]
+
+
+# ================================
+# ------- Tilted documents -------
+# ================================
+
+
+def _tilted(image: Image.Image, angle: float) -> Image.Image:
+    """The same photo taken with the camera turned by `angle` degrees."""
+    return image.rotate(
+        angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=_TABLE
+    )
+
+
+def _tilt_lines(
+    lines: Sequence[TextBox],
+    angle: float,
+    *,
+    before: tuple[int, int],
+    after: tuple[int, int],
+) -> list[TextBox]:
+    """The boxes a detector reports on the tilted photo: each line's rectangle
+    turned with it — a tilted outline inside an upright envelope."""
+    radians = math.radians(angle)
+    cos, sin = math.cos(radians), math.sin(radians)
+
+    def turn(x: float, y: float) -> tuple[float, float]:
+        dx, dy = x - before[0] / 2, y - before[1] / 2
+        return (cos * dx + sin * dy + after[0] / 2, -sin * dx + cos * dy + after[1] / 2)
+
+    boxes: list[TextBox] = []
+    for line in lines:
+        outline = tuple(
+            turn(x, y)
+            for x, y in (
+                (line.left, line.top),
+                (line.right, line.top),
+                (line.right, line.bottom),
+                (line.left, line.bottom),
+            )
+        )
+        xs = [x for x, _ in outline]
+        ys = [y for _, y in outline]
+        boxes.append(
+            TextBox(
+                left=math.floor(min(xs)),
+                top=math.floor(min(ys)),
+                right=math.ceil(max(xs)),
+                bottom=math.ceil(max(ys)),
+                outline=outline,
+            )
+        )
+    return boxes
+
+
+def _vertical_lines(
+    xs: Sequence[int], top: int, bottom: int, width: int = 24
+) -> list[TextBox]:
+    """Lines of print running down the page, as on a document photographed
+    sideways: a tall, narrow outline whose longer edge is vertical."""
+    return [
+        TextBox(
+            left=x,
+            top=top,
+            right=x + width,
+            bottom=bottom,
+            outline=((x, top), (x, bottom), (x + width, bottom), (x + width, top)),
+        )
+        for x in xs
+    ]
+
+
+_ONE_RECEIPT = _table_photo([(40, 80, 340, 400)])
+_ONE_RECEIPT_LINES = _lines(70, 300, (120, 200, 280))
+
+
+def _corner_pixels(image: Image.Image) -> list[tuple[int, int, int]]:
+    pixels = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    height, width = pixels.shape[:2]
+    corners = ((1, 1), (width - 2, 1), (1, height - 2), (width - 2, height - 2))
+    return [
+        (int(pixels[y, x, 0]), int(pixels[y, x, 1]), int(pixels[y, x, 2]))
+        for x, y in corners
+    ]
+
+
+def _is_paper(pixel: tuple[int, int, int]) -> bool:
+    return all(
+        abs(channel - reference) < 20 for channel, reference in zip(pixel, _PAPER)
+    )
+
+
+async def test_levels_tilted_documents_before_splitting() -> None:
+    # Two receipts side by side, photographed at 25°: their boxes overlap on
+    # both axes, so nothing separates them until the print is leveled.
+    tilted = _tilted(_SIDE_BY_SIDE, 25)
+    detector = FakeTextDetector(
+        _tilt_lines(
+            _SIDE_BY_SIDE_LINES, 25, before=_SIDE_BY_SIDE.size, after=tilted.size
+        )
+    )
+    cropper = _cropper(detector)
+
+    crops = await cropper.crop(_content(_png(tilted)))
+
+    assert len(crops) == 2
+    # Each crop is its receipt's print, upright, plus the margin — the size
+    # the same receipts crop to when photographed square (244 × 198).
+    for crop in crops:
+        width, height = _decoded(crop.content.data).size
+        assert abs(width - 244) <= 3 and abs(height - 198) <= 3
+    # Left receipt first; each crop's bounds enclose its tilted region in the
+    # photo, so they are wider than the crop and inside the photo.
+    left, right = (crop.bounds for crop in crops)
+    assert left.left < right.left
+    for bounds in (left, right):
+        assert bounds.width > 244 and bounds.height > 198
+        assert 0 <= bounds.left < bounds.right <= tilted.width
+        assert 0 <= bounds.top < bounds.bottom <= tilted.height
+        assert bounds.page is None
+    # Leveling maps the detected boxes; it does not detect again.
+    assert len(detector.calls) == 1
+
+
+async def test_a_tilted_receipts_crop_comes_out_upright() -> None:
+    tilted = _tilted(_ONE_RECEIPT, 30)
+    lines = _tilt_lines(
+        _ONE_RECEIPT_LINES, 30, before=_ONE_RECEIPT.size, after=tilted.size
+    )
+    cropper = _cropper(FakeTextDetector(lines))
+
+    (crop,) = await cropper.crop(_content(_png(tilted)))
+
+    decoded = _decoded(crop.content.data)
+    width, height = decoded.size
+    assert abs(width - 244) <= 3 and abs(height - 198) <= 3
+    # Level and within the paper: every corner of the crop is paper, where a
+    # crop cut straight from the tilted photo would show table at the corners.
+    assert all(_is_paper(pixel) for pixel in _corner_pixels(decoded))
+
+
+async def test_splits_documents_printed_sideways() -> None:
+    # Two receipts side by side, photographed a quarter turn off: their lines
+    # run down the photo. A quarter turn is no tilt to level, and the height
+    # of a line is its thickness, not how far it runs — measured from the
+    # outline, so the gap the splitter asks for stays a few lines wide.
+    lines = _vertical_lines((100, 160, 220), 110, 370) + _vertical_lines(
+        (520, 580, 640), 110, 370
+    )
+    cropper = _cropper(FakeTextDetector(lines))
+
+    crops = await cropper.crop(_content(_png(_SIDE_BY_SIDE)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=92, top=102, right=252, bottom=378),
+        CropBounds(left=512, top=102, right=672, bottom=378),
+    ]
+
+
+async def test_a_slight_tilt_is_left_alone() -> None:
+    # A degree of tilt is not worth a resample: the crop is cut straight from
+    # the photo, so it is exactly its recorded bounds.
+    tilted = _tilted(_ONE_RECEIPT, 1)
+    lines = _tilt_lines(
+        _ONE_RECEIPT_LINES, 1, before=_ONE_RECEIPT.size, after=tilted.size
+    )
+    cropper = _cropper(FakeTextDetector(lines))
+
+    (crop,) = await cropper.crop(_content(_png(tilted)))
+
+    assert _decoded(crop.content.data).size == (crop.bounds.width, crop.bounds.height)
+
+
+async def test_leveling_can_be_switched_off() -> None:
+    tilted = _tilted(_SIDE_BY_SIDE, 25)
+    lines = _tilt_lines(
+        _SIDE_BY_SIDE_LINES, 25, before=_SIDE_BY_SIDE.size, after=tilted.size
+    )
+    cropper = _cropper(FakeTextDetector(lines), deskew_enabled=False)
+
+    crops = await cropper.crop(_content(_png(tilted)))
+
+    # Unleveled, the two receipts' boxes overlap on both axes: one crop.
+    assert len(crops) == 1
+    assert _decoded(crops[0].content.data).size == (
+        crops[0].bounds.width,
+        crops[0].bounds.height,
+    )
+
+
+async def test_boxes_without_outlines_are_not_leveled() -> None:
+    # A detector that reports envelopes only gives nothing to measure a tilt
+    # from; the photo is cropped as it is.
+    tilted = _tilted(_SIDE_BY_SIDE, 25)
+    envelopes = [
+        TextBox(left=box.left, top=box.top, right=box.right, bottom=box.bottom)
+        for box in _tilt_lines(
+            _SIDE_BY_SIDE_LINES, 25, before=_SIDE_BY_SIDE.size, after=tilted.size
+        )
+    ]
+    cropper = _cropper(FakeTextDetector(envelopes))
+
+    crops = await cropper.crop(_content(_png(tilted)))
+
+    assert len(crops) == 1
+    assert _decoded(crops[0].content.data).size == (
+        crops[0].bounds.width,
+        crops[0].bounds.height,
+    )
 
 
 # ================================

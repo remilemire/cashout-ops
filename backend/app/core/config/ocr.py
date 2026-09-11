@@ -27,6 +27,10 @@ class OCRSettings(SettingsGroup):
     # Skip a lone image crop above this area ratio. Does not apply to PDF
     # pages or to multiple crops from one image.
     MAX_CROP_AREA_RATIO: float = Field(default=0.95, gt=0, le=1)
+    # Level tilted print — rotate the image by the dominant text orientation —
+    # before splitting and cropping, so documents lying at an angle in a photo
+    # still come apart and their crops come out upright.
+    DESKEW_ENABLED: bool = True
     # Split text into candidate documents within each image or rendered page.
     # Disabling this does not combine the pages of a PDF.
     SPLIT_ENABLED: bool = True
