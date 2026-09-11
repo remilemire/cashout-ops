@@ -8,6 +8,7 @@ dependencies = [
     "authlib>=1.7.2",
     "boto3>=1.43.69",
     "fastapi[standard]>=0.136.3",
+    "google-cloud-storage>=3.14.1",
     "google-genai>=2.11.0",
     "gunicorn>=26.0.0",
     "itsdangerous>=2.2.0",

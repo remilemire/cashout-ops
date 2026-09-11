@@ -35,6 +35,7 @@ _STORAGE = {
     "S3_BUCKET": None,
     "S3_REGION": None,
     "S3_ENDPOINT_URL": None,
+    "GCS_BUCKET": None,
 }
 
 
@@ -162,6 +163,20 @@ def test_a_blank_endpoint_url_counts_as_unset() -> None:
     assert config.S3_ENDPOINT_URL is None
 
 
+def test_gcs_storage_requires_a_bucket() -> None:
+    with pytest.raises(ValidationError, match="GCS_BUCKET"):
+        _storage(PROVIDER=StorageProvider.GCS)
+
+
+def test_gcs_storage_does_not_require_the_local_directory_or_s3_settings() -> None:
+    config = _storage(
+        PROVIDER=StorageProvider.GCS, GCS_BUCKET="documents", LOCAL_DIR=None
+    )
+
+    assert config.GCS_BUCKET == "documents"
+    assert config.S3_BUCKET is None
+
+
 def test_local_storage_requires_a_directory() -> None:
     with pytest.raises(ValidationError, match="STORAGE_LOCAL_DIR"):
         _storage(LOCAL_DIR=None)
@@ -174,10 +189,11 @@ def test_a_blank_local_directory_counts_as_unset() -> None:
         _storage(LOCAL_DIR="   ")
 
 
-def test_local_storage_does_not_require_the_s3_settings() -> None:
+def test_local_storage_does_not_require_the_other_providers_settings() -> None:
     config = _storage(PROVIDER=StorageProvider.LOCAL)
 
     assert config.S3_BUCKET is None
+    assert config.GCS_BUCKET is None
 
 
 def test_the_size_limit_is_exposed_in_bytes() -> None:
@@ -254,7 +270,7 @@ def test_groups_load_from_their_prefixed_environment_variables(
 def test_conventional_names_stay_unprefixed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # These four are supplied by something outside this app — a hosting
+    # These five are supplied by something outside this app — a hosting
     # platform, alembic, or a vendor SDK's own convention — so they keep their
     # usual spelling despite living inside a prefixed group.
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://unused/conventional")
@@ -262,6 +278,7 @@ def test_conventional_names_stay_unprefixed(
     monkeypatch.setenv("STORAGE_PROVIDER", "S3")
     monkeypatch.setenv("S3_BUCKET", "conventional-bucket")
     monkeypatch.setenv("S3_REGION", "us-east-1")
+    monkeypatch.setenv("GCS_BUCKET", "conventional-gcs-bucket")
 
     config = Settings()
 
@@ -269,6 +286,7 @@ def test_conventional_names_stay_unprefixed(
     assert config.ai.ANTHROPIC_API_KEY == "conventional-anthropic-key"
     assert config.storage.S3_BUCKET == "conventional-bucket"
     assert config.storage.S3_REGION == "us-east-1"
+    assert config.storage.GCS_BUCKET == "conventional-gcs-bucket"
 
 
 def test_the_test_baseline_ignores_dotenv(
