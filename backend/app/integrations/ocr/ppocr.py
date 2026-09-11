@@ -3,9 +3,9 @@
 Only the detection stage of PP-OCR runs here: the model outputs a per-pixel
 text probability map, and the post-processing turns its connected regions
 into boxes. The pre- and post-processing follow RapidOCR's configuration of
-this model (its `DetPreProcess` and `DBPostProcess`), except that boxes stay
-axis-aligned: a crop needs no rotated polygons, which keeps the polygon
-libraries out of the dependency list.
+this model (its `DetPreProcess` and `DBPostProcess`), except that each
+region's shape is its minimum-area rectangle from OpenCV rather than a
+polygon from the polygon libraries, which stay out of the dependency list.
 """
 
 from __future__ import annotations
@@ -131,8 +131,9 @@ def _to_tensor(image: ImageArray) -> NDArray[np.float32]:
 def _boxes_from_probability_map(
     probability_map: NDArray[np.float32], *, image_width: int, image_height: int
 ) -> list[TextBox]:
-    """DB post-processing over one probability map, yielding axis-aligned
-    boxes in the coordinates of the image the map was computed for."""
+    """DB post-processing over one probability map, yielding boxes in the
+    coordinates of the image the map was computed for: each region's
+    axis-aligned envelope, and its minimum-area rectangle as the outline."""
     map_height, map_width = probability_map.shape
     scale_x = image_width / map_width
     scale_y = image_height / map_height
@@ -149,19 +150,37 @@ def _boxes_from_probability_map(
         if _contour_score(probability_map, contour, x, y, w, h) < _BOX_SCORE_THRESHOLD:
             continue
         # DB's unclip: the network shrinks text regions during training, so
-        # each box grows back by area * ratio / perimeter on every side.
-        offset = (w * h) * _UNCLIP_RATIO / (2 * (w + h))
-        left = x - offset
-        top = y - offset
-        right = x + w + offset
-        bottom = y + h + offset
-        if min(right - left, bottom - top) < _MIN_BOX_SIDE + 2:
+        # each region grows back by area * ratio / perimeter on every side —
+        # of its own rectangle, not of its axis-aligned envelope, which for
+        # a tilted line is several times the region and would grow it as much.
+        centre, (rect_width, rect_height), angle = cv2.minAreaRect(contour)
+        perimeter = 2 * (rect_width + rect_height)
+        if perimeter <= 0:
             continue
+        offset = (rect_width * rect_height) * _UNCLIP_RATIO / perimeter
+        if min(rect_width, rect_height) + 2 * offset < _MIN_BOX_SIDE + 2:
+            continue
+        outline = tuple(
+            (
+                float(np.clip(px * scale_x, 0, image_width)),
+                float(np.clip(py * scale_y, 0, image_height)),
+            )
+            for px, py in np.asarray(
+                cv2.boxPoints(
+                    (centre, (rect_width + 2 * offset, rect_height + 2 * offset), angle)
+                ),
+                dtype=np.float64,
+            )
+        )
+        # The axis-aligned box is the grown region's envelope.
+        xs = [px for px, _ in outline]
+        ys = [py for _, py in outline]
         box = TextBox(
-            left=int(np.clip(round(left * scale_x), 0, image_width)),
-            top=int(np.clip(round(top * scale_y), 0, image_height)),
-            right=int(np.clip(round(right * scale_x), 0, image_width)),
-            bottom=int(np.clip(round(bottom * scale_y), 0, image_height)),
+            left=int(np.floor(min(xs))),
+            top=int(np.floor(min(ys))),
+            right=int(np.ceil(max(xs))),
+            bottom=int(np.ceil(max(ys))),
+            outline=outline,
         )
         if box.width > 0 and box.height > 0:
             boxes.append(box)

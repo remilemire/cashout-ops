@@ -106,6 +106,54 @@ async def test_finds_light_print_on_a_dark_background(
     _assert_close(_union(boxes), printed, tolerance=24)
 
 
+async def test_reports_each_regions_outline_and_tilt(
+    detector: PPOCRTextDetector,
+) -> None:
+    # The receipt photographed at 20°: every box carries its own outline, and
+    # the long lines agree on the tilt (negative: leaning counter-clockwise).
+    image, _ = _receipt_image()
+    turned = Image.fromarray(image).rotate(
+        20, resample=Image.Resampling.BICUBIC, expand=True, fillcolor="white"
+    )
+
+    boxes = await detector.detect(np.asarray(turned, dtype=np.uint8))
+
+    assert boxes and all(len(box.outline) == 4 for box in boxes)
+    long_lines = [
+        box for box in boxes if _outline_length(box) > 3 * _outline_width(box)
+    ]
+    assert long_lines
+    assert all(abs(box.orientation + 20) <= 2 for box in long_lines)
+
+
+async def test_upright_print_has_no_tilt(detector: PPOCRTextDetector) -> None:
+    image, _ = _receipt_image()
+
+    boxes = await detector.detect(image)
+
+    long_lines = [
+        box for box in boxes if _outline_length(box) > 3 * _outline_width(box)
+    ]
+    assert long_lines
+    assert all(abs(box.orientation) <= 1.5 for box in long_lines)
+
+
+def _outline_length(box: TextBox) -> float:
+    return max(_edges(box))
+
+
+def _outline_width(box: TextBox) -> float:
+    return min(_edges(box))
+
+
+def _edges(box: TextBox) -> tuple[float, float]:
+    (x0, y0), (x1, y1), (x2, y2) = box.outline[:3]
+    return (
+        ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5,
+        ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5,
+    )
+
+
 async def test_a_blank_image_yields_no_boxes(detector: PPOCRTextDetector) -> None:
     blank = np.full((480, 640, 3), 255, dtype=np.uint8)
 

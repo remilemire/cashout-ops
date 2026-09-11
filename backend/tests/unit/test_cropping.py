@@ -91,6 +91,7 @@ def _cropper(
     margin: float = 0.03,
     min_text_boxes: int = 3,
     max_area_ratio: float = 0.95,
+    deskew_enabled: bool = True,
     split_enabled: bool = True,
     split_gap: float = 4.0,
     pdf_dpi: int = 200,
@@ -102,6 +103,7 @@ def _cropper(
         margin=margin,
         min_text_boxes=min_text_boxes,
         max_area_ratio=max_area_ratio,
+        deskew_enabled=deskew_enabled,
         split_enabled=split_enabled,
         split_gap=split_gap,
         pdf_dpi=pdf_dpi,
@@ -246,6 +248,22 @@ async def test_splits_two_receipts_stacked_on_a_table() -> None:
     assert [crop.bounds for crop in crops] == [
         CropBounds(left=81, top=71, right=399, bottom=233),
         CropBounds(left=81, top=551, right=399, bottom=713),
+    ]
+
+
+async def test_splits_two_receipts_lying_corner_to_corner() -> None:
+    # One receipt top-left, the other bottom-right, with no overlap on
+    # either axis. Each side's paper is measured over its own rows and
+    # columns; measured over both sides' the table would drown it.
+    photo = _table_photo([(40, 40, 340, 300), (460, 340, 760, 600)], size=(800, 640))
+    lines = _lines(70, 300, (80, 140, 200)) + _lines(490, 720, (380, 440, 500))
+    cropper = _cropper(FakeTextDetector(lines))
+
+    crops = await cropper.crop(_content(_png(photo)))
+
+    assert [crop.bounds for crop in crops] == [
+        CropBounds(left=63, top=73, right=307, bottom=231),
+        CropBounds(left=483, top=373, right=727, bottom=531),
     ]
 
 

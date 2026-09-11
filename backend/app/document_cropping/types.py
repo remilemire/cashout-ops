@@ -9,10 +9,12 @@ from app.lib.documents import DocumentContent
 
 @dataclass(frozen=True)
 class CropBounds:
-    """Where a crop sits in the upload: its rectangle in the upright source
-    image (after its EXIF rotation is applied) — left/top inclusive,
-    right/bottom exclusive — and, for a PDF, the 1-based page the rectangle
-    is in."""
+    """Where a crop sits in the upload: the rectangle in the upright source
+    image (after its EXIF rotation is applied) that encloses it — left/top
+    inclusive, right/bottom exclusive — and, for a PDF, the 1-based page the
+    rectangle is in. Tilted print is cut from a leveled copy of the source,
+    so for such a crop this is the envelope of a rotated rectangle and wider
+    than the crop itself."""
 
     left: int
     top: int

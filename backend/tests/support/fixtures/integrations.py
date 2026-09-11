@@ -54,6 +54,7 @@ def cropper(text_detector: FakeTextDetector) -> DocumentCropper:
         margin=0.03,
         min_text_boxes=3,
         max_area_ratio=0.95,
+        deskew_enabled=True,
         split_enabled=True,
         split_gap=4.0,
         pdf_dpi=200,
