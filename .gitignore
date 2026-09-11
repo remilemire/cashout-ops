@@ -18,3 +18,5 @@ static
 .claude
 .pytest_cache 
 */**/storage/documents
+:memory:.ses
+
