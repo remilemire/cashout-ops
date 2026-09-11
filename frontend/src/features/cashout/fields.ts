@@ -14,6 +14,7 @@ export const CLASSIFICATION_LABELS: Record<
 > = {
   touchbistro_report: "TouchBistro report",
   server_summary_report: "Server summary report",
+  gift_certificate: "Gift certificate",
 };
 
 // Mirrors the backend extraction-schema registry: each classification's schema
@@ -24,6 +25,7 @@ export const CLASSIFICATION_SCHEMA_NAMES: Record<
 > = {
   touchbistro_report: "TouchBistroReportData",
   server_summary_report: "ServerSummaryReportData",
+  gift_certificate: "GiftCertificateData",
 };
 
 export interface FieldGroup {
@@ -51,12 +53,23 @@ const SCHEMA_FIELD_GROUPS: Record<
         { key: "cash_payment_total", label: "Cash payments" },
         { key: "card_payment_total", label: "Card payments" },
         { key: "card_transaction_count", label: "Card orders" },
+        {
+          key: "integrated_gift_card_payment_total",
+          label: "Integrated gift card payments",
+        },
+        {
+          key: "integrated_gift_card_transaction_count",
+          label: "Integrated gift card orders",
+        },
       ],
     },
     {
       heading: "Tips",
       fields: [{ key: "card_tip_total", label: "Card tips" }],
     },
+  ],
+  GiftCertificateData: [
+    { heading: "Amount", fields: [{ key: "amount", label: "Amount" }] },
   ],
   ServerSummaryReportData: [
     {

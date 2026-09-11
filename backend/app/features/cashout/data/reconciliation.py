@@ -6,7 +6,9 @@ payment-terminal server summaries filed alongside it are the cross-check —
 their grand totals must add up to the report's card payments, and their
 transaction counts to its card orders. A cashout whose documents disagree is
 not reconciled at all: completion fails with what does not add up rather than
-storing figures no document supports.
+storing figures no document supports. Gift certificates must also match the
+report's Integrated Gift Cards tender: one document per transaction, with
+their amounts summing exactly to its payment total. An absent tender is zero.
 
 The one allowance is a deposit: an amount the report counts among its card
 payments that no terminal summary shows, because it was never rung through a
@@ -36,6 +38,7 @@ from app.features.cashout.extraction.registry import (
 )
 from app.features.cashout.extraction.schemas import (
     CashoutDocumentSchema,
+    GiftCertificateData,
     ServerSummaryReportData,
     TouchBistroReportData,
 )
@@ -73,6 +76,7 @@ def reconcile_figures(
     """
     touchbistro_analyses: list[CashoutDocumentAnalysis] = []
     summary_analyses: list[CashoutDocumentAnalysis] = []
+    certificate_analyses: list[CashoutDocumentAnalysis] = []
 
     for analysis in analyses:
         classification = analysis.classification
@@ -80,6 +84,8 @@ def reconcile_figures(
             touchbistro_analyses.append(analysis)
         elif classification is CashoutDocumentClassification.SERVER_SUMMARY_REPORT:
             summary_analyses.append(analysis)
+        elif classification is CashoutDocumentClassification.GIFT_CERTIFICATE:
+            certificate_analyses.append(analysis)
         elif classification is None:
             # Only a failed analysis is unclassified, and a failed one cannot
             # be verified — so this is unreachable from completion, and there
@@ -138,6 +144,39 @@ def reconcile_figures(
             "RECONCILE_CARD_TRANSACTION_MISMATCH",
             f"Server summary transaction counts {transactions} do not match"
             f" TouchBistro card orders {report.card_transaction_count}.",
+        )
+
+    certificates = [
+        _verified_data(analysis, GiftCertificateData)
+        for analysis in certificate_analyses
+    ]
+    if len(certificates) != report.integrated_gift_card_transaction_count:
+        raise AppError(
+            "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
+            f"Gift certificate count {len(certificates)} does not match"
+            f" TouchBistro integrated gift card orders"
+            f" {report.integrated_gift_card_transaction_count}.",
+            ctx={
+                "integratedGiftCardTransactionCount": report.integrated_gift_card_transaction_count,
+                "giftCertificateCount": len(certificates),
+            },
+        )
+
+    certificate_total = sum(
+        (certificate.amount for certificate in certificates), Decimal(0)
+    )
+    if certificate_total != report.integrated_gift_card_payment_total:
+        raise AppError(
+            "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
+            f"Gift certificate amounts {certificate_total} do not match"
+            f" TouchBistro integrated gift card payments"
+            f" {report.integrated_gift_card_payment_total}.",
+            ctx={
+                "integratedGiftCardPaymentTotal": str(
+                    report.integrated_gift_card_payment_total
+                ),
+                "giftCertificateTotal": str(certificate_total),
+            },
         )
 
     # The cross-check passed, so the TouchBistro report stands for the whole

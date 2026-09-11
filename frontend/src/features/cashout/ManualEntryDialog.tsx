@@ -92,7 +92,17 @@ export function ManualEntryDialog({
 
   const submit = () => {
     const data = Object.fromEntries(
-      fieldKeys.map((key) => [key, values[key] ?? ""]),
+      fieldKeys
+        .filter(
+          (key) =>
+            !(
+              classification === "touchbistro_report" &&
+              (key === "integrated_gift_card_payment_total" ||
+                key === "integrated_gift_card_transaction_count") &&
+              !(values[key] ?? "").trim()
+            ),
+        )
+        .map((key) => [key, values[key] ?? ""]),
     );
     onSubmit({ classification, data }, file);
   };
@@ -185,6 +195,13 @@ export function ManualEntryDialog({
             </div>
           ))}
         </div>
+
+        {classification === "touchbistro_report" && (
+          <p className="text-ink-muted text-sm">
+            If the Integrated Gift Cards section is absent, leave its payments
+            and orders blank for zero activity.
+          </p>
+        )}
 
         <ErrorBanner error={bannerError} />
 

@@ -16,6 +16,7 @@ from .schemas import CashoutDocumentSchema
 class CashoutDocumentClassification(StrEnum):
     TOUCHBISTRO_REPORT = "touchbistro_report"
     SERVER_SUMMARY_REPORT = "server_summary_report"
+    GIFT_CERTIFICATE = "gift_certificate"
 
 
 @dataclass(frozen=True)

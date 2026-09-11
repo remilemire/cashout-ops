@@ -17,6 +17,8 @@ describe("groupFields", () => {
       cash_payment_total: "200.00",
       food_net_sales: "1000.00",
       card_transaction_count: 42,
+      integrated_gift_card_transaction_count: 2,
+      integrated_gift_card_payment_total: "50.00",
       drink_net_sales: "500.00",
       card_payment_total: "1300.00",
     });
@@ -37,6 +39,8 @@ describe("groupFields", () => {
           "cash_payment_total",
           "card_payment_total",
           "card_transaction_count",
+          "integrated_gift_card_payment_total",
+          "integrated_gift_card_transaction_count",
         ],
       },
       { heading: "Tips", keys: ["card_tip_total"] },
@@ -113,6 +117,8 @@ describe("fieldGroupsFor", () => {
       "cash_payment_total",
       "card_payment_total",
       "card_transaction_count",
+      "integrated_gift_card_payment_total",
+      "integrated_gift_card_transaction_count",
       "card_tip_total",
     ]);
   });

@@ -399,6 +399,10 @@ const RECONCILE_HINTS: Partial<Record<ErrorCode, string>> = {
     "Compare Card payments on the TouchBistro report against the Grand total on each server summary; they have to add up.",
   RECONCILE_CARD_TRANSACTION_MISMATCH:
     "Compare Card orders on the TouchBistro report against Orders on each server summary; they have to add up.",
+  RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH:
+    "Compare Integrated gift card orders on the TouchBistro report against the number of gift certificates; add any missing certificates or remove extras.",
+  RECONCILE_GIFT_CARD_PAYMENT_MISMATCH:
+    "Compare Integrated gift card payments on the TouchBistro report against Amount on each gift certificate; they have to add up.",
   RECONCILE_DOCUMENT_DATA_INVALID:
     "Re-verify the document you last corrected: one of its values can no longer be read as a number.",
 };

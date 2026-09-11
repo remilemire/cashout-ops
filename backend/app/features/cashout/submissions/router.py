@@ -156,6 +156,8 @@ async def get_submission(
         "RECONCILE_TOUCHBISTRO_DUPLICATE",
         "RECONCILE_CARD_PAYMENT_MISMATCH",
         "RECONCILE_CARD_TRANSACTION_MISMATCH",
+        "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
+        "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
         "RECONCILE_DOCUMENT_DATA_INVALID",
         "VALIDATION_FAILED",
     ),
@@ -174,8 +176,9 @@ async def complete_submission(
 
     Reconciliation is also where the cashout's documents are cross-checked:
     it takes exactly one TouchBistro report, and the server summaries filed
-    with it must add up to that report's card payments and card orders. A
-    cashout that does not add up stays open with a `RECONCILE_*` conflict.
+    with it must add up to that report's card payments and card orders. Gift
+    certificate counts and amounts must match its integrated gift card orders
+    and payments. A cashout that does not add up stays open with a `RECONCILE_*` conflict.
 
     The optional `adjustment` is admin-only (`FORBIDDEN` from anyone else):
     a deposit the report counts among its card payments but no terminal

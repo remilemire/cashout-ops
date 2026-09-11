@@ -37,6 +37,7 @@ from app.features.cashout.extraction.registry import (
 )
 from app.features.cashout.extraction.schemas import (
     CashoutDocumentSchema,
+    GiftCertificateData,
     ServerSummaryReportData,
     TouchBistroReportData,
 )
@@ -762,8 +763,13 @@ _TOUCHBISTRO_VALID: dict[str, Any] = {
             "grand_total_transaction_count",
         ),
         (TouchBistroReportData, _TOUCHBISTRO_VALID, "card_transaction_count"),
+        (
+            TouchBistroReportData,
+            _TOUCHBISTRO_VALID,
+            "integrated_gift_card_transaction_count",
+        ),
     ],
-    ids=["server_summary", "touchbistro"],
+    ids=["server_summary", "touchbistro", "gift_card"],
 )
 def test_transaction_counts_cannot_be_negative(
     schema: type[BaseModel], payload: dict[str, Any], count_field: str
@@ -889,3 +895,54 @@ def test_compose_instructions_appends_extra_under_header() -> None:
     assert composed.startswith("BASE")
     assert "EXTRA" in composed
     assert "# Additional instructions" in composed
+
+
+async def test_processor_classifies_and_extracts_a_gift_certificate() -> None:
+    processor, ref = await _build_processor(
+        classification=_classification(CashoutDocumentClassification.GIFT_CERTIFICATE),
+        extraction=DocumentAnalysis[GiftCertificateData](
+            data=GiftCertificateData(amount=Decimal("25.50")), confidence=0.9, issues=[]
+        ),
+    )
+    result = await processor.process(ref)
+    assert result.classification is CashoutDocumentClassification.GIFT_CERTIFICATE
+    assert isinstance(result.data, GiftCertificateData)
+    assert result.data.amount == Decimal("25.50")
+    assert result.schema_name == "GiftCertificateData"
+    assert result.schema_version == 1
+
+
+def test_absent_integrated_gift_card_section_defaults_to_zero() -> None:
+    report = TouchBistroReportData.model_validate(_TOUCHBISTRO_VALID)
+    assert report.integrated_gift_card_transaction_count == 0
+    assert report.integrated_gift_card_payment_total == Decimal(0)
+
+
+@pytest.mark.parametrize("stored_version", [None, 1])
+def test_touchbistro_upcast_adds_zero_gift_activity_without_mutating_stored_data(
+    stored_version: int | None,
+) -> None:
+    original = dict(_TOUCHBISTRO_VALID)
+    lifted = upcast_stored_document_data(
+        TouchBistroReportData, original, schema_version=stored_version
+    )
+    assert lifted == {
+        **original,
+        "integrated_gift_card_transaction_count": 0,
+        "integrated_gift_card_payment_total": "0",
+    }
+    assert original == _TOUCHBISTRO_VALID
+    assert TouchBistroReportData.model_validate(lifted)
+
+
+def test_touchbistro_upcast_preserves_gift_values_already_entered() -> None:
+    original = {
+        **_TOUCHBISTRO_VALID,
+        "integrated_gift_card_transaction_count": 2,
+        "integrated_gift_card_payment_total": "50.00",
+    }
+    lifted = upcast_stored_document_data(
+        TouchBistroReportData, original, schema_version=1
+    )
+    assert lifted == original
+    assert lifted is not original

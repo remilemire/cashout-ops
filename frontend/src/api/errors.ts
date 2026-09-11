@@ -44,6 +44,22 @@ const ERROR_MESSAGES = {
   },
   RECONCILE_CARD_TRANSACTION_MISMATCH:
     "The TouchBistro card orders do not match the server summary transaction counts. Re-check both before completing.",
+  RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH: (ctx: ErrorContext) => {
+    const orders = parameter(ctx, "integratedGiftCardTransactionCount");
+    const count = parameter(ctx, "giftCertificateCount");
+    if (orders === undefined || count === undefined) {
+      return "The TouchBistro integrated gift card orders do not match the number of gift certificates. Re-check both before completing.";
+    }
+    return `The TouchBistro integrated gift card orders (${orders}) do not match the number of gift certificates (${count}). Re-check both before completing.`;
+  },
+  RECONCILE_GIFT_CARD_PAYMENT_MISMATCH: (ctx: ErrorContext) => {
+    const payments = parameter(ctx, "integratedGiftCardPaymentTotal");
+    const total = parameter(ctx, "giftCertificateTotal");
+    if (payments === undefined || total === undefined) {
+      return "The TouchBistro integrated gift card payments do not match the gift certificate amounts. Re-check both before completing.";
+    }
+    return `The TouchBistro integrated gift card payments ($${payments}) do not match the gift certificate amounts ($${total}). Re-check both before completing.`;
+  },
   RECONCILE_DOCUMENT_DATA_INVALID:
     "A document's verified details cannot be read. Re-verify it and try again.",
   UPLOAD_NOT_FOUND: "Upload not found.",

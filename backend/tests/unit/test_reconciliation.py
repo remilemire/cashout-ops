@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -82,7 +83,7 @@ def test_pre_versioning_rows_reconcile_as_the_first_version() -> None:
 def test_older_version_verified_data_is_lifted_before_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Simulate the next TouchBistro shape: version 2 renames version 1's
+    # Simulate the next TouchBistro shape: version 3 renames version 2's
     # "tips_on_card" to "card_tip_total". A cashout analyzed (and verified)
     # before the change still reconciles, through the registered step.
     def _rename_tips(data: dict[str, Any]) -> dict[str, Any]:
@@ -90,13 +91,16 @@ def test_older_version_verified_data_is_lifted_before_validation(
         lifted["card_tip_total"] = lifted.pop("tips_on_card")
         return lifted
 
-    monkeypatch.setattr(TouchBistroReportData, "SCHEMA_VERSION", 2)
+    monkeypatch.setattr(TouchBistroReportData, "SCHEMA_VERSION", 3)
     monkeypatch.setattr(
         extraction_registry,
         "CASHOUT_SCHEMA_UPCASTS",
         {
             **extraction_registry.CASHOUT_SCHEMA_UPCASTS,
-            TouchBistroReportData: {1: _rename_tips},
+            TouchBistroReportData: {
+                **extraction_registry.CASHOUT_SCHEMA_UPCASTS[TouchBistroReportData],
+                2: _rename_tips,
+            },
         },
     )
     old_shape = {
@@ -204,3 +208,108 @@ def test_a_mismatch_without_a_deposit_reports_no_deposit() -> None:
         "cardPaymentTotal": "1234.56",
         "serverSummaryTotal": "1000.00",
     }
+
+
+@pytest.mark.parametrize(
+    ("report_fields", "amounts", "error_code"),
+    [
+        ({}, [], None),
+        (
+            {
+                "integrated_gift_card_transaction_count": 0,
+                "integrated_gift_card_payment_total": "0.00",
+            },
+            [],
+            None,
+        ),
+        (
+            {
+                "integrated_gift_card_transaction_count": 2,
+                "integrated_gift_card_payment_total": "0.30",
+            },
+            ["0.10", "0.20"],
+            None,
+        ),
+        (
+            {
+                "integrated_gift_card_transaction_count": 1,
+                "integrated_gift_card_payment_total": "50.00",
+            },
+            [],
+            "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
+        ),
+        ({}, ["25.00"], "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH"),
+        (
+            {
+                "integrated_gift_card_transaction_count": 1,
+                "integrated_gift_card_payment_total": "50.00",
+            },
+            ["25.00", "25.00"],
+            "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
+        ),
+        (
+            {
+                "integrated_gift_card_transaction_count": 2,
+                "integrated_gift_card_payment_total": "50.01",
+            },
+            ["25.00", "25.00"],
+            "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
+        ),
+        (
+            {"integrated_gift_card_payment_total": "25.00"},
+            [],
+            "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
+        ),
+        (
+            {"integrated_gift_card_transaction_count": 1},
+            ["25.00"],
+            "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
+        ),
+        (
+            {
+                "integrated_gift_card_transaction_count": 1,
+                "integrated_gift_card_payment_total": "25.00",
+            },
+            ["unreadable"],
+            "RECONCILE_DOCUMENT_DATA_INVALID",
+        ),
+    ],
+    ids=[
+        "absent",
+        "explicit_zero",
+        "exact_decimal_sum",
+        "missing",
+        "unexpected",
+        "extra_same_sum",
+        "one_cent",
+        "zero_count_nonzero_total",
+        "missing_total",
+        "invalid_amount",
+    ],
+)
+def test_gift_certificate_reconciliation(
+    report_fields: dict[str, Any], amounts: list[str], error_code: str | None
+) -> None:
+    # A deposit closes the card-payment gap only. It must never excuse a
+    # gift certificate mismatch or change the source figures.
+    analyses = _pair_short_by_234_56()
+    analyses[0].verified_data_json = {**_TOUCHBISTRO_VERIFIED, **report_fields}
+    upload_id = uuid4()
+    for position, amount in enumerate(amounts, 1):
+        certificate = _analysis(
+            CashoutDocumentClassification.GIFT_CERTIFICATE,
+            {"amount": amount},
+            schema_version=1,
+        )
+        # Multiple documents from the same upload each count once.
+        certificate.cashout_upload_id = upload_id
+        certificate.position = position
+        analyses.append(certificate)
+    if error_code is not None:
+        with pytest.raises(AppError) as exc_info:
+            reconcile_figures(analyses, deposit_total=Decimal("234.56"))
+        assert exc_info.value.code == error_code
+    else:
+        figures = reconcile_figures(analyses, deposit_total=Decimal("234.56"))
+        assert figures.card_payment_total == Decimal("1234.56")
+        assert figures.cash_payment_total == Decimal("150.00")

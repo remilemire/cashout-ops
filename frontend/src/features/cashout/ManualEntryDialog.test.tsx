@@ -31,6 +31,8 @@ const TOUCHBISTRO_LABELS = [
   "Cash payments",
   "Card payments",
   "Card orders",
+  "Integrated gift card payments",
+  "Integrated gift card orders",
   "Card tips",
 ];
 
@@ -62,13 +64,16 @@ describe("ManualEntryDialog", () => {
     expect(
       screen.getByRole("option", { name: "Server summary report" }),
     ).toBeDefined();
-    expect(screen.getAllByRole("option")).toHaveLength(2);
+    expect(
+      screen.getByRole("option", { name: "Gift certificate" }),
+    ).toBeDefined();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
   });
 
   it("swaps the field set when the classification changes", () => {
     renderDialog();
 
-    // TouchBistro (the default) renders all seven fields under headings.
+    // TouchBistro (the default) renders all fields under headings.
     for (const label of TOUCHBISTRO_LABELS) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
@@ -175,5 +180,43 @@ describe("ManualEntryDialog", () => {
     expect(submit.disabled).toBe(false);
     // The chosen filename replaces the picker label.
     expect(screen.getByRole("button", { name: /report\.jpg/ })).toBeDefined();
+  });
+});
+
+it("submits a gift certificate's amount using its classification", () => {
+  const { onSubmit } = renderDialog();
+  fireEvent.change(screen.getByLabelText("Document type"), {
+    target: { value: "gift_certificate" },
+  });
+  fireEvent.change(screen.getByLabelText("Amount"), {
+    target: { value: "$25.50" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add details" }));
+  expect(onSubmit).toHaveBeenCalledWith(
+    { classification: "gift_certificate", data: { amount: "$25.50" } },
+    null,
+  );
+  expect(screen.queryByLabelText("Card orders")).toBeNull();
+});
+
+it("omits blank gift card fields for zero activity and preserves entered values", () => {
+  const { onSubmit } = renderDialog();
+  fireEvent.click(screen.getByRole("button", { name: "Add details" }));
+  expect(onSubmit.mock.calls[0]![0].data).not.toHaveProperty(
+    "integrated_gift_card_payment_total",
+  );
+  expect(onSubmit.mock.calls[0]![0].data).not.toHaveProperty(
+    "integrated_gift_card_transaction_count",
+  );
+  fireEvent.change(screen.getByLabelText("Integrated gift card payments"), {
+    target: { value: "50.00" },
+  });
+  fireEvent.change(screen.getByLabelText("Integrated gift card orders"), {
+    target: { value: "2" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add details" }));
+  expect(onSubmit.mock.calls[1]![0].data).toMatchObject({
+    integrated_gift_card_payment_total: "50.00",
+    integrated_gift_card_transaction_count: "2",
   });
 });

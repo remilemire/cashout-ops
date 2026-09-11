@@ -61,6 +61,8 @@ export type ErrorCode =
   | "RECONCILE_TOUCHBISTRO_DUPLICATE"
   | "RECONCILE_CARD_PAYMENT_MISMATCH"
   | "RECONCILE_CARD_TRANSACTION_MISMATCH"
+  | "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH"
+  | "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH"
   | "RECONCILE_DOCUMENT_DATA_INVALID";
 
 export type JsonValue =
@@ -143,10 +145,11 @@ export type DocumentAnalysisStatus =
  * failed analysis (errorCode "unclassifiable_document"), not a classification. */
 export type CashoutDocumentClassification =
   | "touchbistro_report"
-  | "server_summary_report";
+  | "server_summary_report"
+  | "gift_certificate";
 
 export const CASHOUT_DOCUMENT_CLASSIFICATIONS: CashoutDocumentClassification[] =
-  ["touchbistro_report", "server_summary_report"];
+  ["touchbistro_report", "server_summary_report", "gift_certificate"];
 
 export type DocumentContentType =
   | "image/jpeg"

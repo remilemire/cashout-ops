@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +43,8 @@ class ServerSummaryReportData(CashoutDocumentSchema):
 
 
 class TouchBistroReportData(CashoutDocumentSchema):
+    SCHEMA_VERSION: ClassVar[int] = 2
+
     drink_net_sales: Annotated[
         Money,
         FieldHint(
@@ -98,6 +101,16 @@ class TouchBistroReportData(CashoutDocumentSchema):
             anti_anchors=("Total Payments", "Total Refunds"),
         ),
     ]
+    integrated_gift_card_transaction_count: Annotated[
+        int,
+        Field(ge=0),
+        FieldHint(
+            labels=("Orders:",),
+            sections=("Payment and Refund Totals", "Integrated Gift Cards"),
+            anchors=("above Total Payments",),
+            anti_anchors=("Gift Card (eCard)",),
+        ),
+    ] = 0
 
     cash_payment_total: Annotated[
         Money,
@@ -117,6 +130,15 @@ class TouchBistroReportData(CashoutDocumentSchema):
             anti_anchors=("Cash", "Total Payments"),
         ),
     ]
+    integrated_gift_card_payment_total: Annotated[
+        Money,
+        FieldHint(
+            labels=("Total",),
+            sections=("Payment and Refund Totals", "Integrated Gift Cards"),
+            anchors=("one row", "right side"),
+            anti_anchors=("Gift Card (eCard)",),
+        ),
+    ] = Decimal(0)
 
     card_tip_total: Annotated[
         Money,
@@ -129,4 +151,13 @@ class TouchBistroReportData(CashoutDocumentSchema):
     ]
 
 
-__all__ = ["CashoutDocumentSchema", "ServerSummaryReportData", "TouchBistroReportData"]
+class GiftCertificateData(CashoutDocumentSchema):
+    amount: Annotated[Money, FieldHint(labels=("Amount:",), anchors=("middle row",))]
+
+
+__all__ = [
+    "CashoutDocumentSchema",
+    "ServerSummaryReportData",
+    "TouchBistroReportData",
+    "GiftCertificateData",
+]

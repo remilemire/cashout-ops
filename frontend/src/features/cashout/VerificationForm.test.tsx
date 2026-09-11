@@ -206,3 +206,24 @@ describe("VerificationForm", () => {
     expect(screen.getByLabelText("Mystery field")).toBeDefined();
   });
 });
+
+it("allows correcting a gift certificate amount before verification", async () => {
+  renderForm(true, {
+    ...analysis,
+    classification: "gift_certificate",
+    schemaName: "GiftCertificateData",
+    extractedDataJson: { amount: "25.00" },
+    issues: [],
+  });
+  fireEvent.change(screen.getByLabelText("Amount"), {
+    target: { value: "25.50" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: /verify with 1 correction/i }),
+  );
+  await waitFor(() =>
+    expect(verifyMock).toHaveBeenCalledWith("analysis-1", {
+      verifiedData: { amount: "25.50" },
+    }),
+  );
+});

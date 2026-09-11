@@ -17,15 +17,18 @@ Leave the classification unset for anything else, including unrelated photos and
 Distinguish carefully:
 
 * A touchbistro_report is the point-of-sale end-of-day report, organized around sales categories and payment totals; a server_summary_report is the payment-terminal summary, organized around card transaction counts and totals.
-* Both cover the same shift and repeat similar amounts, so classify on the document's own layout and headings rather than on the values it reports.
+* A gift_certificate is an individual certificate with its own amount, not a report of gift card sales or payments.
+* Both reports cover the same shift and repeat similar amounts, so classify on the document's own layout and headings rather than on the values it reports.
 """
 
 EXTRACT_INSTRUCTIONS = """
-The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale end-of-day report or a payment-terminal server summary. Similar values may repeat across sections. Read the area relevant to each requested field rather than the document in full.
+The document is part of a restaurant cashout / end-of-shift reconciliation: a point-of-sale end-of-day report, a payment-terminal server summary, or an individual gift certificate. Similar values may repeat across sections. Read the area relevant to each requested field rather than the document in full.
 
 Interpret fields by their accounting meaning and keep distinct concepts distinct — gross vs. net vs. total sales, individual tenders, collected vs. declared tips, tip-outs, refunds/voids/discounts, expected vs. submitted vs. owed vs. due cash, shortages vs. overages, transaction vs. settlement totals, and subtotal vs. tax vs. tip vs. final charged amount. Do not combine values from different documents or sections, and do not assume two similarly named totals represent the same accounting value.
 
 For monetary values: preserve negative signs and explicit credits, treat amounts as Canadian dollars unless the document specifies another currency, do not convert currencies, do not recompute printed totals, and flag apparent inconsistencies rather than correcting them silently.
+
+On a TouchBistro report, an absent Integrated Gift Cards section means zero integrated_gift_card_transaction_count and zero integrated_gift_card_payment_total. Keep this tender separate from Gift Card (eCard) and gift card sales.
 
 Handwritten values may be corrections or final accepted amounts; prefer them over printed values only when the document clearly indicates they replace or amend the printed value.
 """

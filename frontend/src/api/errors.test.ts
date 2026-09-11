@@ -98,3 +98,35 @@ describe("validation messages", () => {
     expect(validationMessage({ code, path: ["field"], ctx })).toBe(message);
   });
 });
+
+describe("gift certificate reconciliation errors", () => {
+  it("shows both counts, including zero", () => {
+    expect(
+      errorMessage("RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH", {
+        integratedGiftCardTransactionCount: 2,
+        giftCertificateCount: 0,
+      }),
+    ).toBe(
+      "The TouchBistro integrated gift card orders (2) do not match the number of gift certificates (0). Re-check both before completing.",
+    );
+  });
+  it("preserves exact monetary strings", () => {
+    expect(
+      errorMessage("RECONCILE_GIFT_CARD_PAYMENT_MISMATCH", {
+        integratedGiftCardPaymentTotal: "50.01",
+        giftCertificateTotal: "50.00",
+      }),
+    ).toBe(
+      "The TouchBistro integrated gift card payments ($50.01) do not match the gift certificate amounts ($50.00). Re-check both before completing.",
+    );
+  });
+  it.each([
+    "RECONCILE_GIFT_CARD_TRANSACTION_MISMATCH",
+    "RECONCILE_GIFT_CARD_PAYMENT_MISMATCH",
+  ] as const)("has a useful fallback for %s", (code) => {
+    expect(errorMessage(code, {})).toContain(
+      "Re-check both before completing.",
+    );
+    expect(errorMessage(code, {})).not.toContain("undefined");
+  });
+});

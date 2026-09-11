@@ -163,6 +163,7 @@ def test_upgrade_head_fails_unknown_classifications(migrated_url: str) -> None:
         assert _enum_values(migrated_url, "cashout_document_classification") == {
             "touchbistro_report",
             "server_summary_report",
+            "gift_certificate",
         }
         with engine.connect() as conn:
             status, classification, error_code, error_message = conn.execute(
@@ -1258,5 +1259,93 @@ def test_upgrade_head_appends_the_adjustment_columns(migrated_url: str) -> None:
             "display_order",
         ]
         assert view_columns[-2:] == ["deposit_total", "adjustment_note"]
+    finally:
+        engine.dispose()
+
+
+def test_gift_certificate_upgrade_and_downgrade_preserve_analyses(
+    migrated_url: str,
+) -> None:
+    _upgrade(migrated_url, "e5a3c7d19f84")
+    assert "gift_certificate" not in _enum_values(
+        migrated_url, "cashout_document_classification"
+    )
+    _upgrade(migrated_url, "head")
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO users (id, full_name, email)
+                VALUES ('11111111-1111-1111-1111-111111111111', 'Cashier',
+                        'cashier@test.com');
+                INSERT INTO cashout_submissions
+                    (id, employee_user_id, submitted_at, business_date)
+                VALUES ('22222222-2222-2222-2222-222222222222',
+                        '11111111-1111-1111-1111-111111111111', now(), '2026-09-11');
+                INSERT INTO cashout_uploads
+                    (id, cashout_submission_id, content_type, storage_key,
+                     original_filename, checksum_sha256, uploaded_by_user_id,
+                     uploaded_at)
+                VALUES ('33333333-3333-3333-3333-333333333333',
+                        '22222222-2222-2222-2222-222222222222',
+                        'image/jpeg', 'key', 'gift.jpg', 'checksum',
+                        '11111111-1111-1111-1111-111111111111', now());
+                INSERT INTO cashout_document_analyses
+                    (id, cashout_upload_id, status, classification, schema_name,
+                     schema_version, extracted_data_json)
+                VALUES ('44444444-4444-4444-4444-444444444444',
+                        '33333333-3333-3333-3333-333333333333',
+                        'needs_verification', 'gift_certificate',
+                        'GiftCertificateData', 1, '{"amount": "25.00"}'::jsonb);
+            """)
+            )
+
+        # Rolling back must fail rather than deleting or reclassifying a gift.
+        with pytest.raises(AssertionError, match="gift_certificate"):
+            _alembic(migrated_url, "downgrade", "e5a3c7d19f84")
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT classification::text, extracted_data_json "
+                    "FROM cashout_document_analyses"
+                )
+            ).one()
+            assert tuple(row) == ("gift_certificate", {"amount": "25.00"})
+
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE cashout_document_analyses SET classification = NULL")
+            )
+        _alembic(migrated_url, "downgrade", "e5a3c7d19f84")
+        assert _enum_values(migrated_url, "cashout_document_classification") == {
+            "touchbistro_report",
+            "server_summary_report",
+        }
+        _upgrade(migrated_url, "head")
+        assert "gift_certificate" in _enum_values(
+            migrated_url, "cashout_document_classification"
+        )
+    finally:
+        engine.dispose()
+
+
+def test_gift_certificate_upgrade_accepts_the_unversioned_rollout(
+    migrated_url: str,
+) -> None:
+    _upgrade(migrated_url, "e5a3c7d19f84")
+    engine = create_engine(migrated_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TYPE cashout_document_classification "
+                    "ADD VALUE 'gift_certificate'"
+                )
+            )
+        _upgrade(migrated_url, "head")
+        assert "gift_certificate" in _enum_values(
+            migrated_url, "cashout_document_classification"
+        )
     finally:
         engine.dispose()

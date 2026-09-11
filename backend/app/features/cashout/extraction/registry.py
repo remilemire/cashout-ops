@@ -7,6 +7,7 @@ from app.document_ai import ClassificationHint
 
 from .schemas import (
     CashoutDocumentSchema,
+    GiftCertificateData,
     ServerSummaryReportData,
     TouchBistroReportData,
 )
@@ -17,6 +18,7 @@ CASHOUT_DOCUMENT_SCHEMAS: Mapping[
 ] = {
     CashoutDocumentClassification.TOUCHBISTRO_REPORT: TouchBistroReportData,
     CashoutDocumentClassification.SERVER_SUMMARY_REPORT: ServerSummaryReportData,
+    CashoutDocumentClassification.GIFT_CERTIFICATE: GiftCertificateData,
 }
 
 # Every classification has an entry: a document the model can't place is not a
@@ -44,6 +46,13 @@ CASHOUT_CLASSIFICATION_HINTS: Mapping[
             "uppercase headers",
         ),
     ),
+    CashoutDocumentClassification.GIFT_CERTIFICATE: ClassificationHint(
+        markers=(
+            "titled Gift Certificate",
+            "black background",
+            "WHISKEY DISTRICT on right",
+        ),
+    ),
 }
 
 
@@ -51,6 +60,19 @@ CASHOUT_CLASSIFICATION_HINTS: Mapping[
 # `from_version`, returned in the shape of `from_version + 1`. Pure dict → dict;
 # validation stays with the reader.
 type DocumentDataUpcast = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+def _touchbistro_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Supply the gift card fields older extractions did not collect.
+
+    Preserve any values already entered during the unversioned rollout.
+    """
+    return {
+        "integrated_gift_card_transaction_count": 0,
+        "integrated_gift_card_payment_total": "0",
+        **data,
+    }
+
 
 # {schema: {from_version: upcast}} — how a stored payload written under an
 # older SCHEMA_VERSION is lifted, one step at a time, to the shape the current
@@ -60,8 +82,9 @@ type DocumentDataUpcast = Callable[[dict[str, Any]], dict[str, Any]]
 CASHOUT_SCHEMA_UPCASTS: Mapping[
     type[CashoutDocumentSchema], Mapping[int, DocumentDataUpcast]
 ] = {
-    TouchBistroReportData: {},
+    TouchBistroReportData: {1: _touchbistro_v1_to_v2},
     ServerSummaryReportData: {},
+    GiftCertificateData: {},
 }
 
 

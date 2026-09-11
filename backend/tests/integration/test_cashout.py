@@ -59,7 +59,7 @@ async def test_full_cashout_flow(
     assert analysis["extractionConfidence"] == 0.9
     # The extraction records which shape of its schema it wrote.
     assert analysis["schemaName"] == "TouchBistroReportData"
-    assert analysis["schemaVersion"] == 1
+    assert analysis["schemaVersion"] == 2
 
     # The cashout also needs the terminal summary its card payments are
     # cross-checked against.
