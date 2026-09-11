@@ -16,6 +16,7 @@ from app.document_ai import (
     DocumentAIError,
     DocumentAIErrorCode,
     DocumentAnalysis,
+    DocumentClassification,
     DocumentClassificationResponse,
     DocumentRef,
     DocumentUnclassifiableError,
@@ -104,16 +105,23 @@ async def _build_processor(
     return processor, ref
 
 
-async def test_processor_classifies_and_extracts() -> None:
+@pytest.mark.parametrize(
+    ("classification_confidence", "extraction_confidence"),
+    [(0.9, 0.8), (0.95, 0.15), (0.2, 0.95)],
+)
+async def test_processor_classifies_and_extracts(
+    classification_confidence: float, extraction_confidence: float
+) -> None:
     processor, ref = await _build_processor(
         classification=_classification(
-            CashoutDocumentClassification.SERVER_SUMMARY_REPORT
+            CashoutDocumentClassification.SERVER_SUMMARY_REPORT,
+            confidence=classification_confidence,
         ),
         extraction=DocumentAnalysis[ServerSummaryReportData](
             data=ServerSummaryReportData(
                 grand_total=Decimal("1234.56"), grand_total_transaction_count=42
             ),
-            confidence=0.8,
+            confidence=extraction_confidence,
             issues=[FieldIssue(path="grand_total", message="the print was faint")],
         ),
     )
@@ -121,11 +129,11 @@ async def test_processor_classifies_and_extracts() -> None:
     result = await processor.process(ref)
 
     assert result.classification is CashoutDocumentClassification.SERVER_SUMMARY_REPORT
-    assert result.classification_confidence == 0.9
+    assert result.classification_confidence == classification_confidence
     assert isinstance(result.data, ServerSummaryReportData)
     assert result.data.grand_total == Decimal("1234.56")
     assert result.data.grand_total_transaction_count == 42
-    assert result.confidence == 0.8
+    assert result.confidence == extraction_confidence
     assert result.issues[0].path == "grand_total"
     assert result.schema_name == "ServerSummaryReportData"
     assert result.schema_version == ServerSummaryReportData.SCHEMA_VERSION
@@ -395,6 +403,44 @@ class _ShelterIntakeRecord(BaseModel):
 
 class _BareRecord(BaseModel):
     name: str | None = None
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (DocumentClassificationResponse[_ShelterDocument], {"value": "adoption_form"}),
+        (DocumentClassification[_ShelterDocument], {"value": "adoption_form"}),
+        (DocumentAnalysis[_BareRecord], {"data": {}}),
+    ],
+)
+@pytest.mark.parametrize("points", range(0, 101, 5))
+def test_confidence_accepts_five_point_steps(
+    model: type[BaseModel], payload: dict[str, Any], points: int
+) -> None:
+    result = model.model_validate_json(
+        json.dumps({**payload, "confidence": points / 100})
+    )
+
+    assert result.model_dump()["confidence"] == points / 100
+    assert model.model_json_schema()["properties"]["confidence"]["multipleOf"] == 0.05
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (DocumentClassificationResponse[_ShelterDocument], {"value": "adoption_form"}),
+        (DocumentClassification[_ShelterDocument], {"value": "adoption_form"}),
+        (DocumentAnalysis[_BareRecord], {"data": {}}),
+    ],
+)
+@pytest.mark.parametrize(
+    "confidence", [-0.05, 1.05, 0.01, 0.74, 0.999, float("nan"), float("inf")]
+)
+def test_confidence_rejects_invalid_scores(
+    model: type[BaseModel], payload: dict[str, Any], confidence: float
+) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate_json(json.dumps({**payload, "confidence": confidence}))
 
 
 class _EmptyHintRecord(BaseModel):

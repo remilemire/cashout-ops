@@ -34,7 +34,11 @@ Classify the supplied document using only the document types allowed by the resp
 
 * Base the classification on the whole document — title, issuer, layout, field labels, table structure, apparent purpose — not on a single keyword, the filename, or a caller-provided label.
 * If the document does not clearly match an allowed type, leave the classification null rather than forcing the most likely option.
-* Reduce confidence when the document is partial, blurry, cropped, mixed with another document, or missing identifying headings.
+
+Classification confidence rubric (independent of extraction quality): start at 100 points, subtract each applicable deduction once, floor at 0, then divide by 100. Return only 0.00, 0.05, ... 1.00.
+* Blur, cropping, glare, or handwriting: -5 if identifying evidence is slightly obscured; -25 if substantially obscured. Ignore defects that only affect reading individual values.
+* Missing identifying title/issuer/layout evidence: -15; conflicting type indicators or multiple plausible types/documents with no clear target: -40.
+* Count the same underlying issue once, using its largest deduction. If little identifying evidence remains, cap at 20 points; if no allowed type clearly matches, return null. Never lower this score just because extraction is difficult.
 """
 
 _EXTRACT_INSTRUCTIONS = """Extract the requested structured data from the supplied document.
@@ -42,6 +46,18 @@ _EXTRACT_INSTRUCTIONS = """Extract the requested structured data from the suppli
 * Base each value on visible evidence, preserving its sign, decimal value, date, identifier, and unit. Do not calculate, reconcile, normalize, or reinterpret values unless explicitly requested.
 * Prefer a clearly labelled value over an inferred one. When multiple plausible values exist, use the one most directly associated with the requested field and report the ambiguity through the schema’s warning or confidence fields; never choose silently.
 * Use null when a field is absent, illegible, or cannot be identified reliably. Do not copy unrelated document text into free-form fields.
+
+Be strict about extraction confidence. It measures how complete and dependable the requested result is for use without correction, independently of classification. It is NOT confidence that your response follows the schema or that returning null was the right decision. Correctly reporting missing evidence still means a poor extraction.
+
+Check the image against every requested field: is its value present, legible, and clearly associated with the right label, section, document, and final accepted entry? Inspect blur, glare, cropping, mixed documents, difficult handwriting, corrections, ambiguous characters, and conflicting values. Judge their effect on the requested evidence, not just whether you can produce a plausible answer. Do not resolve uncertainty using arithmetic, conventions, or guesses.
+
+Use the lowest applicable band; a serious problem in one essential field cannot be averaged away by clear text elsewhere:
+* 0.00–0.20: an essential requested value is missing, unreadable, or cannot be reliably assigned to the intended field/document. This applies even when the rest is sharp and the missing value is returned as null. Use 0.00 when none of the essential values is recoverable.
+* 0.25–0.45: substantial uncertainty affects several requested values or much of their supporting evidence.
+* 0.50–0.75: a usable reading exists, but at least one material value needs interpretation or human verification rather than straightforward transcription. Difficult strokes, competing readings, or unclear corrections belong here even if you strongly prefer one reading.
+* 0.80–1.00: all requested values are directly supported and straightforward to read, with no unresolved material uncertainty. Only a few minor defects are acceptable; reserve 1.00 for a complete, unambiguous result.
+
+Nullable schema fields allow unknowns; they do not make requested information unimportant. Only explicit task rules can make an absent field legitimate or define its default. Clear handwriting and harmless marks outside relevant evidence need no penalty. Never raise confidence because you omitted an uncertain field, returned null, or recognized the document type. Return confidence in steps of 0.05 and brief, specific issues consistent with the score; do not output scoring calculations.
 """
 
 
