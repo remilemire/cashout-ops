@@ -180,6 +180,12 @@ class DocumentCropper:
         # cuts along run with the axes, so documents lying at an angle would
         # never come apart. The boxes are mapped into the level frame rather
         # than detected again, so the detection scale is unchanged.
+        # The height of a line of print, measured before leveling: a region's
+        # thickness does not change with its tilt, where its envelope's height
+        # does — and print left sideways by the leveling (tilted past 45°, so
+        # the nearer level is a quarter turn off) has envelopes as tall as its
+        # lines are long.
+        line_height = _line_height(boxes)
         angle = dominant_orientation(boxes) if self._deskew_enabled else 0.0
         leveled: Leveled | None = None
         frame = detection_image
@@ -193,6 +199,7 @@ class DocumentCropper:
             groups = _split(
                 boxes,
                 luminance,
+                line_height=line_height,
                 gap_ratio=self._split_gap,
                 min_boxes=self._min_text_boxes,
             )
@@ -293,10 +300,17 @@ def _downscale(image: Image.Image, max_side: int) -> tuple[Image.Image, float]:
     return resized, scale
 
 
+def _line_height(boxes: Sequence[TextBox]) -> int:
+    """The median thickness of the boxes, at least a pixel."""
+    thicknesses = sorted(box.thickness for box in boxes)
+    return max(1, round(thicknesses[len(thicknesses) // 2]))
+
+
 def _split(
     boxes: Sequence[TextBox],
     luminance: _Luminance,
     *,
+    line_height: int,
     gap_ratio: float,
     min_boxes: int,
 ) -> list[list[TextBox]]:
@@ -305,8 +319,6 @@ def _split(
     Drop groups with fewer than `min_boxes`, unless that would drop them all;
     in that case retain all boxes as a single group.
     """
-    heights = sorted(box.height for box in boxes)
-    line_height = max(1, heights[len(heights) // 2])
     gap = max(2, round(gap_ratio * line_height))
     groups = _cut(list(boxes), luminance, gap=gap, line_height=line_height)
     kept = [group for group in groups if len(group) >= min_boxes]

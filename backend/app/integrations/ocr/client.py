@@ -51,6 +51,23 @@ class TextBox:
         )
 
     @property
+    def length(self) -> float:
+        """The outline's longer edge: how far the line of text runs, whatever
+        its tilt. The envelope's width without an outline."""
+        return max(self._edges) if len(self.outline) >= 3 else float(self.width)
+
+    @property
+    def thickness(self) -> float:
+        """The outline's shorter edge: the height of the line of text, whatever
+        its tilt. The envelope's height without an outline."""
+        return min(self._edges) if len(self.outline) >= 3 else float(self.height)
+
+    @property
+    def _edges(self) -> tuple[float, float]:
+        (x0, y0), (x1, y1), (x2, y2) = self.outline[:3]
+        return math.hypot(x1 - x0, y1 - y0), math.hypot(x2 - x1, y2 - y1)
+
+    @property
     def orientation(self) -> float:
         """The text line's tilt in degrees, in (-45, 45]: the direction of the
         outline's longer edge from the x axis, with y pointing down, so a

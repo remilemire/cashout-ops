@@ -40,10 +40,11 @@ def dominant_orientation(boxes: Sequence[TextBox]) -> float:
     the elongated boxes, or 0.0 when no box is elongated."""
     weighted: list[tuple[float, float]] = []
     for box in boxes:
-        longer, shorter = _edge_lengths(box.outline)
-        if shorter <= 0 or longer / shorter < _ELONGATION:
+        if not box.outline or box.thickness <= 0:
             continue
-        weighted.append((box.orientation, longer))
+        if box.length / box.thickness < _ELONGATION:
+            continue
+        weighted.append((box.orientation, box.length))
     if not weighted:
         return 0.0
     weighted.sort()
@@ -131,16 +132,6 @@ class Leveled:
     def _cos_sin(self) -> tuple[float, float]:
         radians = math.radians(self.angle)
         return math.cos(radians), math.sin(radians)
-
-
-def _edge_lengths(outline: tuple[Point, ...]) -> tuple[float, float]:
-    """The longer and shorter edge of a rectangular outline; (0, 0) without one."""
-    if len(outline) < 3:
-        return 0.0, 0.0
-    (x0, y0), (x1, y1), (x2, y2) = outline[:3]
-    first = math.hypot(x1 - x0, y1 - y0)
-    second = math.hypot(x2 - x1, y2 - y1)
-    return max(first, second), min(first, second)
 
 
 def _envelope(

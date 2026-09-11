@@ -42,8 +42,18 @@ def test_tilt_past_forty_five_degrees_reads_as_the_other_way() -> None:
     assert math.isclose(TextBox(0, 0, 100, 100, outline=_outline(-135)).orientation, 45)
 
 
+def test_length_and_thickness_come_from_the_outline_whatever_its_tilt() -> None:
+    # A 100 × 20 line tilted 70° has an envelope about 53 × 101; its own
+    # length and thickness are still 100 and 20.
+    box = TextBox(left=0, top=0, right=53, bottom=101, outline=_outline(70))
+
+    assert math.isclose(box.length, 100)
+    assert math.isclose(box.thickness, 20)
+
+
 def test_without_an_outline_there_is_no_tilt_and_the_envelope_is_the_shape() -> None:
     box = TextBox(left=10, top=20, right=110, bottom=40)
 
     assert box.orientation == 0.0
     assert box.corners == ((10, 20), (110, 20), (110, 40), (10, 40))
+    assert (box.length, box.thickness) == (100, 20)
