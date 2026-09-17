@@ -389,7 +389,15 @@ The three scripts under `backend/scripts/` are the Render deploy hooks:
 
 - `build.bash` — `uv sync` in `backend/`, then `npm ci && npm run build` in `frontend/` (which writes into `backend/static/`).
 - `pre-deploy.bash` — `uv run alembic upgrade head` in `backend/`.
-- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --forwarded-allow-ips='*'`. The start command trusts Render's `X-Forwarded-For` (only the platform proxy can reach the service) so per-IP rate limiting sees real client addresses.
+- `start.bash` — `gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --forwarded-allow-ips='*'`. The start command enables wildcard proxy trust; see the unresolved client-IP security note below.
+
+### Unresolved client-IP trust risk
+
+The current Gunicorn/Uvicorn configuration trusts every peer's forwarded headers and selects the leftmost `X-Forwarded-For` address for `request.client`. Authentication rate limits use that address. A caller whose supplied prefix survives the proxy can select a different rate-limit bucket on every request, or consume another address's quota. This is a rate-limit bypass risk, not a demonstrated authentication bypass: per-email quotas, per-challenge code-attempt limits, and authenticated per-user quotas remain separate protections. Local middleware reproduction confirmed the address-selection behavior; exploitability on the deployed service has not been tested.
+
+Render's [Python runtime defaults](https://render.com/docs/environment-variables#python-3) already set `FORWARDED_ALLOW_IPS=*`. Merely removing the command-line wildcard therefore does not harden a standard Render Python deployment. An attempted allowlist-only change was reverted because no verified Render ingress proxy allowlist had been established; outbound IP ranges are not a substitute.
+
+Render's [client-IP guidance](https://render.com/articles/host-pocketbase-on-render#making-pocketbase-see-the-real-client-ip) recommends `CF-Connecting-IP`, which Cloudflare overwrites, and warns that a caller can control the leftmost `X-Forwarded-For` entry. A future fix should use a verified Render-specific client-IP policy and cover malformed/missing headers and spoofing tests. It must also account for [private-network access](https://render.com/docs/private-network): requests from other services in the same workspace and region may bypass the public edge, so blindly trusting a different header on every request is insufficient. No runtime mitigation is included in this note.
 
 The Render service must have `DATABASE_URL`, `REDIS_URL`, the selected provider's AI key (e.g. `ANTHROPIC_API_KEY`), `BOOTSTRAP_OWNER_EMAIL`, and `APP_BASE_URL` (the deployed origin, used to build the OAuth callback URI) configured (and `APP_ENV=prod`, which is also the default). To actually deliver sign-in code emails set `EMAIL_PROVIDER=resend` with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise codes are only logged to stdout (`console`), so nobody can sign in.
 
