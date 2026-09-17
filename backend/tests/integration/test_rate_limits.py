@@ -252,3 +252,29 @@ async def test_extract_per_user_is_limited(
     assert body["kind"] == RATE_LIMITED_KIND
     assert body["code"] == RATE_LIMITED_CODE
     assert second.headers["Retry-After"].isdigit()
+
+
+@pytest.mark.parametrize("edge_ip", ["198.51.100.1", None, "malformed"])
+async def test_cloudflare_auth_limit_cannot_rotate_forwarded_ips(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, edge_ip: str | None
+) -> None:
+    monkeypatch.setattr(settings.rate_limit, "CLIENT_IP_SOURCE", "cloudflare")
+    monkeypatch.setattr(settings.rate_limit, "AUTH_IP_PER_HOUR", 2)
+    for i in range(3):
+        headers = {"X-Forwarded-For": f"203.0.113.{i + 1}"}
+        if edge_ip is not None:
+            headers["CF-Connecting-IP"] = edge_ip
+        response = await client.post(
+            "/api/auth/email-challenges/verify-code",
+            json={"challengeId": f"missing-{i}", "code": "000000"},
+            headers=headers,
+        )
+        assert response.status_code == (401 if i < 2 else 429), response.text
+
+    # A different genuine edge-reported client has an independent quota.
+    response = await client.post(
+        "/api/auth/email-challenges/verify-code",
+        json={"challengeId": "missing-other", "code": "000000"},
+        headers={"CF-Connecting-IP": "198.51.100.2"},
+    )
+    assert response.status_code == 401, response.text

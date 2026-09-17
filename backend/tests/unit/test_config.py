@@ -312,3 +312,18 @@ def test_the_live_settings_are_the_hermetic_baseline() -> None:
     # Pydantic equality compares field values: proves the conftest swap
     # actually installed the baseline on the singleton.
     assert settings == make_test_settings()
+
+
+def test_rate_limit_client_ip_source_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_CLIENT_IP_SOURCE", "cloudflare")
+    assert make_test_settings().rate_limit.CLIENT_IP_SOURCE == "cloudflare"
+
+
+def test_rate_limit_rejects_unknown_client_ip_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_CLIENT_IP_SOURCE", "x-forwarded-for")
+    with pytest.raises(ValidationError):
+        make_test_settings()
