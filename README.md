@@ -4,7 +4,7 @@ Internal operations tool that replaces Whiskey District's paper-based end-of-shi
 
 Live deployment: <https://whiskeydistrictcashout.com>
 
-> **Status:** early build. Passwordless authentication, the cashout and AI extraction workflows, and the cashier and admin SPA are implemented. A reporting view feeds the management Google Sheet, and the admin data table supports CSV export and printing. Tipout rates and the remaining workflow improvements are tracked in [Planned scope](#planned-scope).
+> **Status:** Core workflows implemented; actively maintained and extended. Cashiers can upload documents, review AI-extracted values, and submit reconciled cashouts. Administrators can manage submissions and users, review cashout data, and export reports. Remaining workflow improvements and configuration requirements are tracked in [Planned scope](#planned-scope).
 
 ---
 
@@ -87,7 +87,7 @@ These are designed but not yet finished in code. Tracked here so the gap between
 
 **Field-typed correction editors** — the cashier and admin flows are stable, and the verification form groups and labels fields per document type, but it still renders every value as a plain text input. Per-document-type editors (currency, counts) are the remaining step. Paste-to-upload is also still outstanding (drag-and-drop works).
 
-**Admin flow** — the cashout-data view filters by employee and business day; date-*range* filtering, editing submitted data, and discrepancy investigation are still to come.
+**Admin flow** — the cashout-data view filters by employee and business day. Administrators can reopen completed submissions, correct their verified document values, and resubmit them. Date-*range* filtering and dedicated discrepancy-investigation tools remain planned.
 
 **Reporting** — the `reporting.cashout_data` view feeds a management Google Sheet, and the admin data table supports CSV export and browser printing. Dedicated Excel/PDF export and Power Query integration remain planned.
 
